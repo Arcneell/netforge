@@ -1,20 +1,20 @@
-"""initial schema — toutes les tables + GiST + triggers métier.
+"""initial schema — all tables + GiST constraint + business-rule triggers.
 
 Revision ID: 0001_initial
 Revises:
 Create Date: 2026-04-24
 
-Ce qu'on crée ici, dans l'ordre :
+What this migration creates, in order:
 
-1. Enums PostgreSQL natifs (ip_status, device_type, port_mode, ...).
-2. Tables `sites`, `rooms` (coeur du parc physique).
+1. Native PostgreSQL enums (ip_status, device_type, port_mode, ...).
+2. `sites`, `rooms` (physical network layout).
 3. `vlans`.
-4. `subnets` avec contrainte d'exclusion GiST empêchant le chevauchement de CIDR.
-5. `devices`, `switches`, `ports` (avec UNIQUE(switch_id, number)), `port_vlan`.
-6. `ips` avec trigger vérifiant que l'adresse appartient bien au subnet.
-7. `links` (port_a_id < port_b_id garanti par CHECK).
+4. `subnets` with an exclusion GiST constraint preventing CIDR overlap.
+5. `devices`, `switches`, `ports` (with UNIQUE(switch_id, number)), `port_vlan`.
+6. `ips` with a trigger enforcing that the address is contained in its subnet.
+7. `links` (port_a_id < port_b_id enforced by CHECK, so each edge is canonical).
 8. `users`, `sessions`, `audit_log`.
-9. Triggers updated_at.
+9. Generic updated_at trigger on the relevant tables.
 """
 
 from collections.abc import Sequence
@@ -30,7 +30,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Extension pour GiST sur inet (fournit la classe d'opérateurs inet_ops)
+    # Extension providing the GiST operator class we use on inet
     op.execute("CREATE EXTENSION IF NOT EXISTS btree_gist;")
 
     # ------------------------------------------------------------------
@@ -90,7 +90,7 @@ def upgrade() -> None:
     )
 
     # ------------------------------------------------------------------
-    # subnets — avec GiST pour exclure les chevauchements de CIDR
+    # subnets — with GiST exclusion to reject overlapping CIDRs
     # ------------------------------------------------------------------
     op.create_table(
         "subnets",
@@ -107,7 +107,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
 
-    # Exclusion de chevauchement : `&&` teste si deux CIDR se recouvrent.
+    # Overlap exclusion: `&&` returns true when two CIDRs overlap.
     op.execute(
         "ALTER TABLE subnets "
         "ADD CONSTRAINT subnets_no_overlap "
@@ -148,7 +148,7 @@ def upgrade() -> None:
         sa.CheckConstraint("port_count > 0", name="switches_port_count_positive"),
     )
 
-    # ips — créée avant ports pour que la FK ports.connected_ip_id puisse pointer dessus
+    # ips — created before ports so the ports.connected_ip_id FK can reference it
     op.create_table(
         "ips",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -185,7 +185,7 @@ def upgrade() -> None:
     )
 
     # ------------------------------------------------------------------
-    # links — canoniques : port_a_id < port_b_id
+    # links — canonical order: port_a_id < port_b_id
     # ------------------------------------------------------------------
     op.create_table(
         "links",
@@ -243,7 +243,7 @@ def upgrade() -> None:
     op.create_index("audit_log_created_at_idx", "audit_log", [sa.text("created_at DESC")])
 
     # ------------------------------------------------------------------
-    # Trigger : une IP doit être contenue dans le CIDR de son subnet
+    # Trigger: every IP must be contained in its subnet's CIDR.
     # ------------------------------------------------------------------
     op.execute(
         """
@@ -273,7 +273,7 @@ def upgrade() -> None:
     )
 
     # ------------------------------------------------------------------
-    # Trigger générique updated_at = now()
+    # Generic updated_at = now() trigger
     # ------------------------------------------------------------------
     op.execute(
         """
@@ -297,7 +297,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Ordre inverse de création (FKs obligent)
+    # Reverse creation order (FKs force it)
     for tbl in ("sites", "subnets", "switches", "ips"):
         op.execute(f"DROP TRIGGER IF EXISTS {tbl}_touch_updated_at ON {tbl};")
     op.execute("DROP FUNCTION IF EXISTS netforge_touch_updated_at;")

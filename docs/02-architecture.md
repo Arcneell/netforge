@@ -1,61 +1,61 @@
 # 02 — Architecture
 
-## Vue d'ensemble
+## Overview
 
-Netforge suit une architecture classique 3-tiers, conteneurisée en 3 services Docker orchestrés par `docker compose`.
+Netforge follows a classic 3-tier architecture, containerized as 3 Docker services orchestrated by `docker compose`.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Utilisateur (navigateur)                  │
+│                    User (browser)                            │
 └───────────────────────────────┬─────────────────────────────┘
                                 │ HTTPS (Nginx reverse proxy)
                                 ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  Container nginx (frontend)                  │
-│  - Sert le build statique Vue 3 (dist/)                      │
-│  - Proxy /api/* → backend                                    │
-│  - Gère les headers CSP, HSTS, X-Frame-Options               │
+│                  nginx container (frontend)                  │
+│  - Serves the static Vue 3 build (dist/)                     │
+│  - Proxies /api/* → backend                                  │
+│  - Applies CSP, HSTS, X-Frame-Options headers                │
 └───────────────────────────────┬─────────────────────────────┘
-                                │ HTTP interne (docker network)
+                                │ internal HTTP (docker network)
                                 ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Container backend (FastAPI + Uvicorn)           │
-│  - Routes REST /api/*                                        │
-│  - Auth middleware (OIDC Entra ID, sessions cookies)         │
+│              backend container (FastAPI + Uvicorn)           │
+│  - REST routes /api/*                                        │
+│  - Auth middleware (OIDC Entra ID, session cookies)          │
 │  - Business logic (services/)                                │
-│  - ORM SQLAlchemy 2.0 async                                  │
-│  - Migrations Alembic                                        │
+│  - SQLAlchemy 2.0 async ORM                                  │
+│  - Alembic migrations                                        │
 └───────────────────────────────┬─────────────────────────────┘
                                 │ TCP 5432 (docker network)
                                 ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Container postgres:16                     │
-│  - Volume persistant /var/lib/postgresql/data                │
-│  - Backup quotidien (cron externe) vers Veeam repo           │
+│                    postgres:16 container                     │
+│  - Persistent volume /var/lib/postgresql/data                │
+│  - Daily backup (external cron) to Veeam repo                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Services
 
 ### `frontend`
-- **Image** : build multi-stage (Node 20 pour le build, `nginx:alpine` pour le runtime).
-- **Port exposé** : 8080 (ou 443 avec certif).
-- **Volumes** : aucun (stateless).
-- **Responsabilités** : servir l'UI, proxifier `/api/*`, appliquer les headers de sécurité.
+- **Image**: multi-stage build (Node 20 for the build, `nginx:alpine` for runtime).
+- **Exposed port**: 8080 (or 443 with a certificate).
+- **Volumes**: none (stateless).
+- **Responsibilities**: serving the UI, proxying `/api/*`, applying security headers.
 
 ### `backend`
-- **Image** : `python:3.12-slim` + dépendances (`uv` pour l'install rapide).
-- **Port interne** : 8000 (non exposé en dehors du network Docker).
-- **Volumes** : aucun en prod (logs via stdout/journald).
-- **Responsabilités** : API REST, auth, accès DB, audit log.
+- **Image**: `python:3.12-slim` + dependencies (`uv` for fast installs).
+- **Internal port**: 8000 (not exposed outside the Docker network).
+- **Volumes**: none in production (logs via stdout/journald).
+- **Responsibilities**: REST API, auth, DB access, audit log.
 
 ### `postgres`
-- **Image** : `postgres:16-alpine`.
-- **Port** : 5432 (non exposé hors network Docker).
-- **Volumes** : `netforge_pgdata:/var/lib/postgresql/data`.
-- **Responsabilités** : stockage persistant.
+- **Image**: `postgres:16-alpine`.
+- **Port**: 5432 (not exposed outside the Docker network).
+- **Volumes**: `netforge_pgdata:/var/lib/postgresql/data`.
+- **Responsibilities**: persistent storage.
 
-## Arborescence du repo
+## Repository layout
 
 ```
 netforge/
@@ -63,20 +63,20 @@ netforge/
 ├── docker-compose.yml
 ├── docker-compose.dev.yml
 ├── .env.example
-├── docs/                        # ces fichiers .md
+├── docs/                        # these .md files
 ├── backend/
 │   ├── Dockerfile
 │   ├── pyproject.toml
 │   ├── alembic.ini
-│   ├── alembic/versions/        # migrations DB
+│   ├── alembic/versions/        # DB migrations
 │   └── app/
-│       ├── main.py              # création app FastAPI
-│       ├── config.py            # settings Pydantic
-│       ├── db.py                # engine SQLAlchemy
+│       ├── main.py              # FastAPI app creation
+│       ├── config.py            # Pydantic settings
+│       ├── db.py                # SQLAlchemy engine
 │       ├── auth/                # OIDC + middleware
 │       ├── models/              # SQLAlchemy ORM
 │       ├── schemas/             # Pydantic (request/response)
-│       ├── routers/             # endpoints par domaine
+│       ├── routers/             # endpoints by domain
 │       │   ├── subnets.py
 │       │   ├── vlans.py
 │       │   ├── ips.py
@@ -86,7 +86,7 @@ netforge/
 │       │   ├── topology.py
 │       │   ├── imports.py
 │       │   └── audit.py
-│       ├── services/            # logique métier
+│       ├── services/            # business logic
 │       └── utils/
 ├── frontend/
 │   ├── Dockerfile
@@ -101,60 +101,60 @@ netforge/
 │       ├── App.vue
 │       ├── router/
 │       ├── stores/              # Pinia
-│       ├── api/                 # client axios généré
+│       ├── api/                 # generated axios client
 │       ├── views/               # pages
 │       ├── components/
 │       └── assets/
 └── scripts/
-    ├── backup.sh                # pg_dump vers répertoire Veeam
+    ├── backup.sh                # pg_dump to Veeam directory
     └── restore.sh
 ```
 
-## Choix techniques — justification
+## Technical choices — rationale
 
-### Pourquoi FastAPI
-- Typage strict via Pydantic → contrats API solides.
-- OpenAPI généré automatiquement → client Vue typé gratuitement.
-- Async natif → bon pour les endpoints qui feront du SNMP en v2.
-- Courbe d'apprentissage douce, très bonne doc.
+### Why FastAPI
+- Strict typing via Pydantic → solid API contracts.
+- Auto-generated OpenAPI → a typed Vue client for free.
+- Native async → good for endpoints that will do SNMP in v2.
+- Gentle learning curve, very good docs.
 
-### Pourquoi PostgreSQL et pas SQLite/MariaDB
-- Types `INET` et `CIDR` natifs : contraintes d'unicité sur sous-réseaux, requêtes "IP contenue dans ce subnet" en SQL pur.
-- Contraintes d'exclusion (`EXCLUDE USING gist`) : empêche deux subnets de se chevaucher.
-- Index `GiST` sur `INET` : recherches très rapides.
-- Transactions et contraintes FK solides pour l'audit log.
+### Why PostgreSQL over SQLite/MariaDB
+- Native `INET` and `CIDR` types: uniqueness constraints on subnets, "IP contained in this subnet" queries in pure SQL.
+- Exclusion constraints (`EXCLUDE USING gist`): prevents two subnets from overlapping.
+- `GiST` index on `INET`: very fast lookups.
+- Solid transactions and FK constraints for the audit log.
 
-### Pourquoi Vue 3 et pas React
-- Syntaxe SFC (`<template>/<script>/<style>`) lisible pour un admin sys qui n'est pas dev frontend à temps plein.
-- Écosystème plus compact (Pinia pour le state, Vue Router officiel).
-- Cytoscape.js s'intègre aussi bien qu'avec React.
+### Why Vue 3 over React
+- SFC syntax (`<template>/<script>/<style>`) readable for a sysadmin who isn't a full-time frontend dev.
+- More compact ecosystem (Pinia for state, official Vue Router).
+- Cytoscape.js integrates as well as with React.
 
-### Pourquoi Cytoscape.js pour la topologie
-- Moteur de layout intégré (dagre, breadthfirst, cose).
-- Performance sur 100+ nœuds sans ramer.
-- API events claire (clic, hover, drag).
-- Pas de dépendance React comme `react-flow`.
+### Why Cytoscape.js for topology
+- Built-in layout engines (dagre, breadthfirst, cose).
+- Performance on 100+ nodes without slowing down.
+- Clear events API (click, hover, drag).
+- No React dependency like `react-flow`.
 
-## Flux type — consultation d'un port
+## Typical flow — looking up a port
 
-1. User tape "PC-COMPTA-03" dans la barre de recherche globale (composant `GlobalSearch.vue`).
-2. Frontend envoie `GET /api/search?q=PC-COMPTA-03`.
-3. Backend interroge les tables `ip`, `port`, `switch` via un `UNION ALL`.
-4. Frontend reçoit un résultat : `{ type: "port", switch_id: 3, port_number: 14 }`.
-5. User clique → navigation vers `/switches/3?port=14`.
-6. Page switch charge `GET /api/switches/3` (switch + tous ses ports avec leurs IPs/MACs).
-7. Scroll auto sur le port 14, détails affichés dans un panel latéral.
+1. User types "PC-COMPTA-03" in the global search bar (`GlobalSearch.vue` component).
+2. Frontend sends `GET /api/search?q=PC-COMPTA-03`.
+3. Backend queries the `ip`, `port`, `switch` tables via a `UNION ALL`.
+4. Frontend receives a result: `{ type: "port", switch_id: 3, port_number: 14 }`.
+5. User clicks → navigation to `/switches/3?port=14`.
+6. Switch page loads `GET /api/switches/3` (switch + all its ports with their IPs/MACs).
+7. Auto-scroll to port 14, details shown in a side panel.
 
-## Flux type — saisie d'une nouvelle IP
+## Typical flow — entering a new IP
 
-1. User sur `/subnets/12` voit la liste des IPs avec leur état.
-2. Clique sur une IP libre (ex: `10.0.30.47`).
-3. Modale `IpEditor.vue` s'ouvre, pré-remplie avec l'IP.
-4. User saisit hostname, MAC, choisit un équipement existant ou en crée un.
-5. Submit → `POST /api/ips` avec validation Pydantic.
-6. Backend :
-   - Vérifie que l'IP est bien dans le subnet.
-   - Vérifie l'unicité de la MAC.
-   - Crée l'enregistrement.
-   - Insère une ligne dans `audit_log`.
-7. Frontend invalide le cache Pinia du subnet → la liste se rafraîchit.
+1. User on `/subnets/12` sees the list of IPs with their status.
+2. Clicks on a free IP (e.g. `10.0.30.47`).
+3. The `IpEditor.vue` modal opens, prefilled with the IP.
+4. User enters the hostname, MAC, picks an existing device or creates one.
+5. Submit → `POST /api/ips` with Pydantic validation.
+6. Backend:
+   - Checks that the IP is indeed within the subnet.
+   - Checks MAC uniqueness.
+   - Creates the record.
+   - Inserts a row into `audit_log`.
+7. Frontend invalidates the Pinia cache for the subnet → the list refreshes.

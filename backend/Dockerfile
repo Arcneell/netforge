@@ -1,9 +1,9 @@
-# Dockerfile backend — image slim Python 3.12 + app FastAPI
+# Backend Dockerfile — slim Python 3.12 image + FastAPI app
 #
-# Build depuis la racine du repo :
+# Build from the repo root:
 #   docker build -t netforge-backend:dev ./backend
 #
-# Ou via docker compose (cf docker-compose.dev.yml / docker-compose.yml à la racine).
+# Or via docker compose (see docker-compose.dev.yml / docker-compose.yml at the repo root).
 
 FROM python:3.12-slim AS base
 
@@ -14,21 +14,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dépendances système minimales (psycopg/asyncpg n'en ont pas besoin côté runtime,
-# mais curl sert pour le HEALTHCHECK et tini pour PID 1 propre).
+# Minimal system deps (psycopg/asyncpg need nothing at runtime,
+# but curl is used by HEALTHCHECK and tini gives us a clean PID 1).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl tini \
  && rm -rf /var/lib/apt/lists/*
 
-# Install des dépendances Python en premier (couche cachable)
+# Install Python deps first (cacheable layer)
 COPY pyproject.toml README.md ./
-# trick pour que pip install -e puisse résoudre les metadata avant que le code soit copié
+# Trick so `pip install -e` can read the package metadata before the code is copied in.
 RUN mkdir -p app && touch app/__init__.py && pip install -e . && rm -rf app
 
-# Copie du code
+# Copy the source tree
 COPY . .
 
-# Utilisateur non-root
+# Non-root user
 RUN useradd --system --uid 1000 --create-home --shell /bin/bash netforge \
  && chown -R netforge:netforge /app
 USER netforge

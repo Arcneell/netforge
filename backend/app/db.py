@@ -1,4 +1,4 @@
-"""Engine SQLAlchemy async + session factory + dépendance FastAPI."""
+"""Async SQLAlchemy engine, session factory, FastAPI dependency."""
 
 from collections.abc import AsyncIterator
 
@@ -29,7 +29,7 @@ SessionLocal = async_sessionmaker(
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    """Dépendance FastAPI : fournit une session async par requête."""
+    """FastAPI dependency that yields one async session per request."""
     async with SessionLocal() as session:
         try:
             yield session

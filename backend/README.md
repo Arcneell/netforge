@@ -1,43 +1,43 @@
 # Netforge Backend
 
-API FastAPI pour Netforge.
+FastAPI application that powers Netforge.
 
-## Développement local (sans Docker)
+## Local development (without Docker)
 
 ```bash
-# depuis backend/
+# from backend/
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-# démarrer une DB locale (docker compose recommandé, cf racine repo)
+# Start a local database (docker compose is the easy path; see repo root)
 docker compose -f ../docker-compose.dev.yml up -d postgres
 
-# exporter DATABASE_URL pour pointer sur localhost
+# Point DATABASE_URL at localhost instead of the "postgres" container name
 export DATABASE_URL="postgresql+asyncpg://netforge:dev@localhost:5432/netforge"
 export SESSION_SIGNING_KEY="dev-key-not-for-prod"
 export BOOTSTRAP_ADMIN_EMAIL="admin@example.com"
 
-# migrations
+# Apply migrations
 alembic upgrade head
 
-# serveur
+# Run the server
 uvicorn app.main:app --reload --port 8000
 ```
 
-Puis `curl http://localhost:8000/api/health`.
+Then `curl http://localhost:8000/api/health`.
 
-## Structure
+## Layout
 
 ```
 app/
-├── main.py        # création FastAPI, middlewares, routers
-├── config.py      # settings Pydantic (BaseSettings)
-├── db.py          # engine async SQLAlchemy, session factory
-├── models/        # SQLAlchemy ORM
-├── schemas/       # Pydantic request/response (phase 3+)
-├── routers/       # endpoints par domaine
-├── services/      # logique métier (phase 3+)
+├── main.py        # FastAPI app factory, middleware wiring, router registration
+├── config.py      # Pydantic BaseSettings loaded from env
+├── db.py          # async SQLAlchemy engine, session factory, FastAPI dependency
+├── models/        # SQLAlchemy ORM models
+├── schemas/       # Pydantic request/response schemas (phase 3+)
+├── routers/       # HTTP endpoints grouped by domain
+├── services/      # business logic (phase 3+)
 └── utils/
 
 alembic/
@@ -51,12 +51,12 @@ alembic/
 ## Migrations
 
 ```bash
-# appliquer toutes
+# apply everything
 alembic upgrade head
 
-# créer une nouvelle migration (autogenerate sur les models)
-alembic revision --autogenerate -m "description courte"
+# create a new migration (autogenerate against the models)
+alembic revision --autogenerate -m "short description"
 
-# revenir à une révision
+# step back one revision
 alembic downgrade -1
 ```

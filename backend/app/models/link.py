@@ -1,4 +1,4 @@
-"""Liens physiques entre deux ports de switches."""
+"""Physical links between two switch ports."""
 
 from __future__ import annotations
 

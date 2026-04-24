@@ -1,15 +1,15 @@
-"""seed data — VLANs standards + site par défaut.
+"""seed data — standard VLANs + default site.
 
 Revision ID: 0002_seed
 Revises: 0001_initial
 Create Date: 2026-04-24
 
-Insère des données de départ pour qu'une install fraîche soit immédiatement
-utilisable. Tout est idempotent (ON CONFLICT DO NOTHING) — jouer la migration
-deux fois ne duplique pas.
+Insert starter data so that a fresh install is immediately usable. Everything
+is idempotent (ON CONFLICT DO NOTHING), so re-running the migration does not
+duplicate anything.
 
-Les valeurs sont des exemples génériques : renommer / étendre / supprimer
-selon votre parc réel.
+The values are generic examples: rename / extend / remove them to match your
+actual network.
 """
 
 from collections.abc import Sequence
@@ -23,16 +23,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Site par défaut
+    # Default site
     op.execute(
         """
         INSERT INTO sites (code, name, address)
-        VALUES ('SIEGE', 'Site principal', NULL)
+        VALUES ('HQ', 'Headquarters', NULL)
         ON CONFLICT (code) DO NOTHING;
         """
     )
 
-    # VLANs standards d'exemple
+    # Example standard VLANs
     # 1   = management / default
     # 10  = servers
     # 20  = users
@@ -44,10 +44,10 @@ def upgrade() -> None:
         INSERT INTO vlans (vlan_id, name, description, color)
         VALUES
           (1,  'VLAN-MGMT',  'Management / default', '#6b7280'),
-          (10, 'VLAN-SRV',   'Serveurs',             '#059669'),
-          (20, 'VLAN-USERS', 'Postes utilisateurs',  '#2563eb'),
-          (30, 'VLAN-VOIP',  'Téléphonie IP',        '#d97706'),
-          (40, 'VLAN-WIFI',  'Wifi invités',         '#7c3aed'),
+          (10, 'VLAN-SRV',   'Servers',              '#059669'),
+          (20, 'VLAN-USERS', 'User workstations',    '#2563eb'),
+          (30, 'VLAN-VOIP',  'IP telephony',         '#d97706'),
+          (40, 'VLAN-WIFI',  'Guest wifi',           '#7c3aed'),
           (50, 'VLAN-DMZ',   'DMZ',                  '#dc2626')
         ON CONFLICT (vlan_id) DO NOTHING;
         """
@@ -56,4 +56,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DELETE FROM vlans WHERE vlan_id IN (1, 10, 20, 30, 40, 50);")
-    op.execute("DELETE FROM sites WHERE code = 'SIEGE';")
+    op.execute("DELETE FROM sites WHERE code = 'HQ';")

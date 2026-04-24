@@ -1,4 +1,4 @@
-"""Point d'entrée FastAPI — configuration middlewares + routes."""
+"""FastAPI entry point — wires middleware and routers."""
 
 import logging
 import time

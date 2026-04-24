@@ -1,4 +1,4 @@
-"""Environnement Alembic — lit DATABASE_URL depuis l'env, utilise les metadata SQLAlchemy."""
+"""Alembic environment — pulls DATABASE_URL from env, uses SQLAlchemy metadata."""
 
 from logging.config import fileConfig
 
@@ -6,7 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.config import get_settings
-from app.models import Base  # import side-effect : toutes les tables sont enregistrées
+from app.models import Base  # side-effect import: every table is registered on Base.metadata
 
 config = context.config
 
@@ -20,7 +20,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Mode hors ligne — génère du SQL sans se connecter."""
+    """Offline mode — emit SQL without connecting to the database."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -36,7 +36,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Mode en ligne — applique sur la DB directement."""
+    """Online mode — apply migrations against the live database."""
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

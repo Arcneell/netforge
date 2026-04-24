@@ -1,4 +1,4 @@
-"""Subnets (sous-réseaux IPv4)."""
+"""Subnets (IPv4 CIDR blocks)."""
 
 from __future__ import annotations
 

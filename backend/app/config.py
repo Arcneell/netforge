@@ -1,4 +1,4 @@
-"""Chargement des settings depuis l'environnement (cf .env.example)."""
+"""Environment-backed settings (see .env.example)."""
 
 from functools import lru_cache
 
@@ -14,10 +14,10 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    # URL publique (utilisée pour les redirect URIs OIDC)
+    # Public URL (used to build OIDC redirect URIs)
     public_url: str = "http://localhost:8000"
 
-    # Base de données
+    # Database
     database_url: str = Field(
         default="postgresql+asyncpg://netforge:dev@localhost:5432/netforge"
     )
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # Sessions
     session_signing_key: str = "dev-signing-key-change-me"
     session_cookie_name: str = "netforge_session"
-    session_max_age_seconds: int = 60 * 60 * 8  # 8h glissant
+    session_max_age_seconds: int = 60 * 60 * 8  # 8h sliding
 
     # Bootstrap
     bootstrap_admin_email: str = ""
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # Observability
     log_level: str = "info"
 
-    # CORS (liste séparée par virgules)
+    # CORS (comma-separated origin list)
     cors_origins: str = ""
 
     @property
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url_sync(self) -> str:
-        """Version synchrone de DATABASE_URL (pour Alembic)."""
+        """Sync version of DATABASE_URL (used by Alembic)."""
         return self.database_url.replace("+asyncpg", "")
 
 

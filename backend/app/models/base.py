@@ -1,4 +1,4 @@
-"""Base SQLAlchemy declarative + mixins communs."""
+"""Declarative SQLAlchemy base + shared mixins."""
 
 from datetime import datetime
 
@@ -7,11 +7,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    """Base déclarative pour tous les modèles."""
+    """Declarative base for every model."""
 
 
 class TimestampMixin:
-    """Ajoute created_at/updated_at gérés par la DB."""
+    """Adds DB-managed created_at / updated_at columns."""
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

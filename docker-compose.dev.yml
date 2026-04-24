@@ -1,17 +1,17 @@
-# docker-compose.dev.yml — stack minimale pour le développement.
+# docker-compose.dev.yml — minimal stack for local development.
 #
-# Démarrage :
+# Start:
 #   docker compose -f docker-compose.dev.yml up -d
 #
-# Puis :
+# Then:
 #   docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
 #   curl http://localhost:8000/api/health
 #
-# Différences vs prod (docker-compose.yml, à venir en Phase 11) :
-#   - pas de frontend (on servira via vite en dev)
-#   - backend avec --reload + volume monté
-#   - postgres exposé sur localhost:5432 pour pouvoir s'y connecter avec psql depuis l'hôte
-#   - pas de TLS, pas de nginx
+# Differences vs production (docker-compose.yml, coming in Phase 11):
+#   - no frontend (use vite dev server locally)
+#   - backend started with --reload and the source mounted as a volume
+#   - postgres exposed on localhost:5432 so you can connect with psql from the host
+#   - no TLS, no nginx
 
 services:
   postgres:
