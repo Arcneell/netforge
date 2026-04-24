@@ -2,7 +2,7 @@
 
 ## Pourquoi Netforge
 
-Aujourd'hui, l'infra réseau Mooland est documentée dans des fichiers Excel, des post-it, des notes dispersées, et la mémoire des admins. Quand un problème arrive ("le téléphone du bureau compta ne marche plus"), il faut fouiller pour retrouver :
+Dans beaucoup d'organisations, l'infrastructure réseau est documentée dans des fichiers Excel, des post-it, des notes dispersées, et la mémoire des admins. Quand un problème arrive ("le téléphone du bureau compta ne marche plus"), il faut fouiller pour retrouver :
 
 - quel switch sert ce bureau,
 - sur quel port est branché le câble,
@@ -22,9 +22,9 @@ Netforge centralise tout ça dans une interface web unique, avec une vue graphiq
 
 ## Public cible
 
-- **Utilisateur principal** : Nathan (admin sys Mooland) — saisie, consultation quotidienne.
-- **Lecture** : tuteur, futurs alternants, prestataires ponctuels — consultation seule.
-- **Personne d'extérieur** : aucune. L'outil est interne, accessible uniquement via auth M365.
+- **Administrateur réseau / sysadmin** : saisie, consultation quotidienne, diagnostic.
+- **Équipe technique élargie** (support, prestataires ponctuels) : consultation en lecture.
+- **Personne d'extérieur** : aucune. L'outil est conçu pour un déploiement interne, protégé par authentification SSO.
 
 ## Scope v1 (MVP)
 
@@ -46,7 +46,7 @@ Netforge centralise tout ça dans une interface web unique, avec une vue graphiq
 - Auto-discovery SNMP des switches (scope v2).
 - Intégration Zabbix (scope v2).
 - Provisioning (push de config sur les switches) — jamais, trop risqué.
-- IPv6 — le parc Mooland est full IPv4.
+- IPv6 — v1 cible des parcs full IPv4, le support IPv6 viendra plus tard.
 - Multi-tenant — un seul parc.
 - API publique / externe — l'API existe mais n'est pas exposée.
 
@@ -60,7 +60,7 @@ Netforge centralise tout ça dans une interface web unique, avec une vue graphiq
 ## Hors-scope définitif
 
 - **Push de config** sur les switches : risque trop élevé, on reste en lecture.
-- **DHCP server intégré** : Mooland a déjà Windows DHCP, on ne re-implémente pas.
+- **DHCP server intégré** : on suppose un DHCP externe déjà en place (Windows, ISC, Kea, etc.), on ne le re-implémente pas.
 - **DNS management** : idem, AD DNS suffit.
 - **Facturation / TCO** : ce n'est pas un CMDB commercial.
 

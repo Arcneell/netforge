@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Projet en apprentissage (alternance), donc rythme raisonnable. Estimations en demi-journées (DJ). À ajuster selon la disponibilité réelle.
+Estimations en demi-journées (DJ) pour un développeur à temps partiel. À ajuster selon la disponibilité réelle.
 
 ## Phase 0 — Préparation (1-2 DJ)
 
@@ -9,7 +9,7 @@ Projet en apprentissage (alternance), donc rythme raisonnable. Estimations en de
 - [ ] Créer l'app Entra ID, noter les secrets dans un gestionnaire de mdp.
 - [ ] Provisionner la VM Linux Docker (Debian 12, 2 vCPU, 4 Go RAM).
 - [ ] Installer Docker + Docker Compose sur la VM.
-- [ ] Créer l'entrée DNS interne `netforge.mooland.local`.
+- [ ] Créer l'entrée DNS interne (p. ex. `netforge.example.local`).
 
 ## Phase 1 — Backend socle (4-6 DJ)
 
@@ -117,12 +117,12 @@ Par page : vue liste + vue détail + modales d'édition.
 - [ ] Certificat TLS posé.
 - [ ] Backup cron actif et testé.
 - [ ] Template Zabbix importé.
-- [ ] Premier import CSV réel des subnets + VLANs + switches Mooland.
-- [ ] Doc courte (½ page) pour le tuteur et futurs users.
+- [ ] Premier import CSV réel des subnets + VLANs + switches de votre parc.
+- [ ] Doc courte (½ page) à destination des utilisateurs.
 
 ## Total estimé v1
 
-**~38 à 54 demi-journées**, soit **4 à 7 semaines** à temps partiel. À ajuster selon la disponibilité réelle et les urgences quotidiennes d'admin sys.
+**~38 à 54 demi-journées**, soit **4 à 7 semaines** à temps partiel. À ajuster selon la disponibilité réelle.
 
 ## Phase 12+ — v2
 
@@ -130,7 +130,7 @@ Dans l'ordre de valeur perçue, pas de dates :
 
 1. **SNMP polling Aruba** : cron qui lit les tables `BRIDGE-MIB`, `IF-MIB`, `LLDP-MIB` et pré-remplit `port.connected_device`, découvre les liens LLDP automatiquement. Nécessite un worker Python dédié (container supplémentaire `netforge-poller`).
 2. **Sync Zabbix** : lecture API Zabbix (hosts, interfaces) → enrichissement auto des `devices`.
-3. **Alertes** : subnet > 90% plein, port down, lien qui tombe → notification Telegram (réutiliser le bot des autres Workers Mooland).
+3. **Alertes** : subnet > 90% plein, port down, lien qui tombe → webhook configurable (Slack, Telegram, Mattermost, email, etc.).
 4. **Inventaire étendu** : fiches équipement complètes (contrat, garantie, série, achat).
 5. **API token** pour intégrations externes (scripts PowerShell, automations).
 
@@ -138,8 +138,8 @@ Dans l'ordre de valeur perçue, pas de dates :
 
 | Risque | Mitigation |
 |--------|-----------|
-| Temps alternance limité, projet traîne | Découpage en phases livrables indépendamment. Phase 1-5 déjà utile même sans frontend (curl/postman). |
-| Entra ID complexe à configurer | Doc détaillée ici. En dernier recours, fallback sur auth mdp admin (comme secret-sharer) pour dev local. |
+| Temps dev partiel, projet traîne | Découpage en phases livrables indépendamment. Phase 1-5 déjà utile même sans frontend (curl/postman). |
+| Entra ID complexe à configurer | Doc détaillée ici. En dernier recours, fallback sur auth locale admin pour dev / évaluation. |
 | Contraintes PostgreSQL avancées (GiST, triggers) peu familières | Migration dédiée, tests pytest sur chaque contrainte. |
 | Saisie manuelle initiale lourde | L'import CSV est conçu pour minimiser ce coût. Exports Excel existants → CSV → import massif. |
 | Scope creep (envie d'ajouter SNMP en v1) | Documenter proprement en v2, tenir bon. |

@@ -63,7 +63,7 @@ volumes:
 
 ```dotenv
 # URL publique utilisée pour construire les redirect URIs
-PUBLIC_URL=https://netforge.mooland.local
+PUBLIC_URL=https://netforge.example.local
 
 # PostgreSQL
 POSTGRES_PASSWORD=change-me-generate-a-32-char-random
@@ -77,7 +77,7 @@ ENTRA_CLIENT_SECRET=change-me
 SESSION_SIGNING_KEY=change-me
 
 # Premier email qui se connecte devient admin automatiquement
-BOOTSTRAP_ADMIN_EMAIL=informatique@mooland.fr
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 ```
 
 ## Nginx reverse proxy (dans le container frontend)
@@ -87,13 +87,13 @@ BOOTSTRAP_ADMIN_EMAIL=informatique@mooland.fr
 ```nginx
 server {
     listen 80;
-    server_name netforge.mooland.local;
+    server_name netforge.example.local;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name netforge.mooland.local;
+    server_name netforge.example.local;
 
     ssl_certificate     /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
@@ -136,7 +136,7 @@ server {
 
 ## Certificats TLS
 
-Option A — certif interne (recommandé) : générer un certificat signé par l'AD CS Mooland (rôle Active Directory Certificate Services) pour `netforge.mooland.local`. Tous les postes du domaine font confiance automatiquement.
+Option A — certif interne (recommandé) : générer un certificat signé par votre AC interne (par exemple AD CS / Active Directory Certificate Services) pour le FQDN retenu. Tous les postes du domaine font confiance automatiquement.
 
 Option B — Let's Encrypt via DNS-01 challenge si le domaine est public.
 
@@ -144,9 +144,9 @@ Les fichiers `fullchain.pem` et `privkey.pem` sont montés read-only dans le con
 
 ## DNS
 
-Entrée A dans la zone AD DNS Mooland :
+Entrée A dans la zone DNS interne :
 ```
-netforge.mooland.local  A  10.0.10.42   ; IP du serveur Docker
+netforge.example.local  A  10.0.10.42   ; IP du serveur Docker
 ```
 
 ## Backup

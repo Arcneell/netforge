@@ -144,7 +144,7 @@ Pas de cache agressif type TanStack Query pour v1 — du Pinia simple avec inval
 
 ## Style
 
-- Palette Tailwind par défaut + 2 couleurs custom : `primary` (bleu Mooland si charte, sinon slate), `accent`.
+- Palette Tailwind par défaut + 2 couleurs custom : `primary` (cyan/teal par défaut, override possible via `tailwind.config.js`) et `accent`.
 - Dark mode natif Tailwind (`class="dark"` sur `<html>`), toggle dans la top bar.
 - Typographie : Inter (Google Fonts ou self-hosté) + monospace pour IPs/MACs.
 - Responsive : desktop-first (outil admin), mobile basique pour consulter mais pas éditer.

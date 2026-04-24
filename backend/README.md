@@ -16,7 +16,7 @@ docker compose -f ../docker-compose.dev.yml up -d postgres
 # exporter DATABASE_URL pour pointer sur localhost
 export DATABASE_URL="postgresql+asyncpg://netforge:dev@localhost:5432/netforge"
 export SESSION_SIGNING_KEY="dev-key-not-for-prod"
-export BOOTSTRAP_ADMIN_EMAIL="informatique@mooland.fr"
+export BOOTSTRAP_ADMIN_EMAIL="admin@example.com"
 
 # migrations
 alembic upgrade head

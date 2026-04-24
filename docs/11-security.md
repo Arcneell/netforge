@@ -1,6 +1,6 @@
 # 11 — Sécurité
 
-Netforge contient la cartographie réseau complète de Mooland — un attaquant qui y accède sait exactement où frapper. La sécurité n'est pas optionnelle.
+Netforge contient la cartographie réseau complète de l'organisation qui le déploie — un attaquant qui y accède sait exactement où frapper. La sécurité n'est pas optionnelle.
 
 ## Modèle de menace
 
@@ -112,9 +112,9 @@ Quand un admin veut promouvoir un user, l'action est elle-même auditée (`audit
 
 ## Accès réseau
 
-- Serveur Netforge accessible **uniquement** depuis le LAN Mooland.
+- Serveur Netforge accessible **uniquement** depuis le LAN interne.
 - Pas d'exposition Internet directe.
-- Si besoin d'accès distant : VPN Fortinet existant, pas d'exception.
+- Si besoin d'accès distant : passer par le VPN de l'organisation, pas d'exception.
 - Règles firewall :
   - Entrant : 443 depuis VLAN admin seulement, 80 redirige 443.
   - Sortant : 443 vers `login.microsoftonline.com`, 443 vers registries Docker.

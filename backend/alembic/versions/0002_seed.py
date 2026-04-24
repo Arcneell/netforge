@@ -1,4 +1,4 @@
-"""seed data — VLANs standards Mooland + site par défaut.
+"""seed data — VLANs standards + site par défaut.
 
 Revision ID: 0002_seed
 Revises: 0001_initial
@@ -7,6 +7,9 @@ Create Date: 2026-04-24
 Insère des données de départ pour qu'une install fraîche soit immédiatement
 utilisable. Tout est idempotent (ON CONFLICT DO NOTHING) — jouer la migration
 deux fois ne duplique pas.
+
+Les valeurs sont des exemples génériques : renommer / étendre / supprimer
+selon votre parc réel.
 """
 
 from collections.abc import Sequence
@@ -24,12 +27,12 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO sites (code, name, address)
-        VALUES ('SIEGE', 'Siège Mooland', NULL)
+        VALUES ('SIEGE', 'Site principal', NULL)
         ON CONFLICT (code) DO NOTHING;
         """
     )
 
-    # VLANs standards Mooland
+    # VLANs standards d'exemple
     # 1   = management / default
     # 10  = servers
     # 20  = users
