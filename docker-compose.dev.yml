@@ -40,7 +40,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netforge}:${POSTGRES_PASSWORD:-dev}@postgres:5432/${POSTGRES_DB:-netforge}
       SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:-dev-signing-key-not-for-prod}
-      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-informatique@mooland.fr}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
       ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
       ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
       ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}

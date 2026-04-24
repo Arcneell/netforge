@@ -5,7 +5,7 @@
 Netforge s'authentifie via **Microsoft Entra ID (ex-Azure AD)** en OIDC, flow **Authorization Code + PKCE**. Le backend FastAPI gère la session via un cookie HTTP-only signé (pas de JWT stocké côté client).
 
 Motivations :
-- Tenant M365 Mooland déjà opérationnel → pas de gestion de mots de passe à part.
+- Tenant M365 de l'organisation déjà opérationnel → pas de gestion de mots de passe à part.
 - MFA hérité de la politique M365.
 - Gestion centralisée des départs (désactivation du compte M365 → accès Netforge coupé).
 - Provisioning automatique (JIT) : un utilisateur n'a pas besoin d'être créé à la main dans Netforge.
@@ -14,8 +14,8 @@ Motivations :
 
 1. Dans le portail Entra admin → **App registrations** → **New registration**.
 2. Nom : `Netforge`.
-3. Supported account types : *Accounts in this organizational directory only* (single tenant Mooland).
-4. Redirect URI : `Web` → `https://netforge.mooland.local/api/auth/callback`.
+3. Supported account types : *Accounts in this organizational directory only* (single tenant).
+4. Redirect URI : `Web` → `https://netforge.example.local/api/auth/callback` (remplacer par votre domaine).
 5. Une fois créée, noter :
    - **Application (client) ID** → `ENTRA_CLIENT_ID`
    - **Directory (tenant) ID** → `ENTRA_TENANT_ID`
@@ -154,7 +154,7 @@ async def create_subnet(...): ...
 
 Le tout premier utilisateur à se connecter est automatiquement `admin` (bootstrap). Les suivants arrivent `viewer` et un admin doit les promouvoir manuellement dans `/settings/users`.
 
-Alternative : variable `NETFORGE_BOOTSTRAP_ADMIN_EMAIL=informatique@mooland.fr` qui force le rôle admin pour cet email à la première connexion.
+Alternative : variable `NETFORGE_BOOTSTRAP_ADMIN_EMAIL=admin@example.com` qui force le rôle admin pour cet email à la première connexion.
 
 ## CSRF
 
@@ -165,7 +165,7 @@ Les cookies en `SameSite=Lax` protègent contre la plupart des attaques CSRF sur
 `POST /api/auth/logout` :
 1. Supprime la session en DB.
 2. Retourne `Set-Cookie: netforge_session=; Max-Age=0`.
-3. Optionnel : redirection vers `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/logout?post_logout_redirect_uri=https://netforge.mooland.local/` pour déconnecter aussi d'Entra.
+3. Optionnel : redirection vers `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/logout?post_logout_redirect_uri=<PUBLIC_URL>/` pour déconnecter aussi d'Entra.
 
 ## Rate limiting
 

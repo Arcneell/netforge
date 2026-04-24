@@ -87,7 +87,7 @@ async def get_topology(site_id: int | None = None, db: AsyncSession = Depends(ge
     return {"nodes": nodes, "edges": edges}
 ```
 
-Complexité : O(switches + links). Pour le parc Mooland (< 20 switches estimés), calcul trivial (< 50 ms).
+Complexité : O(switches + links). Pour un parc typique (< 50 switches), calcul trivial (< 50 ms).
 
 ## Frontend — composant
 
