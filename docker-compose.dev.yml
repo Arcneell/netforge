@@ -1,0 +1,57 @@
+# docker-compose.dev.yml — stack minimale pour le développement.
+#
+# Démarrage :
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# Puis :
+#   docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
+#   curl http://localhost:8000/api/health
+#
+# Différences vs prod (docker-compose.yml, à venir en Phase 11) :
+#   - pas de frontend (on servira via vite en dev)
+#   - backend avec --reload + volume monté
+#   - postgres exposé sur localhost:5432 pour pouvoir s'y connecter avec psql depuis l'hôte
+#   - pas de TLS, pas de nginx
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-netforge}
+      POSTGRES_USER: ${POSTGRES_USER:-netforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-netforge}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netforge}:${POSTGRES_PASSWORD:-dev}@postgres:5432/${POSTGRES_DB:-netforge}
+      SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:-dev-signing-key-not-for-prod}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-informatique@mooland.fr}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+volumes:
+  pgdata_dev:
