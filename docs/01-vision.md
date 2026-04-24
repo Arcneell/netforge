@@ -1,72 +1,72 @@
 # 01 — Vision
 
-## Pourquoi Netforge
+## Why Netforge
 
-Dans beaucoup d'organisations, l'infrastructure réseau est documentée dans des fichiers Excel, des post-it, des notes dispersées, et la mémoire des admins. Quand un problème arrive ("le téléphone du bureau compta ne marche plus"), il faut fouiller pour retrouver :
+In many organizations, the network infrastructure is documented in Excel files, sticky notes, scattered notes, and the memory of the admins. When a problem hits ("the phone in the accounting office stopped working"), someone has to dig around to find:
 
-- quel switch sert ce bureau,
-- sur quel port est branché le câble,
-- quel VLAN est configuré,
-- quelle IP est attribuée,
-- qui d'autre est dans ce subnet.
+- which switch serves that office,
+- which port the cable is plugged into,
+- which VLAN is configured,
+- which IP is assigned,
+- who else is in that subnet.
 
-Netforge centralise tout ça dans une interface web unique, avec une vue graphique pour les diagnostics visuels.
+Netforge centralizes all of this in a single web interface, with a graph view for visual diagnostics.
 
-## Objectifs
+## Goals
 
-1. **Source unique de vérité** pour l'adressage IP et la topologie switch.
-2. **Diagnostic rapide** : retrouver en < 10 secondes l'équipement branché sur un port donné.
-3. **Planification** : voir les IP libres dans un subnet avant d'en attribuer une nouvelle.
-4. **Cartographie** : visualiser les liens inter-switches pour comprendre les chemins réseau.
-5. **Traçabilité** : qui a modifié quoi, quand, pourquoi (audit log).
+1. **Single source of truth** for IP addressing and switch topology.
+2. **Fast diagnostics**: find the device plugged into a given port in under 10 seconds.
+3. **Planning**: see free IPs in a subnet before assigning a new one.
+4. **Mapping**: visualize inter-switch links to understand network paths.
+5. **Traceability**: who changed what, when, why (audit log).
 
-## Public cible
+## Target audience
 
-- **Administrateur réseau / sysadmin** : saisie, consultation quotidienne, diagnostic.
-- **Équipe technique élargie** (support, prestataires ponctuels) : consultation en lecture.
-- **Personne d'extérieur** : aucune. L'outil est conçu pour un déploiement interne, protégé par authentification SSO.
+- **Network administrator / sysadmin**: data entry, day-to-day consultation, diagnostics.
+- **Wider technical team** (support, occasional contractors): read-only access.
+- **Outsiders**: none. The tool is designed for an internal deployment, protected by SSO authentication.
 
-## Scope v1 (MVP)
+## v1 scope (MVP)
 
-### Inclus
-- Gestion des **subnets** (IPv4, CIDR, passerelle, VLAN associé, description).
-- Gestion des **VLANs** (ID, nom, description, subnets associés).
-- Gestion des **IPs** dans un subnet (réservées, attribuées, libres) avec hostname, MAC, équipement lié.
-- Gestion des **switches** (modèle, localisation, IP management, nombre de ports).
-- Gestion des **ports** par switch (numéro, label, VLAN access/trunk, état, équipement connecté).
-- Gestion des **liens** entre switches (uplink/downlink) pour calculer la topologie.
-- **Vue topologie** graphique avec Cytoscape.js (drag, zoom, clic sur un nœud → détails).
-- **Import CSV** par type d'entité (amorçage rapide depuis les fichiers Excel existants).
-- **Export CSV** de chaque table (backup / partage hors-outil).
-- **Auth Entra ID** multi-utilisateurs, 2 rôles : `viewer` (lecture) et `admin` (écriture).
-- **Audit log** : chaque modification est tracée (qui, quand, avant → après).
-- **Recherche globale** : barre de recherche qui cherche sur IP, hostname, MAC, nom de switch, label de port.
+### Included
+- Management of **subnets** (IPv4, CIDR, gateway, associated VLAN, description).
+- Management of **VLANs** (ID, name, description, associated subnets).
+- Management of **IPs** within a subnet (reserved, assigned, free) with hostname, MAC, linked device.
+- Management of **switches** (model, location, management IP, port count).
+- Management of **ports** per switch (number, label, access/trunk VLAN, state, connected device).
+- Management of **links** between switches (uplink/downlink) to compute topology.
+- **Topology view** rendered with Cytoscape.js (drag, zoom, click on a node → details).
+- **CSV import** per entity type (quick bootstrap from existing Excel files).
+- **CSV export** for every table (backup / sharing outside the tool).
+- **Entra ID auth** multi-user, 2 roles: `viewer` (read) and `admin` (write).
+- **Audit log**: every change is tracked (who, when, before → after).
+- **Global search**: a search bar that looks across IP, hostname, MAC, switch name, port label.
 
-### Exclus v1
-- Auto-discovery SNMP des switches (scope v2).
-- Intégration Zabbix (scope v2).
-- Provisioning (push de config sur les switches) — jamais, trop risqué.
-- IPv6 — v1 cible des parcs full IPv4, le support IPv6 viendra plus tard.
-- Multi-tenant — un seul parc.
-- API publique / externe — l'API existe mais n'est pas exposée.
+### Excluded from v1
+- SNMP auto-discovery of switches (v2 scope).
+- Zabbix integration (v2 scope).
+- Provisioning (pushing config to switches) — never, too risky.
+- IPv6 — v1 targets fully IPv4 networks; IPv6 support will come later.
+- Multi-tenant — a single network.
+- Public / external API — the API exists but is not exposed.
 
-## Scope v2 (après validation MVP)
+## v2 scope (after MVP validation)
 
-- **SNMP polling** : scan périodique des switches Aruba pour remplir automatiquement les tables port/MAC/VLAN.
-- **Sync Zabbix** : lecture de l'inventaire Zabbix pour enrichir les fiches équipement.
-- **Inventaire équipements étendu** : serveurs, imprimantes, APs, téléphones Fanvil avec fiche complète (modèle, série, contrat support).
-- **Alertes** : notification Telegram si un port passe down, si un subnet arrive à saturation (> 90% utilisé).
+- **SNMP polling**: periodic scan of Aruba switches to automatically populate port/MAC/VLAN tables.
+- **Zabbix sync**: read the Zabbix inventory to enrich device records.
+- **Extended device inventory**: servers, printers, APs, Fanvil phones with a full record (model, serial, support contract).
+- **Alerts**: Telegram notification if a port goes down, if a subnet approaches saturation (> 90% used).
 
-## Hors-scope définitif
+## Permanently out of scope
 
-- **Push de config** sur les switches : risque trop élevé, on reste en lecture.
-- **DHCP server intégré** : on suppose un DHCP externe déjà en place (Windows, ISC, Kea, etc.), on ne le re-implémente pas.
-- **DNS management** : idem, AD DNS suffit.
-- **Facturation / TCO** : ce n'est pas un CMDB commercial.
+- **Pushing config** to switches: risk is too high — we stay read-only.
+- **Built-in DHCP server**: we assume an external DHCP is already in place (Windows, ISC, Kea, etc.) and we do not reimplement it.
+- **DNS management**: same — AD DNS is enough.
+- **Billing / TCO**: this is not a commercial CMDB.
 
-## Métriques de succès
+## Success metrics
 
-- Temps de diagnostic d'un problème réseau divisé par 3 vs aujourd'hui (benchmark subjectif).
-- 100% des subnets et VLANs de prod saisis dans les 2 semaines post-mise-en-prod.
-- Tous les switches de la salle serveur + switches d'étage documentés port par port.
-- Zéro incident lié à un manque de visibilité réseau sur 6 mois post-v1.
+- Network incident diagnostic time divided by 3 vs today (subjective benchmark).
+- 100% of production subnets and VLANs entered within 2 weeks after go-live.
+- All server room switches + floor switches documented port by port.
+- Zero incidents caused by lack of network visibility over 6 months post-v1.

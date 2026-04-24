@@ -1,4 +1,4 @@
-"""Modèles SQLAlchemy — tous importés ici pour qu'Alembic les voie."""
+"""SQLAlchemy models — imported here so Alembic picks them all up."""
 
 from app.models.base import Base
 from app.models.core import Room, Site

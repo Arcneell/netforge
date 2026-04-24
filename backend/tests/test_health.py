@@ -1,8 +1,8 @@
-"""Smoke test du healthcheck.
+"""Smoke tests for the healthcheck.
 
-Ne nécessite pas de DB réelle : on override la dépendance get_session avec
-une session mock qui simule la query. Pour un test d'intégration contre une
-vraie DB, cf tests/integration/ (phase 3+).
+No real DB required: the `get_session` dependency is overridden with a mock
+session that simulates the query. For a real integration test against a live
+database see tests/integration/ (phase 3+).
 """
 
 from unittest.mock import AsyncMock

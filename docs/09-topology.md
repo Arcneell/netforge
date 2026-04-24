@@ -1,21 +1,21 @@
-# 09 — Topologie graphique
+# 09 — Graph topology
 
-## Objectif
+## Goal
 
-Permettre de **voir** le parc en un coup d'œil : switches, liens, chemins, sites. Outil de diagnostic visuel (où passe le trafic, quels switches sont en cascade, quel lien sature) et de présentation (schéma pour audit, tuteur, prestataire).
+Let you **see** the network at a glance: switches, links, paths, sites. A visual diagnostic tool (where does traffic go, which switches are cascaded, which link is saturated) and a presentation tool (diagram for an audit, a mentor, a contractor).
 
-## Moteur : Cytoscape.js
+## Engine: Cytoscape.js
 
-Choix justifié dans [02-architecture.md](02-architecture.md).
+Choice justified in [02-architecture.md](02-architecture.md).
 
-Lib additionnelle :
-- `cytoscape-dagre` : layout hiérarchique (idéal pour core → distribution → access).
-- `cytoscape-fcose` : layout force-directed propre pour graphes denses.
-- `cytoscape-popper` + `tippy.js` : tooltips riches au hover.
+Additional libraries:
+- `cytoscape-dagre`: hierarchical layout (ideal for core → distribution → access).
+- `cytoscape-fcose`: clean force-directed layout for dense graphs.
+- `cytoscape-popper` + `tippy.js`: rich tooltips on hover.
 
-## Structure du graphe
+## Graph structure
 
-### Nœuds (switches)
+### Nodes (switches)
 
 ```json
 {
@@ -35,9 +35,9 @@ Lib additionnelle :
 }
 ```
 
-Classes CSS utilisées pour le style : couleur de fond selon vendor, icône centrale, bord plus épais si switch "core".
+CSS classes used for styling: background color per vendor, central icon, thicker border if the switch is "core".
 
-### Edges (liens)
+### Edges (links)
 
 ```json
 {
@@ -54,14 +54,14 @@ Classes CSS utilisées pour le style : couleur de fond selon vendor, icône cent
 }
 ```
 
-Style edge :
-- Épaisseur proportionnelle à `speed_mbps` (log scale).
-- Couleur selon `link_type` (fibre en bleu, cuivre en orange, DAC en violet, virtuel en pointillé).
-- Label au milieu : `48 ↔ 24` (les deux numéros de port).
+Edge style:
+- Thickness proportional to `speed_mbps` (log scale).
+- Color by `link_type` (fiber in blue, copper in orange, DAC in purple, virtual dashed).
+- Label in the middle: `48 ↔ 24` (the two port numbers).
 
-## Construction du graphe — backend
+## Graph construction — backend
 
-Endpoint `GET /api/topology?site_id={optional}` :
+Endpoint `GET /api/topology?site_id={optional}`:
 
 ```python
 @router.get("/topology")
@@ -87,11 +87,11 @@ async def get_topology(site_id: int | None = None, db: AsyncSession = Depends(ge
     return {"nodes": nodes, "edges": edges}
 ```
 
-Complexité : O(switches + links). Pour un parc typique (< 50 switches), calcul trivial (< 50 ms).
+Complexity: O(switches + links). For a typical network (< 50 switches), the computation is trivial (< 50 ms).
 
-## Frontend — composant
+## Frontend — component
 
-`components/TopologyCanvas.vue` :
+`components/TopologyCanvas.vue`:
 
 ```vue
 <script setup lang="ts">
@@ -128,49 +128,49 @@ watch(() => props.siteId, load)
 <template>
   <div class="flex flex-col h-full">
     <div class="toolbar flex gap-2 p-2 border-b">
-      <button @click="layout = 'dagre'; load()">Hiérarchique</button>
+      <button @click="layout = 'dagre'; load()">Hierarchical</button>
       <button @click="layout = 'fcose'; load()">Force</button>
-      <button @click="cy?.fit()">Recadrer</button>
-      <button @click="exportPng">Exporter PNG</button>
+      <button @click="cy?.fit()">Fit</button>
+      <button @click="exportPng">Export PNG</button>
     </div>
     <div ref="container" class="flex-1"></div>
   </div>
 </template>
 ```
 
-## Vue `TopologyView.vue`
+## `TopologyView.vue` view
 
-Layout split :
-- Gauche 75% : `TopologyCanvas`.
-- Droite 25% : panel latéral. Montre les détails du switch ou du lien sélectionné. Liens cliquables vers `/switches/:id` ou `/links/:id` pour éditer.
-- Top bar : sélecteur de site, toggle "afficher seulement les switches connectés", compteur `{switches} switches · {links} liens`.
+Split layout:
+- Left 75%: `TopologyCanvas`.
+- Right 25%: side panel. Shows details of the selected switch or link. Clickable links to `/switches/:id` or `/links/:id` for editing.
+- Top bar: site selector, "show only connected switches" toggle, `{switches} switches · {links} links` counter.
 
-## Cas spéciaux
+## Special cases
 
-### Switch orphelin
-Un switch sans aucun lien apparaît comme nœud isolé. Visuellement : couleur légèrement grisée avec icône ⚠ pour inciter à documenter les uplinks.
+### Orphan switch
+A switch with no links shows up as an isolated node. Visually: slightly grayed color with a ⚠ icon to encourage documenting uplinks.
 
-### Liens en attente
-Si un lien dans Netforge pointe sur un port dont le switch n'existe plus (FK cascade devrait empêcher ça, mais par sécurité), on affiche le nœud orphelin "Unknown" en rouge.
+### Dangling links
+If a link in Netforge points to a port whose switch no longer exists (cascade FK should prevent this, but just in case), we display the orphan "Unknown" node in red.
 
-### Agrégats LAG / LACP
-v1 : un LAG = N liens séparés entre les mêmes deux switches (Cytoscape les affiche en parallèle). Pas de regroupement visuel particulier. v2 éventuellement : grouper graphiquement les liens LAG.
+### LAG / LACP bundles
+v1: a LAG = N separate links between the same two switches (Cytoscape renders them in parallel). No specific visual grouping. v2 possibly: group LAG links graphically.
 
-## Export PNG / SVG
+## PNG / SVG export
 
-`cy.png({ full: true, bg: 'white', scale: 2 })` → base64 → blob → download. Utile pour joindre à un ticket ou un rapport.
+`cy.png({ full: true, bg: 'white', scale: 2 })` → base64 → blob → download. Useful for attaching to a ticket or a report.
 
-Pour SVG, on utilise `cytoscape-svg` (plugin communautaire) — à évaluer, sinon PNG suffit pour v1.
+For SVG, we use `cytoscape-svg` (community plugin) — to be evaluated, otherwise PNG is enough for v1.
 
 ## Performance
 
-- 20 switches, ~50 liens : instantané.
-- 100 switches, ~500 liens : Cytoscape tient sans souci (< 200 ms de layout).
-- Au-delà, envisager du clustering (grouper par site) ou du lazy rendering.
+- 20 switches, ~50 links: instant.
+- 100 switches, ~500 links: Cytoscape handles it easily (< 200 ms layout).
+- Beyond that, consider clustering (group by site) or lazy rendering.
 
-## Évolutions v2
+## v2 evolutions
 
-- Couleur des liens selon saturation (nécessite SNMP polling).
-- Path highlighting : on clique 2 switches, le chemin est surligné.
-- Overlay VLAN : cocher un VLAN → afficher uniquement les liens qui le portent.
-- Animation du trafic (en temps réel ou simulation).
+- Link colors based on saturation (requires SNMP polling).
+- Path highlighting: click 2 switches, the path is highlighted.
+- VLAN overlay: check a VLAN → display only the links carrying it.
+- Traffic animation (real-time or simulated).

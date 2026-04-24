@@ -1,4 +1,4 @@
-"""Users, sessions, audit log."""
+"""Users, sessions and audit log."""
 
 from __future__ import annotations
 
@@ -55,11 +55,11 @@ class User(Base):
 
 
 class Session(Base):
-    """Sessions persistées en DB (voir docs/06-auth.md)."""
+    """DB-backed sessions (see docs/06-auth.md)."""
 
     __tablename__ = "sessions"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # token opaque hashé
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # hashed opaque token
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,

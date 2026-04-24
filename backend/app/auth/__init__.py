@@ -1,1 +1,1 @@
-"""Authentification OIDC Entra ID — implémenté en phase 2."""
+"""OIDC Entra ID authentication — implemented in phase 2."""

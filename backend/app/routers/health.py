@@ -1,4 +1,4 @@
-"""Endpoint de healthcheck — vérifie que l'app tourne et que la DB répond."""
+"""Healthcheck endpoint — verifies the app is up and the DB answers."""
 
 import time
 
@@ -15,11 +15,11 @@ _STARTED_AT = time.monotonic()
 
 @router.get("/health")
 async def health(session: AsyncSession = Depends(get_session)) -> dict:
-    """Healthcheck. Consommé par Docker, Zabbix, etc.
+    """Healthcheck consumed by Docker, Zabbix, etc.
 
-    Retourne `{ status, db, uptime_s }`. Si la DB est indisponible, renvoie
-    quand même 200 avec `db: "down"` pour permettre au client de différencier
-    app-down vs db-down — c'est le comportement attendu dans docs/07.
+    Returns `{ status, db, uptime_s }`. If the DB is unreachable the endpoint
+    still returns 200 with `db: "down"` so that clients can distinguish
+    app-down from db-down — this matches the behaviour described in docs/07.
     """
     uptime = int(time.monotonic() - _STARTED_AT)
 

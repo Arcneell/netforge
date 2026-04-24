@@ -1,4 +1,4 @@
-"""Devices (équipements non-switch)."""
+"""Devices (anything that isn't a switch)."""
 
 from __future__ import annotations
 

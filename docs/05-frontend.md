@@ -4,15 +4,15 @@
 
 - **Vue 3** (Composition API, `<script setup>`)
 - **TypeScript** strict
-- **Vite** pour le dev server et le build
-- **Vue Router 4** pour le routing
-- **Pinia** pour le state
-- **Tailwind CSS** pour le style (pas de lib de composants lourde — tout custom simple)
-- **Axios** pour le HTTP
-- **Cytoscape.js** pour la topologie
-- **Openapi-typescript** pour générer les types TS à partir du schéma OpenAPI de FastAPI
+- **Vite** for the dev server and the build
+- **Vue Router 4** for routing
+- **Pinia** for state
+- **Tailwind CSS** for styling (no heavyweight component library — everything is simple and custom)
+- **Axios** for HTTP
+- **Cytoscape.js** for topology
+- **openapi-typescript** to generate TS types from the FastAPI OpenAPI schema
 
-## Arborescence `frontend/src/`
+## `frontend/src/` layout
 
 ```
 src/
@@ -28,8 +28,8 @@ src/
 │   └── topology.ts
 ├── api/
 │   ├── client.ts              # axios instance + interceptors
-│   ├── types.ts               # généré via openapi-typescript
-│   └── endpoints/             # wrappers typés par ressource
+│   ├── types.ts               # generated via openapi-typescript
+│   └── endpoints/             # typed wrappers per resource
 ├── views/
 │   ├── DashboardView.vue
 │   ├── SubnetsListView.vue
@@ -45,27 +45,27 @@ src/
 │   ├── SettingsView.vue
 │   └── LoginView.vue
 ├── components/
-│   ├── AppShell.vue           # layout avec sidebar + topbar
-│   ├── GlobalSearch.vue       # barre de recherche top-bar (cmd+k)
-│   ├── IpGrid.vue             # grille visuelle des IPs d'un subnet
-│   ├── IpEditor.vue           # modale CRUD IP
-│   ├── PortTable.vue          # tableau des ports d'un switch
-│   ├── PortEditor.vue         # modale CRUD port
-│   ├── VlanBadge.vue          # pastille colorée VLAN
-│   ├── SwitchCard.vue         # carte récap switch
-│   ├── TopologyCanvas.vue     # wrapper Cytoscape
-│   ├── AuditDiff.vue          # affichage JSON diff before/after
-│   ├── CsvDropzone.vue        # upload drag&drop
-│   ├── ConfirmDialog.vue      # modale confirmation générique
+│   ├── AppShell.vue           # layout with sidebar + topbar
+│   ├── GlobalSearch.vue       # top-bar search (cmd+k)
+│   ├── IpGrid.vue             # visual grid of a subnet's IPs
+│   ├── IpEditor.vue           # IP CRUD modal
+│   ├── PortTable.vue          # table of a switch's ports
+│   ├── PortEditor.vue         # port CRUD modal
+│   ├── VlanBadge.vue          # colored VLAN pill
+│   ├── SwitchCard.vue         # switch summary card
+│   ├── TopologyCanvas.vue     # Cytoscape wrapper
+│   ├── AuditDiff.vue          # before/after JSON diff display
+│   ├── CsvDropzone.vue        # drag & drop upload
+│   ├── ConfirmDialog.vue      # generic confirmation modal
 │   └── ui/                    # primitives (Button, Input, Modal, Toast...)
 ├── composables/
-│   ├── useApi.ts              # wrapper axios + toast erreurs
-│   ├── useAuth.ts             # accès user courant + role
+│   ├── useApi.ts              # axios wrapper + error toasts
+│   ├── useAuth.ts             # current user + role accessor
 │   ├── useKeyboardShortcuts.ts
 │   └── useDebounce.ts
 ├── utils/
-│   ├── cidr.ts                # helpers calcul IPs d'un CIDR
-│   ├── mac.ts                 # format/validation MAC
+│   ├── cidr.ts                # helpers to compute IPs in a CIDR
+│   ├── mac.ts                 # MAC formatting/validation
 │   └── formatters.ts          # dates, bytes, etc.
 └── assets/
     └── tailwind.css
@@ -73,9 +73,9 @@ src/
 
 ## Routing
 
-| Route | View | Auth | Rôle min |
+| Route | View | Auth | Min role |
 |-------|------|------|----------|
-| `/login` | `LoginView` | publique | - |
+| `/login` | `LoginView` | public | - |
 | `/` | `DashboardView` | auth | viewer |
 | `/subnets` | `SubnetsListView` | auth | viewer |
 | `/subnets/:id` | `SubnetDetailView` | auth | viewer |
@@ -89,73 +89,73 @@ src/
 | `/audit` | `AuditView` | auth | admin |
 | `/settings` | `SettingsView` | auth | admin |
 
-Guard global dans `router/index.ts` : si pas authentifié → redirect `/login?next=<url>`. Si rôle insuffisant → page 403.
+Global guard in `router/index.ts`: if not authenticated → redirect to `/login?next=<url>`. If the role is insufficient → 403 page.
 
-## Pages clés — maquette textuelle
+## Key pages — textual mockup
 
 ### Dashboard
-Grid 4 cartes :
-- Nombre de subnets, IPs utilisées/totales
-- Nombre de switches, ports occupés/totaux
-- Top 5 subnets proches de saturation
-- 10 dernières modifications (audit log condensé)
+Grid of 4 cards:
+- Number of subnets, used/total IPs
+- Number of switches, used/total ports
+- Top 5 subnets nearing saturation
+- 10 most recent changes (condensed audit log)
 
 ### SubnetsListView
-Tableau trié avec :
-- CIDR, VLAN (badge), Site, Utilisation (barre de progression), Actions.
-- Filtres : site, VLAN, état (saturé / OK / vide).
-- Bouton "Nouveau subnet" (admin).
+Sortable table with:
+- CIDR, VLAN (badge), Site, Usage (progress bar), Actions.
+- Filters: site, VLAN, status (saturated / OK / empty).
+- "New subnet" button (admin).
 
 ### SubnetDetailView
-- Header : CIDR, gateway, VLAN, description, stats.
-- Grille visuelle des IPs (`IpGrid.vue`) : chaque IP est une case colorée selon son statut. Clic → `IpEditor`.
-- Vue alternative "tableau" avec recherche et tri.
-- Bouton "Exporter CSV".
+- Header: CIDR, gateway, VLAN, description, stats.
+- Visual IP grid (`IpGrid.vue`): each IP is a cell colored by its status. Click → `IpEditor`.
+- Alternative "table" view with search and sort.
+- "Export CSV" button.
 
 ### SwitchDetailView
-- Header : nom, modèle, IP mgmt, room, stats (X/Y ports utilisés).
-- Vue rack-like (représentation visuelle des ports 1..N en ligne, couleur selon VLAN ou état).
-- Tableau détaillé : n°, label, mode, VLAN natif, VLANs tagués, device, IP, état.
-- Clic sur port → `PortEditor` (modale).
-- Onglet "Liens" : liste des uplinks/downlinks de ce switch.
+- Header: name, model, management IP, room, stats (X/Y used ports).
+- Rack-like view (visual representation of ports 1..N in a row, color based on VLAN or state).
+- Detailed table: #, label, mode, native VLAN, tagged VLANs, device, IP, state.
+- Click on a port → `PortEditor` (modal).
+- "Links" tab: list of this switch's uplinks/downlinks.
 
 ### TopologyView
-Pleine page, `TopologyCanvas.vue` Cytoscape :
-- Nœuds switches (icônes selon vendor).
-- Edges : liens avec épaisseur proportionnelle à la vitesse.
-- Panneau latéral droit : détails du nœud/edge sélectionné.
-- Contrôles : layout (dagre / cose / breadthfirst), filtre par site, zoom/fit, export PNG.
+Full page, `TopologyCanvas.vue` Cytoscape:
+- Switch nodes (icons per vendor).
+- Edges: links with thickness proportional to speed.
+- Right-hand side panel: details of the selected node/edge.
+- Controls: layout (dagre / cose / breadthfirst), filter by site, zoom/fit, PNG export.
 
 ### ImportView
-- Sélecteur de type d'entité (subnets / vlans / ips / switches / ports / devices / links).
-- Dropzone CSV.
-- Aperçu des 10 premières lignes parsées.
-- Résumé avant import : "12 nouveaux, 3 existants mis à jour, 1 erreur ligne 7".
-- Bouton "Valider l'import".
+- Entity type selector (subnets / vlans / ips / switches / ports / devices / links).
+- CSV dropzone.
+- Preview of the first 10 parsed rows.
+- Pre-import summary: "12 new, 3 existing updated, 1 error on line 7".
+- "Apply import" button.
 
 ## State management (Pinia)
 
-Chaque store expose :
-- `state` : cache des entités par id (`Map<number, Entity>`).
-- `getters` : listes filtrées, stats dérivées.
-- `actions` : `fetchAll`, `fetchById`, `create`, `update`, `delete` qui appellent `api/*` et mutent le state.
+Each store exposes:
+- `state`: cache of entities by id (`Map<number, Entity>`).
+- `getters`: filtered lists, derived stats.
+- `actions`: `fetchAll`, `fetchById`, `create`, `update`, `delete` that call `api/*` and mutate the state.
 
-Pas de cache agressif type TanStack Query pour v1 — du Pinia simple avec invalidation manuelle après mutation. Si le besoin devient évident, on basculera sur `@tanstack/vue-query`.
+No aggressive cache like TanStack Query for v1 — just plain Pinia with manual invalidation after mutations. If the need becomes clear, we'll switch to `@tanstack/vue-query`.
 
 ## Style
 
-- Palette Tailwind par défaut + 2 couleurs custom : `primary` (cyan/teal par défaut, override possible via `tailwind.config.js`) et `accent`.
-- Dark mode natif Tailwind (`class="dark"` sur `<html>`), toggle dans la top bar.
-- Typographie : Inter (Google Fonts ou self-hosté) + monospace pour IPs/MACs.
-- Responsive : desktop-first (outil admin), mobile basique pour consulter mais pas éditer.
+- Default Tailwind palette + 2 custom colors: `primary` (cyan/teal by default, overridable via `tailwind.config.js`) and `accent`.
+- Native Tailwind dark mode (`class="dark"` on `<html>`), toggle in the top bar.
+- Typography: Inter (Google Fonts or self-hosted) + monospace for IPs/MACs.
+- Responsive: desktop-first (admin tool), basic mobile for read but not for editing.
 
-## Accessibilité
+## Accessibility
 
-- Labels ARIA sur toutes les actions.
-- Focus visible.
-- Keyboard nav complète (Tab, Enter, Esc pour les modales).
-- Raccourcis : `cmd/ctrl+k` ouvre la recherche globale, `g s` → subnets, `g t` → topologie, etc.
+- ARIA labels on every action.
+- Visible focus.
+- Full keyboard navigation (Tab, Enter, Esc for modals).
+- Shortcuts: `cmd/ctrl+k` opens the global search, `g s` → subnets, `g t` → topology, etc.
 
 ## Build
 
-`vite build` produit `dist/` servi par Nginx. Le `nginx.conf` fait le fallback SPA (`try_files $uri $uri/ /index.html`) et proxifie `/api/` vers le container backend.
+`vite build` produces `dist/` served by Nginx. The `nginx.conf` handles the SPA fallback (`try_files $uri $uri/ /index.html`) and proxies `/api/` to the backend container.

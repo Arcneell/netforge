@@ -1,6 +1,6 @@
 #!/bin/bash
-# Restauration d'un dump Netforge.
-# Usage: ./restore.sh /chemin/vers/netforge-YYYYMMDD-HHMMSS.dump
+# Restore a Netforge dump.
+# Usage: ./restore.sh /path/to/netforge-YYYYMMDD-HHMMSS.dump
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
@@ -16,10 +16,10 @@ if [ ! -f "$DUMP" ]; then
   exit 1
 fi
 
-echo "ATTENTION : cette opération va écraser la DB netforge. Ctrl+C pour annuler."
-read -r -p "Taper 'oui' pour continuer : " confirm
-if [ "$confirm" != "oui" ]; then
-  echo "annulé"
+echo "WARNING: this will OVERWRITE the netforge database. Ctrl+C to abort."
+read -r -p "Type 'yes' to continue: " confirm
+if [ "$confirm" != "yes" ]; then
+  echo "aborted"
   exit 1
 fi
 
@@ -27,4 +27,4 @@ docker compose -f "$COMPOSE_FILE" exec -T postgres \
   pg_restore -U "${POSTGRES_USER:-netforge}" -d "${POSTGRES_DB:-netforge}" \
   --clean --if-exists < "$DUMP"
 
-echo "restore OK depuis $DUMP"
+echo "restore OK from $DUMP"

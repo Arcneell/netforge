@@ -1,4 +1,4 @@
-"""Sites et salles (rooms)."""
+"""Sites and rooms."""
 
 from __future__ import annotations
 

@@ -1,15 +1,15 @@
-# 07 — Déploiement
+# 07 — Deployment
 
-## Cible
+## Target
 
-Serveur Linux interne (probablement une VM Debian 12 ou Ubuntu 24.04 LTS sur Proxmox). Accès réseau :
-- Entrant HTTPS depuis le LAN.
-- Sortant vers `login.microsoftonline.com` (auth OIDC).
-- Sortant vers `update.docker.io` (pulls d'images).
+Internal Linux server (typically a Debian 12 or Ubuntu 24.04 LTS VM on Proxmox). Network access:
+- Inbound HTTPS from the LAN.
+- Outbound to `login.microsoftonline.com` (OIDC auth).
+- Outbound to `update.docker.io` (image pulls).
 
-Ressources cibles : 2 vCPU, 4 Go RAM, 20 Go disque (DB incluse). Largement dimensionné pour un parc de cette taille.
+Target resources: 2 vCPU, 4 GB RAM, 20 GB disk (DB included). Largely oversized for a network of this size.
 
-## `docker-compose.yml` (prod)
+## `docker-compose.yml` (production)
 
 ```yaml
 services:
@@ -62,27 +62,27 @@ volumes:
 ## `.env.example`
 
 ```dotenv
-# URL publique utilisée pour construire les redirect URIs
+# Public URL used to build the redirect URIs
 PUBLIC_URL=https://netforge.example.local
 
 # PostgreSQL
 POSTGRES_PASSWORD=change-me-generate-a-32-char-random
 
-# Entra ID (cf docs/06-auth.md)
+# Entra ID (see docs/06-auth.md)
 ENTRA_TENANT_ID=00000000-0000-0000-0000-000000000000
 ENTRA_CLIENT_ID=00000000-0000-0000-0000-000000000000
 ENTRA_CLIENT_SECRET=change-me
 
-# Clé de signature cookies (openssl rand -hex 32)
+# Cookie signing key (openssl rand -hex 32)
 SESSION_SIGNING_KEY=change-me
 
-# Premier email qui se connecte devient admin automatiquement
+# The first email that logs in is automatically promoted to admin
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 ```
 
-## Nginx reverse proxy (dans le container frontend)
+## Nginx reverse proxy (inside the frontend container)
 
-`frontend/nginx.conf` :
+`frontend/nginx.conf`:
 
 ```nginx
 server {
@@ -126,7 +126,7 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # cache des assets hashés
+    # cache for hashed assets
     location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
@@ -134,25 +134,25 @@ server {
 }
 ```
 
-## Certificats TLS
+## TLS certificates
 
-Option A — certif interne (recommandé) : générer un certificat signé par votre AC interne (par exemple AD CS / Active Directory Certificate Services) pour le FQDN retenu. Tous les postes du domaine font confiance automatiquement.
+Option A — internal certificate (recommended): issue a certificate signed by your internal CA (for example AD CS / Active Directory Certificate Services) for the chosen FQDN. All domain-joined machines trust it automatically.
 
-Option B — Let's Encrypt via DNS-01 challenge si le domaine est public.
+Option B — Let's Encrypt via a DNS-01 challenge if the domain is public.
 
-Les fichiers `fullchain.pem` et `privkey.pem` sont montés read-only dans le container.
+The `fullchain.pem` and `privkey.pem` files are mounted read-only into the container.
 
 ## DNS
 
-Entrée A dans la zone DNS interne :
+A record in the internal DNS zone:
 ```
-netforge.example.local  A  10.0.10.42   ; IP du serveur Docker
+netforge.example.local  A  10.0.10.42   ; IP of the Docker server
 ```
 
 ## Backup
 
-### Base de données
-Script `scripts/backup.sh` lancé par cron :
+### Database
+`scripts/backup.sh` script run via cron:
 
 ```bash
 #!/bin/bash
@@ -161,50 +161,50 @@ BACKUP_DIR=/mnt/veeam/netforge
 mkdir -p "$BACKUP_DIR"
 STAMP=$(date +%Y%m%d-%H%M%S)
 docker compose exec -T postgres pg_dump -U netforge -Fc netforge > "$BACKUP_DIR/netforge-$STAMP.dump"
-# rotation : garder 30 jours
+# rotation: keep 30 days
 find "$BACKUP_DIR" -name 'netforge-*.dump' -mtime +30 -delete
 ```
 
-Cron : quotidien à 02h30.
+Cron: daily at 02:30.
 
-### Restauration
+### Restore
 ```bash
 docker compose exec -T postgres pg_restore -U netforge -d netforge --clean --if-exists < netforge-20260501-023000.dump
 ```
 
 ## Logs
 
-- Backend et Nginx écrivent sur stdout/stderr → captés par Docker → expédiés à journald ou Loki.
-- Rotation : `max-size: 10m`, `max-file: 5` dans `daemon.json`.
-- Niveau par défaut `info`, passable à `debug` via env `LOG_LEVEL`.
+- Backend and Nginx write to stdout/stderr → picked up by Docker → shipped to journald or Loki.
+- Rotation: `max-size: 10m`, `max-file: 5` in `daemon.json`.
+- Default level `info`, switchable to `debug` via the `LOG_LEVEL` env var.
 
-## Mise à jour
+## Updates
 
-Workflow :
-1. `git pull` sur le serveur.
+Workflow:
+1. `git pull` on the server.
 2. `docker compose build backend frontend`.
-3. `docker compose up -d` (recréé les containers modifiés).
-4. `docker compose exec backend alembic upgrade head` si nouvelle migration.
-5. `docker compose logs -f backend` pour vérifier.
+3. `docker compose up -d` (recreates the modified containers).
+4. `docker compose exec backend alembic upgrade head` if there is a new migration.
+5. `docker compose logs -f backend` to check.
 
-Pas de CI/CD auto en prod pour v1 — déploiement manuel conscient (diff du parc interne critique).
+No automated CI/CD to production for v1 — conscious manual deployment (the internal network diff is critical).
 
 ## Monitoring
 
-- Healthcheck HTTP `GET /api/health` retourne `{ status: "ok", db: "ok", uptime_s: N }` — à intégrer côté Zabbix comme template "Netforge".
-- Alerte Zabbix si `/api/health` down > 5 min.
-- Alerte si utilisation DB > 80% du disque.
+- HTTP healthcheck `GET /api/health` returns `{ status: "ok", db: "ok", uptime_s: N }` — to be integrated on the Zabbix side as a "Netforge" template.
+- Zabbix alert if `/api/health` is down > 5 min.
+- Alert if DB usage exceeds 80% of disk.
 
-## Checklist go-live
+## Go-live checklist
 
-- [ ] Serveur Docker provisionné (Debian 12, 2 vCPU, 4 Go RAM, 20 Go disque)
-- [ ] DNS A record créé et propagé
-- [ ] Certif TLS émis et monté
-- [ ] App Entra ID créée, secrets générés, `.env` rempli
-- [ ] `docker compose up -d` OK, tous les containers `healthy`
-- [ ] Migration initiale appliquée
-- [ ] Premier login OK, user promu admin
-- [ ] Backup quotidien testé (restauration en dev)
-- [ ] Template Zabbix importé
-- [ ] Import CSV initial effectué (subnets + VLANs + switches existants)
-- [ ] Doc utilisateur courte envoyée à l'équipe
+- [ ] Docker server provisioned (Debian 12, 2 vCPU, 4 GB RAM, 20 GB disk)
+- [ ] DNS A record created and propagated
+- [ ] TLS certificate issued and mounted
+- [ ] Entra ID app created, secrets generated, `.env` filled in
+- [ ] `docker compose up -d` OK, all containers `healthy`
+- [ ] Initial migration applied
+- [ ] First login OK, user promoted to admin
+- [ ] Daily backup tested (restore in dev)
+- [ ] Zabbix template imported
+- [ ] Initial CSV import done (existing subnets + VLANs + switches)
+- [ ] Short user documentation sent to the team

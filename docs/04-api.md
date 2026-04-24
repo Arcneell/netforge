@@ -1,62 +1,62 @@
-# 04 — API REST
+# 04 — REST API
 
-Toutes les routes sont préfixées par `/api`. Format JSON exclusivement. Auth par cookie de session (voir [06-auth.md](06-auth.md)).
+All routes are prefixed with `/api`. JSON only. Auth via session cookie (see [06-auth.md](06-auth.md)).
 
 ## Conventions
 
-- **Pagination** : `?page=1&page_size=50` sur toutes les listes, réponses paginées dans `{ items, total, page, page_size }`.
-- **Filtres** : query string, ex: `/api/ips?subnet_id=12&status=assigned`.
-- **Tri** : `?sort=field` ou `?sort=-field` (desc).
-- **Erreurs** : format standard `{ error: { code, message, details } }` avec codes HTTP cohérents.
-- **Validation** : Pydantic gère la validation d'entrée, réponses 422 avec détail par champ.
-- **Dates** : ISO 8601 UTC.
+- **Pagination**: `?page=1&page_size=50` on every list, paginated responses in `{ items, total, page, page_size }`.
+- **Filters**: query string, e.g. `/api/ips?subnet_id=12&status=assigned`.
+- **Sorting**: `?sort=field` or `?sort=-field` (desc).
+- **Errors**: standard format `{ error: { code, message, details } }` with consistent HTTP codes.
+- **Validation**: Pydantic handles input validation; 422 responses detail errors per field.
+- **Dates**: ISO 8601 UTC.
 
 ## Auth
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/auth/login` | Redirige vers Entra ID (flow authorization code + PKCE) |
-| GET | `/api/auth/callback` | Callback OIDC, crée/MAJ user, pose cookie de session |
-| POST | `/api/auth/logout` | Détruit la session, redirige vers Entra ID logout |
-| GET | `/api/auth/me` | Retourne `{ id, email, display_name, role }` de l'utilisateur courant |
+| GET | `/api/auth/login` | Redirects to Entra ID (authorization code + PKCE flow) |
+| GET | `/api/auth/callback` | OIDC callback, creates/updates user, sets session cookie |
+| POST | `/api/auth/logout` | Destroys the session, redirects to Entra ID logout |
+| GET | `/api/auth/me` | Returns `{ id, email, display_name, role }` for the current user |
 
 ## Sites & rooms
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/sites` | Liste |
-| POST | `/api/sites` | Créer (admin) |
-| GET | `/api/sites/{id}` | Détail + rooms associées |
-| PUT | `/api/sites/{id}` | MAJ (admin) |
-| DELETE | `/api/sites/{id}` | Supprimer si pas de switches/subnets liés (admin) |
-| GET | `/api/rooms` | Liste, filtrable par `site_id` |
-| POST | `/api/rooms` | Créer (admin) |
-| GET | `/api/rooms/{id}` | Détail |
-| PUT | `/api/rooms/{id}` | MAJ (admin) |
-| DELETE | `/api/rooms/{id}` | Supprimer (admin) |
+| GET | `/api/sites` | List |
+| POST | `/api/sites` | Create (admin) |
+| GET | `/api/sites/{id}` | Detail + associated rooms |
+| PUT | `/api/sites/{id}` | Update (admin) |
+| DELETE | `/api/sites/{id}` | Delete if no linked switches/subnets (admin) |
+| GET | `/api/rooms` | List, filterable by `site_id` |
+| POST | `/api/rooms` | Create (admin) |
+| GET | `/api/rooms/{id}` | Detail |
+| PUT | `/api/rooms/{id}` | Update (admin) |
+| DELETE | `/api/rooms/{id}` | Delete (admin) |
 
 ## VLANs
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/vlans` | Liste |
-| POST | `/api/vlans` | Créer (admin) |
-| GET | `/api/vlans/{id}` | Détail + subnets + ports utilisateurs |
-| PUT | `/api/vlans/{id}` | MAJ (admin) |
-| DELETE | `/api/vlans/{id}` | Supprimer si non utilisé (admin) |
+| GET | `/api/vlans` | List |
+| POST | `/api/vlans` | Create (admin) |
+| GET | `/api/vlans/{id}` | Detail + subnets + using ports |
+| PUT | `/api/vlans/{id}` | Update (admin) |
+| DELETE | `/api/vlans/{id}` | Delete if unused (admin) |
 
 ## Subnets
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/subnets` | Liste avec stats `{ total, used, free, percent_used }` |
-| POST | `/api/subnets` | Créer (admin) |
-| GET | `/api/subnets/{id}` | Détail |
-| GET | `/api/subnets/{id}/ips` | Toutes les IPs du subnet (attribuées + libres calculées) |
-| PUT | `/api/subnets/{id}` | MAJ (admin) |
-| DELETE | `/api/subnets/{id}` | Supprimer en cascade des IPs (admin, confirmation front) |
+| GET | `/api/subnets` | List with stats `{ total, used, free, percent_used }` |
+| POST | `/api/subnets` | Create (admin) |
+| GET | `/api/subnets/{id}` | Detail |
+| GET | `/api/subnets/{id}/ips` | All IPs in the subnet (assigned + computed free) |
+| PUT | `/api/subnets/{id}` | Update (admin) |
+| DELETE | `/api/subnets/{id}` | Cascading delete of IPs (admin, frontend confirmation) |
 
-Exemple réponse `/api/subnets/{id}/ips` :
+Example response for `/api/subnets/{id}/ips`:
 ```json
 {
   "subnet": { "id": 12, "cidr": "10.0.30.0/24", "gateway": "10.0.30.1" },
@@ -71,61 +71,61 @@ Exemple réponse `/api/subnets/{id}/ips` :
 
 ## IPs
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/ips` | Liste filtrable `?subnet_id=&status=&q=` |
-| POST | `/api/ips` | Réserver/attribuer une IP (admin) |
-| GET | `/api/ips/{id}` | Détail |
-| PUT | `/api/ips/{id}` | MAJ (admin) |
-| DELETE | `/api/ips/{id}` | Libérer (admin) |
-| POST | `/api/subnets/{id}/next-free` | Retourne la prochaine IP libre du subnet (utilitaire) |
+| GET | `/api/ips` | List, filterable `?subnet_id=&status=&q=` |
+| POST | `/api/ips` | Reserve/assign an IP (admin) |
+| GET | `/api/ips/{id}` | Detail |
+| PUT | `/api/ips/{id}` | Update (admin) |
+| DELETE | `/api/ips/{id}` | Release (admin) |
+| POST | `/api/subnets/{id}/next-free` | Returns the next free IP in the subnet (utility) |
 
 ## Devices
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/devices` | Liste filtrable `?type=&room_id=&q=` |
-| POST | `/api/devices` | Créer (admin) |
-| GET | `/api/devices/{id}` | Détail + IPs + ports connectés |
-| PUT | `/api/devices/{id}` | MAJ (admin) |
-| DELETE | `/api/devices/{id}` | Supprimer (admin) — dissocie IPs et ports |
+| GET | `/api/devices` | List, filterable `?type=&room_id=&q=` |
+| POST | `/api/devices` | Create (admin) |
+| GET | `/api/devices/{id}` | Detail + IPs + connected ports |
+| PUT | `/api/devices/{id}` | Update (admin) |
+| DELETE | `/api/devices/{id}` | Delete (admin) — disassociates IPs and ports |
 
 ## Switches
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/switches` | Liste |
-| POST | `/api/switches` | Créer + génère les N ports (admin) |
-| GET | `/api/switches/{id}` | Détail avec tous les ports |
-| PUT | `/api/switches/{id}` | MAJ méta (admin) |
-| DELETE | `/api/switches/{id}` | Supprimer + ports + liens (admin, confirmation) |
+| GET | `/api/switches` | List |
+| POST | `/api/switches` | Create + generate the N ports (admin) |
+| GET | `/api/switches/{id}` | Detail with all ports |
+| PUT | `/api/switches/{id}` | Update metadata (admin) |
+| DELETE | `/api/switches/{id}` | Delete + ports + links (admin, confirmation) |
 
 ## Ports
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/switches/{switch_id}/ports` | Liste des ports du switch |
-| GET | `/api/ports/{id}` | Détail |
-| PUT | `/api/ports/{id}` | MAJ (label, VLAN, device, notes) (admin) |
-| POST | `/api/ports/{id}/vlans` | Ajouter VLAN tagué à un trunk (admin) |
-| DELETE | `/api/ports/{id}/vlans/{vlan_id}` | Retirer VLAN tagué (admin) |
+| GET | `/api/switches/{switch_id}/ports` | List of ports for the switch |
+| GET | `/api/ports/{id}` | Detail |
+| PUT | `/api/ports/{id}` | Update (label, VLAN, device, notes) (admin) |
+| POST | `/api/ports/{id}/vlans` | Add tagged VLAN to a trunk (admin) |
+| DELETE | `/api/ports/{id}/vlans/{vlan_id}` | Remove tagged VLAN (admin) |
 
-## Links (topologie)
+## Links (topology)
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/links` | Liste |
-| POST | `/api/links` | Créer un lien entre 2 ports (admin) |
-| DELETE | `/api/links/{id}` | Supprimer (admin) |
+| GET | `/api/links` | List |
+| POST | `/api/links` | Create a link between 2 ports (admin) |
+| DELETE | `/api/links/{id}` | Delete (admin) |
 
-## Topologie
+## Topology
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/topology` | Graphe complet format Cytoscape : `{ nodes: [...], edges: [...] }` |
-| GET | `/api/topology?site_id=3` | Filtré par site |
+| GET | `/api/topology` | Full graph in Cytoscape format: `{ nodes: [...], edges: [...] }` |
+| GET | `/api/topology?site_id=3` | Filtered by site |
 
-Exemple réponse :
+Example response:
 ```json
 {
   "nodes": [
@@ -138,54 +138,54 @@ Exemple réponse :
 }
 ```
 
-## Recherche globale
+## Global search
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/search?q=...` | Recherche sur IP, hostname, MAC, switch name, port label, device name |
+| GET | `/api/search?q=...` | Search across IP, hostname, MAC, switch name, port label, device name |
 
-Réponse :
+Response:
 ```json
 {
   "results": [
     { "type": "ip", "id": 3421, "label": "10.0.30.47", "context": "srv-ad-01 (VLAN 30)" },
-    { "type": "device", "id": 88, "label": "srv-ad-01", "context": "Site Siège / Salle SRV-01" },
-    { "type": "port", "id": 712, "label": "SW-SRV-01 / port 14", "context": "Bureau compta 3" }
+    { "type": "device", "id": 88, "label": "srv-ad-01", "context": "Site HQ / SRV-01 Room" },
+    { "type": "port", "id": 712, "label": "SW-SRV-01 / port 14", "context": "Accounting office 3" }
   ]
 }
 ```
 
-## Import / Export CSV
+## CSV import / export
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
 | POST | `/api/imports/{entity}` | Multipart CSV upload. `entity` ∈ `subnets`, `vlans`, `ips`, `switches`, `ports`, `devices`, `links` |
-| GET | `/api/exports/{entity}` | Stream CSV |
+| GET | `/api/exports/{entity}` | CSV stream |
 
-Voir [08-import-csv.md](08-import-csv.md) pour les formats attendus.
+See [08-import-csv.md](08-import-csv.md) for the expected formats.
 
 ## Audit log
 
-| Méthode | Chemin | Description |
+| Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/audit` | Liste paginée, filtres `?entity=&entity_id=&user_id=&from=&to=` |
-| GET | `/api/audit/{id}` | Détail avant/après (JSON diff) |
+| GET | `/api/audit` | Paginated list, filters `?entity=&entity_id=&user_id=&from=&to=` |
+| GET | `/api/audit/{id}` | Before/after detail (JSON diff) |
 
-Seuls les `admin` peuvent consulter le log complet. Les `viewer` ne voient que leurs propres actions (aucune en pratique vu leur rôle).
+Only `admin` users can view the full log. `viewer` users only see their own actions (none in practice given their role).
 
-## Codes d'erreur
+## Error codes
 
-| Code | Signification |
+| Code | Meaning |
 |------|---------------|
-| `AUTH_REQUIRED` | 401 — pas de session valide |
-| `FORBIDDEN` | 403 — rôle insuffisant |
-| `NOT_FOUND` | 404 — entité absente |
-| `VALIDATION_ERROR` | 422 — payload invalide, détails par champ |
-| `CONFLICT` | 409 — ex: subnet chevauchant, MAC déjà utilisée |
-| `BUSINESS_RULE` | 400 — ex: IP hors subnet, lien sur port inexistant |
-| `RATE_LIMITED` | 429 — login bruteforce (rate limit sur `/auth/login`) |
-| `INTERNAL_ERROR` | 500 — catch-all, logué côté serveur avec trace_id retourné au client |
+| `AUTH_REQUIRED` | 401 — no valid session |
+| `FORBIDDEN` | 403 — insufficient role |
+| `NOT_FOUND` | 404 — entity does not exist |
+| `VALIDATION_ERROR` | 422 — invalid payload, per-field details |
+| `CONFLICT` | 409 — e.g. overlapping subnet, MAC already used |
+| `BUSINESS_RULE` | 400 — e.g. IP outside subnet, link on nonexistent port |
+| `RATE_LIMITED` | 429 — login bruteforce (rate limit on `/auth/login`) |
+| `INTERNAL_ERROR` | 500 — catch-all, logged server-side with a `trace_id` returned to the client |
 
 ## OpenAPI
 
-FastAPI expose automatiquement `/api/docs` (Swagger) et `/api/redoc`. En prod ces routes sont protégées derrière l'auth admin ou désactivées selon la config.
+FastAPI automatically exposes `/api/docs` (Swagger) and `/api/redoc`. In production these routes are either protected behind admin auth or disabled depending on config.

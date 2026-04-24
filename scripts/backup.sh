@@ -1,6 +1,6 @@
 #!/bin/bash
-# Backup quotidien de la DB Netforge.
-# Lancé par cron (02h30 recommandé). Nécessite que docker compose soit UP.
+# Daily backup of the Netforge database.
+# Run via cron (02:30 recommended). Requires docker compose to be up.
 set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/mnt/veeam/netforge}"

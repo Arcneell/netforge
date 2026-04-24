@@ -1,1 +1,1 @@
-"""Logique métier — services remplis en phase 3."""
+"""Business logic — services populated in phase 3."""

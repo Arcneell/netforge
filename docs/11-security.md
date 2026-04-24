@@ -1,24 +1,24 @@
-# 11 — Sécurité
+# 11 — Security
 
-Netforge contient la cartographie réseau complète de l'organisation qui le déploie — un attaquant qui y accède sait exactement où frapper. La sécurité n'est pas optionnelle.
+Netforge contains the full network map of the organization that deploys it — an attacker who gets in knows exactly where to strike. Security is not optional.
 
-## Modèle de menace
+## Threat model
 
-| Menace | Probabilité | Impact | Mitigation |
+| Threat | Likelihood | Impact | Mitigation |
 |--------|-------------|--------|-----------|
-| Vol de session via XSS | Faible | Élevé | CSP stricte, cookies HttpOnly, pas d'innerHTML non-sanitizé |
-| CSRF sur mutations | Faible | Moyen | SameSite=Lax + header anti-CSRF sur opérations sensibles |
-| SQL injection | Très faible | Catastrophique | ORM SQLAlchemy exclusivement, aucun SQL brut formaté |
-| Bruteforce login | Moyen | Faible | Auth déléguée à Entra ID (MFA) + rate limit endpoint callback |
-| Exposition publique accidentelle | Moyen | Catastrophique | App accessible LAN uniquement + Entra ID bloque sans compte |
-| Vol de backup DB | Faible | Catastrophique | Backups chiffrés au repos sur repo Veeam, rotation |
-| Ingénierie sociale pour créer un admin | Moyen | Élevé | Promotion admin uniquement par un admin existant, audit log |
-| Fuite via export CSV | Moyen | Moyen | Export loggé dans audit, téléchargement réservé aux auth |
-| Dépendances compromises (supply chain) | Faible | Élevé | `pip-audit` et `npm audit` en CI, pin des versions |
+| Session theft via XSS | Low | High | Strict CSP, HttpOnly cookies, no unsanitized innerHTML |
+| CSRF on mutations | Low | Medium | SameSite=Lax + anti-CSRF header on sensitive operations |
+| SQL injection | Very low | Catastrophic | SQLAlchemy ORM exclusively, no formatted raw SQL |
+| Login bruteforce | Medium | Low | Auth delegated to Entra ID (MFA) + rate limit on the callback endpoint |
+| Accidental public exposure | Medium | Catastrophic | App reachable on LAN only + Entra ID blocks without an account |
+| DB backup theft | Low | Catastrophic | Backups encrypted at rest on the Veeam repo, with rotation |
+| Social engineering to create an admin | Medium | High | Admin promotion only by an existing admin, audit log |
+| Leak via CSV export | Medium | Medium | Export logged in the audit log, download requires auth |
+| Compromised dependencies (supply chain) | Low | High | `pip-audit` and `npm audit` in CI, pinned versions |
 
-## Headers HTTP (via Nginx)
+## HTTP headers (via Nginx)
 
-Référence dans [07-deployment.md](07-deployment.md). Récap minimum :
+Reference in [07-deployment.md](07-deployment.md). Minimum recap:
 
 ```
 Strict-Transport-Security: max-age=31536000; includeSubDomains
@@ -29,123 +29,123 @@ Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
 Permissions-Policy: geolocation=(), microphone=(), camera=()
 ```
 
-**CSP** : `'unsafe-inline'` sur `style-src` reste nécessaire avec Tailwind JIT. Pas d'`'unsafe-inline'` sur `script-src`. Pas de `connect-src` vers des domaines externes (tout passe par `/api/*` proxifié).
+**CSP**: `'unsafe-inline'` on `style-src` remains necessary with Tailwind JIT. No `'unsafe-inline'` on `script-src`. No `connect-src` to external domains (everything goes through the proxied `/api/*`).
 
 ## XSS
 
-- Vue 3 échappe par défaut tous les `{{ }}` et `v-bind`.
-- **Jamais** de `v-html` sur une donnée utilisateur. Si un cas légitime apparaît → passer par DOMPurify.
-- Les labels, descriptions, notes saisies par l'admin restent textuelles.
+- Vue 3 escapes every `{{ }}` and `v-bind` by default.
+- **Never** use `v-html` on user-controlled data. If a legitimate case comes up → use DOMPurify.
+- Labels, descriptions, notes entered by the admin stay textual.
 
 ## SQL injection
 
-- 100% du SQL passe par SQLAlchemy ORM ou queries paramétrées.
-- Jamais de `f"SELECT ... WHERE name = '{user_input}'"`.
-- Les filtres dynamiques (tri, pagination) sont whitelists : on valide que `sort_by` ∈ `{id, name, created_at, ...}` avant de construire la requête.
+- 100% of SQL goes through the SQLAlchemy ORM or parameterized queries.
+- Never `f"SELECT ... WHERE name = '{user_input}'"`.
+- Dynamic filters (sort, pagination) are whitelisted: we validate that `sort_by` ∈ `{id, name, created_at, ...}` before building the query.
 
 ## CSRF
 
-- Cookies `SameSite=Lax` bloquent la majorité des cross-site POST.
-- Endpoints critiques (import, delete cascade) exigent en plus un header `X-Csrf-Token` :
-  - Token généré à la connexion, stocké côté serveur dans la session.
-  - Renvoyé au client via `GET /api/auth/me`.
-  - Le client l'ajoute en header sur les mutations.
-- Préflight CORS strict : `Access-Control-Allow-Origin` = domaine exact, pas de wildcard.
+- `SameSite=Lax` cookies block the bulk of cross-site POSTs.
+- Critical endpoints (import, cascading delete) additionally require an `X-Csrf-Token` header:
+  - Token generated at login, stored server-side in the session.
+  - Returned to the client via `GET /api/auth/me`.
+  - The client adds it as a header on mutations.
+- Strict CORS preflight: `Access-Control-Allow-Origin` = exact domain, no wildcard.
 
-## Gestion des secrets
+## Secret management
 
-- Tous les secrets (`ENTRA_CLIENT_SECRET`, `POSTGRES_PASSWORD`, `SESSION_SIGNING_KEY`) vivent en variables d'env, jamais dans le code.
-- `.env` dans `.gitignore`. Fichier `.env.example` commité avec des placeholders.
-- En prod : `.env` à `chmod 600`, propriété `root:docker`.
-- Rotation annuelle du client secret Entra ID.
-- Les `snmp_community` stockés (v2) sont chiffrés via `pgcrypto` AES avec une clé master lue depuis env (`SNMP_ENCRYPTION_KEY`).
+- All secrets (`ENTRA_CLIENT_SECRET`, `POSTGRES_PASSWORD`, `SESSION_SIGNING_KEY`) live in environment variables, never in the code.
+- `.env` is in `.gitignore`. A `.env.example` file is committed with placeholders.
+- In production: `.env` set to `chmod 600`, owned by `root:docker`.
+- Annual rotation of the Entra ID client secret.
+- Stored `snmp_community` values (v2) are encrypted via `pgcrypto` AES with a master key read from env (`SNMP_ENCRYPTION_KEY`).
 
-## Validation des entrées
+## Input validation
 
-- **Tous** les payloads API validés par Pydantic avec types stricts.
-- Champs IP/CIDR/MAC utilisent les validators dédiés (`ipaddress.IPv4Network`, `ipaddress.IPv4Address`, regex MAC).
-- Longueur max sur tous les champs texte (éviter DoS mémoire).
-- Upload CSV : taille max 10 Mo, mime-type vérifié, parsing streamé.
+- **All** API payloads are validated by Pydantic with strict types.
+- IP/CIDR/MAC fields use dedicated validators (`ipaddress.IPv4Network`, `ipaddress.IPv4Address`, MAC regex).
+- Max length on every text field (to avoid memory DoS).
+- CSV upload: max size 10 MB, mime-type checked, streamed parsing.
 
 ## Audit log
 
-Chaque mutation écrit une ligne dans `audit_log` :
+Every mutation writes a row in `audit_log`:
 - `user_id`, `action` (create/update/delete), `entity`, `entity_id`.
-- `changes` JSONB : `{ before, after }` avec les colonnes modifiées.
-- `ip_address`, `user_agent` du client.
+- `changes` JSONB: `{ before, after }` with the modified columns.
+- Client `ip_address`, `user_agent`.
 - `created_at` timestamptz.
 
-Consultable via `/api/audit` par les admins uniquement. **Non modifiable** via l'UI (pas d'endpoint `PUT/DELETE /api/audit/{id}`). Suppression possible par maintenance DB seulement.
+Consulted via `/api/audit` by admins only. **Non-editable** via the UI (no `PUT/DELETE /api/audit/{id}` endpoint). Deletion is only possible through DB maintenance.
 
-Rétention : garder 2 ans. Cron mensuel purge les entrées plus vieilles.
+Retention: keep 2 years. A monthly cron purges older entries.
 
-## Permissions et rôles
+## Permissions and roles
 
-Rappel [06-auth.md](06-auth.md) : 2 rôles `viewer` / `admin`. Tout endpoint d'écriture exige `admin`. Règle par défaut en cas de doute : deny.
+Recall [06-auth.md](06-auth.md): 2 roles `viewer` / `admin`. Every write endpoint requires `admin`. Default rule when in doubt: deny.
 
-Quand un admin veut promouvoir un user, l'action est elle-même auditée (`audit_log.entity = 'user', action = 'update', changes = { role: { before: 'viewer', after: 'admin' } }`).
+When an admin promotes a user, the action itself is audited (`audit_log.entity = 'user', action = 'update', changes = { role: { before: 'viewer', after: 'admin' } }`).
 
 ## Sessions
 
-- Durée 8h, renouvellement glissant (voir [06-auth.md](06-auth.md)).
+- Duration 8h, sliding renewal (see [06-auth.md](06-auth.md)).
 - Cookie `HttpOnly`, `Secure`, `SameSite=Lax`.
-- Purge des sessions expirées via cron PostgreSQL ou tâche de fond backend.
-- Forcer déconnexion : suppression manuelle dans `sessions` (disponible dans `/settings/users` pour un admin).
+- Expired sessions purged via a PostgreSQL cron or a backend background task.
+- Force logout: manual deletion from `sessions` (available in `/settings/users` for an admin).
 
 ## Backups
 
-- Chiffrement au repos : le repo Veeam stocke les dumps sur un volume chiffré (BitLocker ou équivalent).
-- Test de restauration semestriel obligatoire.
-- Ne jamais laisser traîner un dump sur une machine perso.
+- Encryption at rest: the Veeam repo stores the dumps on an encrypted volume (BitLocker or equivalent).
+- Mandatory semi-annual restore test.
+- Never leave a dump lying around on a personal machine.
 
 ## Logs
 
-- Pas de PII dans les logs applicatifs (pas d'email complet, pas de payloads).
-- Niveau `info` en prod : évènements structurés (login OK, create entity, erreur avec trace_id).
-- Niveau `debug` uniquement en local dev.
+- No PII in application logs (no full email, no payloads).
+- Level `info` in production: structured events (login OK, entity creation, error with `trace_id`).
+- Level `debug` only in local dev.
 
 ## Supply chain
 
-- **Python** : `pip-audit` en CI + pre-commit. Versions pin dans `pyproject.toml`.
-- **JS** : `npm audit --audit-level=high` en CI. Lockfile commité.
-- **Docker** : images de base officielles uniquement (`python:3.12-slim`, `nginx:alpine`, `postgres:16-alpine`). Pas d'image random de Docker Hub. Scan `docker scout` ponctuel.
+- **Python**: `pip-audit` in CI + pre-commit. Versions pinned in `pyproject.toml`.
+- **JS**: `npm audit --audit-level=high` in CI. Lockfile committed.
+- **Docker**: only official base images (`python:3.12-slim`, `nginx:alpine`, `postgres:16-alpine`). No random images from Docker Hub. Occasional `docker scout` scans.
 
-## Accès réseau
+## Network access
 
-- Serveur Netforge accessible **uniquement** depuis le LAN interne.
-- Pas d'exposition Internet directe.
-- Si besoin d'accès distant : passer par le VPN de l'organisation, pas d'exception.
-- Règles firewall :
-  - Entrant : 443 depuis VLAN admin seulement, 80 redirige 443.
-  - Sortant : 443 vers `login.microsoftonline.com`, 443 vers registries Docker.
+- The Netforge server is reachable **only** from the internal LAN.
+- No direct Internet exposure.
+- If remote access is needed: go through the organization's VPN, no exceptions.
+- Firewall rules:
+  - Inbound: 443 from the admin VLAN only, 80 redirects to 443.
+  - Outbound: 443 to `login.microsoftonline.com`, 443 to Docker registries.
 
-## Hardening de la VM hôte
+## Host VM hardening
 
-- Debian/Ubuntu à jour, `unattended-upgrades` actif.
-- SSH clé uniquement, pas de mdp.
-- UFW/iptables restrictif.
-- `fail2ban` sur SSH.
-- Monitoring Zabbix de base (CPU, RAM, disque, services Docker).
+- Debian/Ubuntu up-to-date, `unattended-upgrades` enabled.
+- SSH key-only, no passwords.
+- Restrictive UFW/iptables.
+- `fail2ban` on SSH.
+- Basic Zabbix monitoring (CPU, RAM, disk, Docker services).
 
 ## Incident response
 
-En cas de compromission suspectée :
+In case of suspected compromise:
 
-1. `docker compose down` immédiatement → isole l'app.
-2. Préserver l'état : `docker compose logs > /tmp/forensic-logs.txt`, `pg_dump` complet horodaté.
-3. Révoquer le client secret Entra ID (régénérer).
-4. Invalider toutes les sessions : `TRUNCATE sessions`.
-5. Audit du `audit_log` récent pour détecter les mutations suspectes.
-6. Reset des mdp admin M365 des utilisateurs concernés.
-7. Post-mortem écrit, correctif, test, remise en service.
+1. `docker compose down` immediately → isolates the app.
+2. Preserve state: `docker compose logs > /tmp/forensic-logs.txt`, full timestamped `pg_dump`.
+3. Revoke the Entra ID client secret (regenerate).
+4. Invalidate all sessions: `TRUNCATE sessions`.
+5. Audit the recent `audit_log` for suspicious mutations.
+6. Reset the M365 admin passwords of the affected users.
+7. Written post-mortem, fix, test, bring back online.
 
-## Checklist audit annuel
+## Annual audit checklist
 
-- [ ] Rotation `ENTRA_CLIENT_SECRET`.
-- [ ] Revue des users `admin` — désactiver les ex-collaborateurs.
-- [ ] Revue de l'audit log pour anomalies.
-- [ ] Test de restauration backup.
-- [ ] Scan dépendances `pip-audit` + `npm audit`.
-- [ ] Mise à jour images Docker base.
-- [ ] Revue CSP et headers.
-- [ ] Test pénétration manuel basique (OWASP top 10 rapide).
+- [ ] Rotate `ENTRA_CLIENT_SECRET`.
+- [ ] Review `admin` users — deactivate former staff.
+- [ ] Review the audit log for anomalies.
+- [ ] Backup restore test.
+- [ ] Dependency scan (`pip-audit` + `npm audit`).
+- [ ] Update base Docker images.
+- [ ] Review CSP and headers.
+- [ ] Basic manual penetration test (quick OWASP top 10).

@@ -1,4 +1,4 @@
-"""Ports de switch + table port_vlan pour trunks."""
+"""Switch ports + port_vlan link table for trunks."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ class Port(Base):
 
 
 class PortVlan(Base):
-    """Table de liaison pour les VLANs tagués d'un port trunk."""
+    """Link table that stores the tagged VLAN list of a trunk port."""
 
     __tablename__ = "port_vlan"
 

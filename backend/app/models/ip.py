@@ -1,4 +1,4 @@
-"""IP addresses individuelles."""
+"""Individual IP addresses."""
 
 from __future__ import annotations
 

@@ -1,145 +1,145 @@
 # 10 — Roadmap
 
-Estimations en demi-journées (DJ) pour un développeur à temps partiel. À ajuster selon la disponibilité réelle.
+Estimates in half-days (HD) for a part-time developer. Adjust based on actual availability.
 
-## Phase 0 — Préparation (1-2 DJ)
+## Phase 0 — Preparation (1-2 HD)
 
-- [ ] Créer le repo Git (GitHub ou Gitea interne selon préférence).
-- [ ] Initialiser la structure de dossiers (`backend/`, `frontend/`, `docs/`).
-- [ ] Créer l'app Entra ID, noter les secrets dans un gestionnaire de mdp.
-- [ ] Provisionner la VM Linux Docker (Debian 12, 2 vCPU, 4 Go RAM).
-- [ ] Installer Docker + Docker Compose sur la VM.
-- [ ] Créer l'entrée DNS interne (p. ex. `netforge.example.local`).
+- [ ] Create the Git repo (GitHub or internal Gitea depending on preference).
+- [ ] Initialize the folder structure (`backend/`, `frontend/`, `docs/`).
+- [ ] Create the Entra ID app, store the secrets in a password manager.
+- [ ] Provision the Linux Docker VM (Debian 12, 2 vCPU, 4 GB RAM).
+- [ ] Install Docker + Docker Compose on the VM.
+- [ ] Create the internal DNS entry (e.g. `netforge.example.local`).
 
-## Phase 1 — Backend socle (4-6 DJ)
+## Phase 1 — Backend foundations (4-6 HD)
 
-- [ ] `backend/pyproject.toml` avec dépendances : fastapi, uvicorn, sqlalchemy, asyncpg, alembic, pydantic, authlib, httpx, python-multipart.
-- [ ] `app/main.py` : création FastAPI, CORS, middleware logging.
-- [ ] `app/config.py` : settings Pydantic chargés depuis env.
-- [ ] `app/db.py` : engine async SQLAlchemy.
-- [ ] Alembic initialisé, migration `0001_initial` avec toutes les tables de [03-data-model.md](03-data-model.md).
-- [ ] Migration `0002_seed` avec données de base (VLANs standards, site par défaut).
+- [ ] `backend/pyproject.toml` with dependencies: fastapi, uvicorn, sqlalchemy, asyncpg, alembic, pydantic, authlib, httpx, python-multipart.
+- [ ] `app/main.py`: FastAPI creation, CORS, logging middleware.
+- [ ] `app/config.py`: Pydantic settings loaded from env.
+- [ ] `app/db.py`: async SQLAlchemy engine.
+- [ ] Alembic initialized, `0001_initial` migration with all tables from [03-data-model.md](03-data-model.md).
+- [ ] `0002_seed` migration with baseline data (standard VLANs, default site).
 - [ ] Healthcheck `/api/health`.
-- [ ] Dockerfile backend + `docker-compose.dev.yml` minimal (backend + postgres).
-- [ ] Smoke test : `curl /api/health` OK depuis la VM.
+- [ ] Backend Dockerfile + minimal `docker-compose.dev.yml` (backend + postgres).
+- [ ] Smoke test: `curl /api/health` OK from the VM.
 
-## Phase 2 — Authentification (3-4 DJ)
+## Phase 2 — Authentication (3-4 HD)
 
-- [ ] Implémenter le flow OIDC Entra ID (`app/auth/oidc.py`).
+- [ ] Implement the OIDC Entra ID flow (`app/auth/oidc.py`).
 - [ ] Endpoints `/api/auth/login`, `/callback`, `/logout`, `/me`.
-- [ ] Table `sessions`, création / validation / renouvellement glissant.
-- [ ] Middleware `auth_middleware`.
-- [ ] Dépendance `require_role`.
-- [ ] JIT user provisioning + bootstrap admin par email.
-- [ ] Rate limiting `slowapi` sur `/auth/*`.
-- [ ] Tests manuels complets : login OK, cookie posé, /me renvoie bon user, logout vide session.
+- [ ] `sessions` table, creation / validation / sliding renewal.
+- [ ] `auth_middleware` middleware.
+- [ ] `require_role` dependency.
+- [ ] JIT user provisioning + bootstrap admin by email.
+- [ ] `slowapi` rate limiting on `/auth/*`.
+- [ ] Full manual tests: login OK, cookie set, /me returns the right user, logout clears the session.
 
-## Phase 3 — CRUD ressources core (5-7 DJ)
+## Phase 3 — Core resource CRUD (5-7 HD)
 
-Ordre recommandé (chaque item = schéma Pydantic + router + service + tests pytest basiques) :
+Recommended order (each item = Pydantic schema + router + service + basic pytest tests):
 
 - [ ] Sites + rooms.
 - [ ] VLANs.
-- [ ] Subnets (avec contrainte GiST testée).
-- [ ] IPs (avec trigger d'inclusion testé).
+- [ ] Subnets (with the GiST constraint tested).
+- [ ] IPs (with the inclusion trigger tested).
 - [ ] Devices.
-- [ ] Switches (avec auto-génération des ports à la création).
+- [ ] Switches (with auto-generation of ports on creation).
 - [ ] Ports.
 - [ ] Links.
-- [ ] Audit log : trigger ou middleware SQLAlchemy `after_flush` qui enregistre les mutations.
+- [ ] Audit log: trigger or SQLAlchemy `after_flush` middleware that records mutations.
 
-## Phase 4 — Endpoints utilitaires (2-3 DJ)
+## Phase 4 — Utility endpoints (2-3 HD)
 
-- [ ] `/api/search` : recherche globale.
+- [ ] `/api/search`: global search.
 - [ ] `/api/subnets/{id}/next-free`.
-- [ ] `/api/topology` : calcul du graphe.
-- [ ] `/api/subnets/{id}/ips` avec calcul des IPs libres côté SQL (`generate_series` + anti-join).
+- [ ] `/api/topology`: graph computation.
+- [ ] `/api/subnets/{id}/ips` with free-IP calculation on the SQL side (`generate_series` + anti-join).
 
-## Phase 5 — Import / Export CSV (3-4 DJ)
+## Phase 5 — CSV import / export (3-4 HD)
 
-- [ ] Parser CSV (lib `python-csv` stdlib suffit).
-- [ ] Validation par entité avec Pydantic models dédiés.
-- [ ] Mode dry-run.
-- [ ] Rapports d'erreur ligne par ligne.
+- [ ] CSV parser (stdlib `python-csv` is enough).
+- [ ] Per-entity validation with dedicated Pydantic models.
+- [ ] Dry-run mode.
+- [ ] Row-by-row error reports.
 - [ ] Endpoints `/api/imports/{entity}`, `/api/exports/{entity}`.
-- [ ] Tests sur fichiers CSV réalistes (prendre les Excel existants, les convertir CSV, tester).
+- [ ] Tests against realistic CSV files (take the existing Excel files, convert them to CSV, test).
 
-## Phase 6 — Frontend socle (4-5 DJ)
+## Phase 6 — Frontend foundations (4-5 HD)
 
-- [ ] Init projet Vite + Vue 3 + TS + Tailwind + Pinia + Vue Router.
-- [ ] Configurer `openapi-typescript` pour générer les types depuis `/api/openapi.json`.
-- [ ] `AppShell.vue` avec sidebar + top bar.
+- [ ] Init Vite + Vue 3 + TS + Tailwind + Pinia + Vue Router project.
+- [ ] Configure `openapi-typescript` to generate the types from `/api/openapi.json`.
+- [ ] `AppShell.vue` with sidebar + top bar.
 - [ ] Composables `useApi`, `useAuth`.
-- [ ] Router avec guard auth.
-- [ ] `LoginView` (bouton "Se connecter avec Microsoft").
+- [ ] Router with auth guard.
+- [ ] `LoginView` ("Sign in with Microsoft" button).
 - [ ] Toast system + `ConfirmDialog`.
-- [ ] Composants UI primitifs (Button, Input, Modal, Select).
+- [ ] Primitive UI components (Button, Input, Modal, Select).
 - [ ] Dark mode switch.
-- [ ] Dockerfile frontend (multi-stage build + Nginx).
+- [ ] Frontend Dockerfile (multi-stage build + Nginx).
 
-## Phase 7 — Pages CRUD (6-8 DJ)
+## Phase 7 — CRUD pages (6-8 HD)
 
-Par page : vue liste + vue détail + modales d'édition.
+Per page: list view + detail view + edit modals.
 
-- [ ] Dashboard (stats agrégées).
-- [ ] Subnets (liste, détail avec `IpGrid`, modale IP).
+- [ ] Dashboard (aggregated stats).
+- [ ] Subnets (list, detail with `IpGrid`, IP modal).
 - [ ] VLANs.
-- [ ] Switches (liste, détail avec `PortTable` + rack view, modale port).
+- [ ] Switches (list, detail with `PortTable` + rack view, port modal).
 - [ ] Devices.
-- [ ] Sites & rooms (dans `/settings` admin).
+- [ ] Sites & rooms (under `/settings` admin).
 - [ ] Audit log view.
 
-## Phase 8 — Topologie (3-4 DJ)
+## Phase 8 — Topology (3-4 HD)
 
 - [ ] `TopologyCanvas.vue` (Cytoscape + dagre + fcose).
-- [ ] `TopologyView.vue` avec panel latéral.
-- [ ] Filtre par site.
-- [ ] Export PNG.
+- [ ] `TopologyView.vue` with side panel.
+- [ ] Filter by site.
+- [ ] PNG export.
 
-## Phase 9 — Import UI (2 DJ)
+## Phase 9 — Import UI (2 HD)
 
-- [ ] `ImportView.vue` avec dropzone, preview, rapport post-import.
-- [ ] Intégration endpoints backend.
+- [ ] `ImportView.vue` with dropzone, preview, post-import report.
+- [ ] Backend endpoints integration.
 
-## Phase 10 — Polish & hardening (3-5 DJ)
+## Phase 10 — Polish & hardening (3-5 HD)
 
-- [ ] Loader global, états vides, error boundaries.
-- [ ] Recherche globale `GlobalSearch` (cmd+k).
-- [ ] Raccourcis clavier (`g s`, `g t`, ...).
-- [ ] Accessibilité (focus, ARIA, contraste).
-- [ ] CSP stricte vérifiée.
-- [ ] Tests E2E Playwright sur les 3 parcours critiques (ajouter IP, créer switch + ports, voir topologie).
-- [ ] Rate limiting complet sur les endpoints d'écriture.
+- [ ] Global loader, empty states, error boundaries.
+- [ ] `GlobalSearch` global search (cmd+k).
+- [ ] Keyboard shortcuts (`g s`, `g t`, ...).
+- [ ] Accessibility (focus, ARIA, contrast).
+- [ ] Strict CSP verified.
+- [ ] Playwright E2E tests on the 3 critical user flows (add IP, create switch + ports, view topology).
+- [ ] Full rate limiting on write endpoints.
 
-## Phase 11 — Go-live v1 (2 DJ)
+## Phase 11 — v1 go-live (2 HD)
 
-- [ ] Check-list de [07-deployment.md](07-deployment.md) complète.
-- [ ] Certificat TLS posé.
-- [ ] Backup cron actif et testé.
-- [ ] Template Zabbix importé.
-- [ ] Premier import CSV réel des subnets + VLANs + switches de votre parc.
-- [ ] Doc courte (½ page) à destination des utilisateurs.
+- [ ] [07-deployment.md](07-deployment.md) checklist complete.
+- [ ] TLS certificate installed.
+- [ ] Backup cron active and tested.
+- [ ] Zabbix template imported.
+- [ ] First real CSV import of the subnets + VLANs + switches of your network.
+- [ ] Short documentation (½ page) for the end users.
 
-## Total estimé v1
+## Estimated v1 total
 
-**~38 à 54 demi-journées**, soit **4 à 7 semaines** à temps partiel. À ajuster selon la disponibilité réelle.
+**~38 to 54 half-days**, i.e. **4 to 7 weeks** part-time. Adjust based on actual availability.
 
 ## Phase 12+ — v2
 
-Dans l'ordre de valeur perçue, pas de dates :
+In order of perceived value, no dates:
 
-1. **SNMP polling Aruba** : cron qui lit les tables `BRIDGE-MIB`, `IF-MIB`, `LLDP-MIB` et pré-remplit `port.connected_device`, découvre les liens LLDP automatiquement. Nécessite un worker Python dédié (container supplémentaire `netforge-poller`).
-2. **Sync Zabbix** : lecture API Zabbix (hosts, interfaces) → enrichissement auto des `devices`.
-3. **Alertes** : subnet > 90% plein, port down, lien qui tombe → webhook configurable (Slack, Telegram, Mattermost, email, etc.).
-4. **Inventaire étendu** : fiches équipement complètes (contrat, garantie, série, achat).
-5. **API token** pour intégrations externes (scripts PowerShell, automations).
+1. **Aruba SNMP polling**: a cron that reads `BRIDGE-MIB`, `IF-MIB`, `LLDP-MIB` tables and pre-fills `port.connected_device`, discovers LLDP links automatically. Requires a dedicated Python worker (additional `netforge-poller` container).
+2. **Zabbix sync**: read the Zabbix API (hosts, interfaces) → auto-enrichment of `devices`.
+3. **Alerts**: subnet > 90% full, port down, link dropping → configurable webhook (Slack, Telegram, Mattermost, email, etc.).
+4. **Extended inventory**: full device records (contract, warranty, serial, purchase).
+5. **API token** for external integrations (PowerShell scripts, automations).
 
-## Risques & mitigation
+## Risks & mitigations
 
-| Risque | Mitigation |
+| Risk | Mitigation |
 |--------|-----------|
-| Temps dev partiel, projet traîne | Découpage en phases livrables indépendamment. Phase 1-5 déjà utile même sans frontend (curl/postman). |
-| Entra ID complexe à configurer | Doc détaillée ici. En dernier recours, fallback sur auth locale admin pour dev / évaluation. |
-| Contraintes PostgreSQL avancées (GiST, triggers) peu familières | Migration dédiée, tests pytest sur chaque contrainte. |
-| Saisie manuelle initiale lourde | L'import CSV est conçu pour minimiser ce coût. Exports Excel existants → CSV → import massif. |
-| Scope creep (envie d'ajouter SNMP en v1) | Documenter proprement en v2, tenir bon. |
+| Part-time dev, project drags on | Split into phases that are independently shippable. Phases 1-5 are already useful even without a frontend (curl/postman). |
+| Entra ID complex to configure | Detailed doc here. As a last resort, fall back to local admin auth for dev / evaluation. |
+| Advanced PostgreSQL constraints (GiST, triggers) unfamiliar | Dedicated migration, pytest tests on every constraint. |
+| Heavy initial manual data entry | CSV import is designed to minimize this cost. Existing Excel exports → CSV → bulk import. |
+| Scope creep (urge to add SNMP in v1) | Document it cleanly in v2, hold the line. |

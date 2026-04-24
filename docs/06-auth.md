@@ -1,29 +1,29 @@
-# 06 — Authentification
+# 06 — Authentication
 
-## Principe
+## Principle
 
-Netforge s'authentifie via **Microsoft Entra ID (ex-Azure AD)** en OIDC, flow **Authorization Code + PKCE**. Le backend FastAPI gère la session via un cookie HTTP-only signé (pas de JWT stocké côté client).
+Netforge authenticates via **Microsoft Entra ID (formerly Azure AD)** over OIDC, using the **Authorization Code + PKCE** flow. The FastAPI backend manages the session via a signed HTTP-only cookie (no JWT stored on the client side).
 
-Motivations :
-- Tenant M365 de l'organisation déjà opérationnel → pas de gestion de mots de passe à part.
-- MFA hérité de la politique M365.
-- Gestion centralisée des départs (désactivation du compte M365 → accès Netforge coupé).
-- Provisioning automatique (JIT) : un utilisateur n'a pas besoin d'être créé à la main dans Netforge.
+Motivations:
+- The organization's M365 tenant is already operational → no separate password management.
+- MFA inherited from the M365 policy.
+- Centralized offboarding (disabling the M365 account → Netforge access cut).
+- Just-in-time (JIT) automatic provisioning: a user does not need to be created manually in Netforge.
 
-## Configuration côté Entra ID
+## Entra ID configuration
 
-1. Dans le portail Entra admin → **App registrations** → **New registration**.
-2. Nom : `Netforge`.
-3. Supported account types : *Accounts in this organizational directory only* (single tenant).
-4. Redirect URI : `Web` → `https://netforge.example.local/api/auth/callback` (remplacer par votre domaine).
-5. Une fois créée, noter :
+1. In the Entra admin portal → **App registrations** → **New registration**.
+2. Name: `Netforge`.
+3. Supported account types: *Accounts in this organizational directory only* (single tenant).
+4. Redirect URI: `Web` → `https://netforge.example.local/api/auth/callback` (replace with your domain).
+5. Once created, take note of:
    - **Application (client) ID** → `ENTRA_CLIENT_ID`
    - **Directory (tenant) ID** → `ENTRA_TENANT_ID`
-6. **Certificates & secrets** → **New client secret** (expiration 24 mois) → `ENTRA_CLIENT_SECRET`.
-7. **API permissions** → ajouter `openid`, `profile`, `email`, `User.Read` (Microsoft Graph, déléguées). Grant admin consent.
-8. **Token configuration** → ajouter claim optionnel `email` si manquant du token ID.
+6. **Certificates & secrets** → **New client secret** (expiration 24 months) → `ENTRA_CLIENT_SECRET`.
+7. **API permissions** → add `openid`, `profile`, `email`, `User.Read` (Microsoft Graph, delegated). Grant admin consent.
+8. **Token configuration** → add the optional `email` claim if missing from the ID token.
 
-## Flow applicatif
+## Application flow
 
 ```
 ┌─────────┐     1. GET /api/auth/login      ┌─────────────┐
@@ -32,38 +32,38 @@ Motivations :
 │         │ ◄─── 302 Entra authorize URL ─  │             │
 └─────────┘                                 └─────────────┘
      │
-     │ 2. Login + MFA sur login.microsoftonline.com
+     │ 2. Login + MFA on login.microsoftonline.com
      │
-     │ 3. 302 vers /api/auth/callback?code=...&state=...
+     │ 3. 302 to /api/auth/callback?code=...&state=...
      ▼
 ┌─────────┐                                 ┌─────────────┐
 │         │ ───── code + state ───────────► │             │
-│ Browser │                                 │   Backend   │ ─ 4. POST token endpoint Entra
-│         │ ◄── Set-Cookie session + 302 ── │             │ ─ 5. Valide ID token (sig, aud, iss, exp)
+│ Browser │                                 │   Backend   │ ─ 4. POST Entra token endpoint
+│         │ ◄── Set-Cookie session + 302 ── │             │ ─ 5. Validate ID token (sig, aud, iss, exp)
 └─────────┘                                 └─────────────┘ ─ 6. Upsert user (JIT)
-                                                             7. Crée session, pose cookie
+                                                             7. Create session, set cookie
 ```
 
 ## Sessions
 
-Pas de JWT exposé au client. À la place :
+No JWT exposed to the client. Instead:
 
-- Backend génère un `session_id` UUID v4.
-- Stocké en DB dans `sessions(id, user_id, created_at, expires_at, ip, user_agent)`.
-- Envoyé au client en cookie `netforge_session` avec :
+- The backend generates a `session_id` UUID v4.
+- Stored in DB in `sessions(id, user_id, created_at, expires_at, ip, user_agent)`.
+- Sent to the client in a `netforge_session` cookie with:
   - `HttpOnly`
   - `Secure`
   - `SameSite=Lax`
   - `Path=/`
   - `Max-Age=28800` (8h)
-- Chaque requête API : middleware lit le cookie, charge la session + user, attache à `request.state.user`.
-- Renouvellement glissant : à chaque requête, `expires_at` repoussé si moins d'1h restante.
+- On every API request: middleware reads the cookie, loads the session + user, attaches them to `request.state.user`.
+- Sliding renewal: on every request, `expires_at` is pushed back if less than 1h remains.
 
-Pourquoi pas JWT ? Parce qu'on ne peut pas révoquer un JWT sans blacklist. Avec des sessions en DB, logout/désactivation = suppression immédiate.
+Why not JWT? Because you cannot revoke a JWT without a blacklist. With sessions in DB, logout/deactivation = immediate removal.
 
-## Table `sessions`
+## `sessions` table
 
-| Colonne | Type | Contrainte |
+| Column | Type | Constraint |
 |---------|------|-----------|
 | id | uuid | PK DEFAULT gen_random_uuid() |
 | user_id | int | FK → users(id) ON DELETE CASCADE |
@@ -73,11 +73,11 @@ Pourquoi pas JWT ? Parce qu'on ne peut pas révoquer un JWT sans blacklist. Avec
 | ip | inet | |
 | user_agent | text | |
 
-Index : `(user_id)`, `(expires_at)` pour le cron de purge.
+Indexes: `(user_id)`, `(expires_at)` for the purge cron.
 
-## Provisioning JIT
+## JIT provisioning
 
-Au callback OIDC :
+On the OIDC callback:
 
 ```python
 oid = id_token["oid"]
@@ -90,7 +90,7 @@ if not user:
         entra_oid=oid,
         email=email,
         display_name=name,
-        role="viewer"  # rôle par défaut, admin change manuellement ensuite
+        role="viewer"  # default role, an admin changes it manually later
     )
     db.add(user)
 else:
@@ -100,20 +100,20 @@ user.last_login_at = now()
 db.commit()
 ```
 
-## Rôles et permissions
+## Roles and permissions
 
 ### `viewer`
-- Lecture seule sur toutes les ressources.
-- Peut utiliser la recherche globale, la topologie, exporter CSV.
-- Ne peut **pas** : créer, modifier, supprimer, importer, consulter l'audit log des autres.
+- Read-only on every resource.
+- Can use the global search, the topology, export CSV.
+- **Cannot**: create, modify, delete, import, view other users' audit log.
 
 ### `admin`
-- Tout ce que fait `viewer` + écriture.
-- Gère les users (promote `viewer` → `admin`, demote, soft-delete).
-- Consulte l'audit log complet.
-- Accède à `/settings`.
+- Everything a `viewer` can do + writes.
+- Manages users (promote `viewer` → `admin`, demote, soft-delete).
+- Reads the full audit log.
+- Access to `/settings`.
 
-Pas de rôle intermédiaire v1. Si besoin d'un rôle "network only" ou "site X only", on verra en v2.
+No intermediate role in v1. If a "network only" or "site X only" role is needed, we'll see in v2.
 
 ## Middleware
 
@@ -130,12 +130,12 @@ async def auth_middleware(request: Request, call_next):
         if not session:
             return JSONResponse({"error": {"code": "AUTH_REQUIRED"}}, 401)
         request.state.user = session.user
-        # renouvellement glissant
+        # sliding renewal
         await touch_session(session)
     return await call_next(request)
 ```
 
-Dépendance FastAPI pour exiger un rôle :
+FastAPI dependency to require a role:
 
 ```python
 def require_role(*roles):
@@ -150,29 +150,29 @@ def require_role(*roles):
 async def create_subnet(...): ...
 ```
 
-## Premier admin
+## First admin
 
-Le tout premier utilisateur à se connecter est automatiquement `admin` (bootstrap). Les suivants arrivent `viewer` et un admin doit les promouvoir manuellement dans `/settings/users`.
+The very first user to log in is automatically promoted to `admin` (bootstrap). Subsequent ones arrive as `viewer` and an admin must promote them manually in `/settings/users`.
 
-Alternative : variable `NETFORGE_BOOTSTRAP_ADMIN_EMAIL=admin@example.com` qui force le rôle admin pour cet email à la première connexion.
+Alternative: the `NETFORGE_BOOTSTRAP_ADMIN_EMAIL=admin@example.com` variable forces the admin role for that email on first login.
 
 ## CSRF
 
-Les cookies en `SameSite=Lax` protègent contre la plupart des attaques CSRF sur mutations. Pour les endpoints sensibles (import CSV, delete en cascade), ajout d'un header `X-Csrf-Token` émis par l'endpoint `/api/auth/me` et vérifié côté backend.
+Cookies with `SameSite=Lax` block most CSRF attacks on mutations. For sensitive endpoints (CSV import, cascading delete), an extra `X-Csrf-Token` header is required — emitted by the `/api/auth/me` endpoint and verified on the backend.
 
 ## Logout
 
-`POST /api/auth/logout` :
-1. Supprime la session en DB.
-2. Retourne `Set-Cookie: netforge_session=; Max-Age=0`.
-3. Optionnel : redirection vers `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/logout?post_logout_redirect_uri=<PUBLIC_URL>/` pour déconnecter aussi d'Entra.
+`POST /api/auth/logout`:
+1. Deletes the session in DB.
+2. Returns `Set-Cookie: netforge_session=; Max-Age=0`.
+3. Optional: redirect to `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/logout?post_logout_redirect_uri=<PUBLIC_URL>/` to also sign out from Entra.
 
 ## Rate limiting
 
-Limite sur `/api/auth/login` et `/api/auth/callback` : 20 req/min par IP (via `slowapi`). Protège contre scan automatique du endpoint de callback.
+Limit on `/api/auth/login` and `/api/auth/callback`: 20 req/min per IP (via `slowapi`). Protects against automated scans of the callback endpoint.
 
 ## Secrets
 
-- `ENTRA_CLIENT_SECRET`, `SESSION_SIGNING_KEY`, `POSTGRES_PASSWORD` tous dans `.env` (jamais commité).
-- En prod, lecture depuis variables d'environnement Docker (Portainer / systemd env file).
-- Rotation `ENTRA_CLIENT_SECRET` annuelle → alerte 60 jours avant expiration via Entra.
+- `ENTRA_CLIENT_SECRET`, `SESSION_SIGNING_KEY`, `POSTGRES_PASSWORD` all live in `.env` (never committed).
+- In production, read from Docker environment variables (Portainer / systemd env file).
+- Annual `ENTRA_CLIENT_SECRET` rotation → alert 60 days before expiration via Entra.
