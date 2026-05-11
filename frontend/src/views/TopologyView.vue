@@ -40,10 +40,13 @@ async function load() {
     // Parallel: graph + switch metadata for the side panel + sites/rooms for filtering.
     // The /api/topology payload alone doesn't include the site_id (only room_id),
     // so we resolve the site via rooms[room_id].site_id.
+    // Backend caps `page_size` at 200 (rejects >200 with 422). For v1 that's
+    // larger than any realistic switch/room inventory; if a single site ever
+    // outgrows 200 we'll add pagination here.
     const [topo, sw, rms, sts] = await Promise.all([
       topologyApi.get(),
-      switchesApi.list({ page_size: 500 }),
-      roomsApi.list({ page_size: 500 }),
+      switchesApi.list({ page_size: 200 }),
+      roomsApi.list({ page_size: 200 }),
       sitesApi.list({ page_size: 200 }),
     ])
     allNodes.value = topo.nodes
