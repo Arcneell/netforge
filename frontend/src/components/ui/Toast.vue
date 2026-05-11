@@ -15,7 +15,7 @@ const icons = {
 } as const
 
 const kindClasses: Record<ToastKind, string> = {
-  info: 'text-primary-600 bg-primary-50 dark:bg-primary-100/20',
+  info: 'text-primary-600 bg-primary-50 dark:bg-primary-900/30',
   success: 'text-success bg-success/10',
   warning: 'text-warning bg-warning/10',
   error: 'text-danger bg-danger/10',

@@ -226,7 +226,7 @@ function statusKey(status: string): StatusKey {
             :class="[
               'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
               view === 'grid'
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-100/30 dark:text-primary-50'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
                 : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
             ]"
             @click="view = 'grid'"
@@ -240,7 +240,7 @@ function statusKey(status: string): StatusKey {
             :class="[
               'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
               view === 'table'
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-100/30 dark:text-primary-50'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
                 : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
             ]"
             @click="view = 'table'"

@@ -29,7 +29,7 @@ const options = [
       :class="[
         'flex items-center justify-center w-7 h-7 rounded transition',
         theme === opt.value
-          ? 'bg-primary-100 text-primary-700 dark:bg-primary-100/30 dark:text-primary-50'
+          ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
           : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
       ]"
       @click="ui.setTheme(opt.value)"

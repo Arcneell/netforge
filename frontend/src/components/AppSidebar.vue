@@ -70,7 +70,7 @@ const visible = computed(() => items.filter((i) => !i.adminOnly || isAdmin.value
                 'group flex items-center gap-3 rounded-md text-sm font-medium transition',
                 sidebarCollapsed ? 'justify-center px-2 py-2' : 'px-3 py-2',
                 (item.to === '/' ? isExactActive : isActive)
-                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-100/20 dark:text-primary-50'
+                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
                   : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
               ]"
               :title="sidebarCollapsed ? $t(item.labelKey) : undefined"

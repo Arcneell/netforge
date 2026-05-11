@@ -17,7 +17,7 @@ const props = withDefaults(
 const tonePresets: Record<Tone, string> = {
   neutral: 'bg-muted text-fg-muted border-border',
   primary:
-    'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-100/20 dark:text-primary-50 dark:border-primary-100/30',
+    'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-700/50',
   success: 'bg-success/10 text-success border-success/30',
   warning: 'bg-warning/10 text-warning border-warning/30',
   danger: 'bg-danger/10 text-danger border-danger/30',
