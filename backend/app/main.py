@@ -11,7 +11,21 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
 from app.config import get_settings
-from app.routers import auth, health, ips, rooms, sites, subnets, vlans
+from app.routers import (
+    audit,
+    auth,
+    devices,
+    health,
+    ips,
+    links,
+    ports,
+    rooms,
+    sites,
+    subnets,
+    switches,
+    vlans,
+)
+from app.services.audit import register_audit_listeners
 
 logger = logging.getLogger("netforge")
 
@@ -87,6 +101,10 @@ def create_app() -> FastAPI:
         response.headers["x-request-id"] = request_id
         return response
 
+    # Wire ORM event listeners so every mutation produces an audit_log row.
+    # Idempotent: safe to call multiple times in tests / reloads.
+    register_audit_listeners()
+
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
     app.include_router(sites.router, prefix="/api")
@@ -94,6 +112,12 @@ def create_app() -> FastAPI:
     app.include_router(vlans.router, prefix="/api")
     app.include_router(subnets.router, prefix="/api")
     app.include_router(ips.router, prefix="/api")
+    app.include_router(devices.router, prefix="/api")
+    app.include_router(switches.router, prefix="/api")
+    app.include_router(ports.nested_router, prefix="/api")
+    app.include_router(ports.router, prefix="/api")
+    app.include_router(links.router, prefix="/api")
+    app.include_router(audit.router, prefix="/api")
 
     return app
 

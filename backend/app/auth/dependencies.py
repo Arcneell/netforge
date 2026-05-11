@@ -64,6 +64,12 @@ async def get_current_user(
         raise _auth_required()
 
     await touch_session(db, session, settings)
+
+    # Make the user id visible to the audit-log SQLAlchemy listeners.
+    from app.services.audit import current_user_id_var
+
+    current_user_id_var.set(user.id)
+
     return user
 
 
