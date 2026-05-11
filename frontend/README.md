@@ -17,16 +17,30 @@ Vue 3 + TypeScript + Vite + Tailwind + Pinia SPA for the NetForge IPAM.
 
 ## Setup
 
+### Option A — everything in Docker (recommended)
+
+From the repo root:
+
 ```bash
+docker compose -f docker-compose.dev.yml up -d
+```
+
+This brings up Postgres, the backend, and the Vite dev server. The SPA is
+served at <http://localhost:5173> with HMR enabled and `/api/*` proxied to
+the backend container.
+
+### Option B — Vite on the host (faster on Windows / macOS)
+
+```bash
+docker compose -f ../docker-compose.dev.yml up -d postgres backend
 cd frontend
 cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-The dev server runs on http://localhost:5173 and proxies `/api/*` to
-`VITE_BACKEND_URL` (default `http://localhost:8000`). Start the backend
-first (`docker compose -f ../docker-compose.dev.yml up -d`).
+The dev server runs on <http://localhost:5173> and proxies `/api/*` to
+`VITE_BACKEND_URL` (default `http://localhost:8000`).
 
 ### Generate API types
 
