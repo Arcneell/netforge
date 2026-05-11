@@ -9,7 +9,13 @@ from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
 from app.models.user import UserRole
 from app.schemas.common import Page, PageParams
-from app.schemas.subnet import SubnetCreate, SubnetRead, SubnetUpdate
+from app.schemas.subnet import (
+    NextFreeIpResponse,
+    SubnetCreate,
+    SubnetIpsResponse,
+    SubnetRead,
+    SubnetUpdate,
+)
 from app.services import subnets as service
 
 router = APIRouter(prefix="/subnets", tags=["subnets"])
@@ -71,3 +77,30 @@ async def update_subnet(
 )
 async def delete_subnet(subnet_id: int, db: AsyncSession = Depends(get_db)) -> None:
     await service.delete_subnet(db, subnet_id)
+
+
+# --- Phase 4 utility endpoints -----------------------------------------------
+
+
+@router.get(
+    "/{subnet_id}/ips",
+    response_model=SubnetIpsResponse,
+    dependencies=[Depends(get_current_user)],
+)
+async def list_subnet_ips(
+    subnet_id: int, db: AsyncSession = Depends(get_db)
+) -> SubnetIpsResponse:
+    subnet, ips = await service.list_subnet_ips(db, subnet_id)
+    return SubnetIpsResponse(subnet=SubnetRead.model_validate(subnet), ips=ips)
+
+
+@router.post(
+    "/{subnet_id}/next-free",
+    response_model=NextFreeIpResponse,
+    dependencies=[Depends(get_current_user)],
+)
+async def next_free_ip(
+    subnet_id: int, db: AsyncSession = Depends(get_db)
+) -> NextFreeIpResponse:
+    address = await service.next_free_ip(db, subnet_id)
+    return NextFreeIpResponse(address=address)

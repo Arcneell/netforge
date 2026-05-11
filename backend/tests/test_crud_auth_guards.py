@@ -78,6 +78,9 @@ _READ_PATHS = [
     "/api/switches/1/ports",
     "/api/links",
     "/api/audit",
+    "/api/search?q=foo",
+    "/api/topology",
+    "/api/subnets/1/ips",
 ]
 
 # Write endpoints — minimal payloads sufficient to trip the dependency chain.
@@ -101,6 +104,9 @@ _WRITE_CASES = [
     ("DELETE", "/api/switches/1", None),
     ("DELETE", "/api/links/1", None),
     ("DELETE", "/api/ports/1/vlans/2", None),
+    # next-free is a POST that reads (no body) — viewer can call it; only
+    # the anonymous case is rejected. Excluded from the "writes forbidden
+    # to viewer" parametrisation below; covered by the dedicated test.
 ]
 
 
@@ -140,3 +146,12 @@ async def test_audit_endpoint_forbidden_for_viewer(client: AsyncClient) -> None:
     _install_db(user=_viewer())
     r = await client.get("/api/audit", cookies={"netforge_session": "sess"})
     assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_next_free_requires_authentication(client: AsyncClient) -> None:
+    """`POST /api/subnets/{id}/next-free` is read-only conceptually,
+    so a viewer is allowed but an anonymous request is rejected."""
+    _install_db(user=None)
+    r = await client.post("/api/subnets/1/next-free")
+    assert r.status_code == 401
