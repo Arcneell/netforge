@@ -1043,6 +1043,8 @@ export interface components {
             label: string;
             /** Context */
             context?: string | null;
+            /** Parent Id */
+            parent_id?: number | null;
         };
         /** SiteCreate */
         SiteCreate: {

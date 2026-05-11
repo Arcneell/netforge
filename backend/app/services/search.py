@@ -49,6 +49,7 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
                 id=ip.id,
                 label=str(ip.address),
                 context=" / ".join(context_bits) if context_bits else None,
+                parent_id=ip.subnet_id,
             )
         )
 
@@ -118,6 +119,7 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
                 id=port.id,
                 label=f"{sw.name} / port {port.number}",
                 context=port.label,
+                parent_id=sw.id,
             )
         )
 
