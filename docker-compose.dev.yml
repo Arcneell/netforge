@@ -46,9 +46,17 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netforge}:${POSTGRES_PASSWORD:-dev}@postgres:5432/${POSTGRES_DB:-netforge}
       SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:-dev-signing-key-not-for-prod}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
-      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
-      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
-      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
+      # Default to the "dev" auth provider for local stacks: no real IdP,
+      # /api/auth/login signs you straight in as DEV_ADMIN_EMAIL (admin role).
+      # Switch to github / oidc in .env once you want to test the real flow.
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-dev}
+      DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-admin@example.com}
+      DEV_ADMIN_NAME: ${DEV_ADMIN_NAME:-Dev Admin}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       # PUBLIC_URL drives OAuth/OIDC redirect URIs. When the SPA proxies /api/*,
       # the browser-visible host is the Vite dev server (5173), so callbacks
       # must come back through there to land on the SPA after auth.
@@ -71,7 +79,7 @@ services:
       # Inside the docker network, the backend is reachable by service name.
       # `vite.config.ts` reads VITE_BACKEND_URL to wire the /api proxy.
       VITE_BACKEND_URL: http://backend:8000
-      VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-oidc}
+      VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-dev}
       # Polling-based file watcher — Docker Desktop on Windows / WSL doesn't
       # propagate inotify events into the container, so HMR needs this to fire.
       CHOKIDAR_USEPOLLING: "true"
