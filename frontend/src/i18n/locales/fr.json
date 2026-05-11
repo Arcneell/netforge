@@ -10,6 +10,8 @@
     "delete": "Supprimer",
     "edit": "Modifier",
     "create": "Créer",
+    "add": "Ajouter",
+    "remove": "Retirer",
     "search": "Rechercher",
     "close": "Fermer",
     "confirm": "Confirmer",
@@ -19,7 +21,58 @@
     "error": "Erreur",
     "success": "Succès",
     "back": "Retour",
-    "comingSoon": "Bientôt disponible"
+    "comingSoon": "Bientôt disponible",
+    "all": "Tous",
+    "none": "Aucun",
+    "filters": "Filtres",
+    "reset": "Réinitialiser",
+    "apply": "Appliquer",
+    "more": "Plus",
+    "viewDetails": "Voir le détail",
+    "copy": "Copier",
+    "copied": "Copié",
+    "openInNewTab": "Ouvrir dans un nouvel onglet",
+    "optional": "Facultatif",
+    "required": "Obligatoire",
+    "empty": {
+      "title": "Aucune donnée pour le moment",
+      "description": "Les éléments ajoutés apparaîtront ici."
+    },
+    "pagination": {
+      "range": "{start}–{end} sur {total}",
+      "pageOf": "{page} / {total}",
+      "previous": "Page précédente",
+      "next": "Page suivante"
+    },
+    "confirmDelete": {
+      "title": "Supprimer {label} ?",
+      "message": "Cette action est irréversible."
+    },
+    "validation": {
+      "required": "Ce champ est obligatoire.",
+      "invalidCidr": "Entrez un CIDR IPv4 valide, ex. 10.0.30.0/24.",
+      "invalidIp": "Entrez une adresse IPv4 valide.",
+      "invalidMac": "Entrez une adresse MAC valide, ex. aa:bb:cc:dd:ee:ff.",
+      "invalidHexColor": "Entrez une couleur hexadécimale, ex. #2563eb.",
+      "vlanIdRange": "L'ID VLAN doit être compris entre 1 et 4094.",
+      "maxLength": "{max} caractères maximum.",
+      "minLength": "{min} caractères minimum.",
+      "pattern": "Format invalide."
+    }
+  },
+  "errorCodes": {
+    "NOT_FOUND": "Ressource introuvable.",
+    "SUBNET_OVERLAP": "Ce CIDR chevauche un sous-réseau existant.",
+    "DUPLICATE_CODE": "Ce code est déjà utilisé.",
+    "DUPLICATE_VLAN_ID": "Cet ID VLAN existe déjà.",
+    "VLAN_ID_OUT_OF_RANGE": "L'ID VLAN doit être entre 1 et 4094.",
+    "DUPLICATE_IP": "Cette IP est déjà enregistrée.",
+    "DUPLICATE_NAME": "Ce nom est déjà pris.",
+    "DUPLICATE_PORT": "Un port avec ce numéro existe déjà sur ce commutateur.",
+    "DUPLICATE_LINK": "Un lien existe déjà entre ces deux ports.",
+    "INVALID_LINK": "Un port ne peut pas être lié à lui-même.",
+    "INTEGRITY_VIOLATION": "Violation de contrainte en base.",
+    "NETWORK_ERROR": "Serveur injoignable."
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -75,5 +128,232 @@
     "menu": {
       "signedInAs": "Connecté en tant que"
     }
+  },
+  "dashboard": {
+    "subtitle": "Vue d'ensemble de votre inventaire réseau.",
+    "stats": {
+      "subnets": "Sous-réseaux",
+      "vlans": "VLAN",
+      "switches": "Commutateurs",
+      "devices": "Équipements",
+      "ipsUsed": "IP utilisées",
+      "ipsTotal": "IP totales",
+      "portsUsed": "Ports utilisés",
+      "portsTotal": "Ports totaux"
+    },
+    "recent": {
+      "title": "Activité récente",
+      "empty": "Aucun changement enregistré.",
+      "viewAll": "Voir le journal complet"
+    }
+  },
+  "site": {
+    "label": "Site",
+    "labelPlural": "Sites",
+    "fields": {
+      "code": "Code",
+      "name": "Nom",
+      "address": "Adresse"
+    },
+    "new": "Nouveau site",
+    "edit": "Modifier le site",
+    "empty": "Aucun site — créez-en un pour commencer."
+  },
+  "room": {
+    "label": "Salle",
+    "labelPlural": "Salles",
+    "fields": {
+      "site": "Site",
+      "code": "Code",
+      "description": "Description"
+    },
+    "new": "Nouvelle salle",
+    "edit": "Modifier la salle",
+    "empty": "Aucune salle pour le moment."
+  },
+  "vlan": {
+    "label": "VLAN",
+    "labelPlural": "VLAN",
+    "subtitle": "VLAN et leurs couleurs associées.",
+    "fields": {
+      "vlanId": "ID VLAN",
+      "name": "Nom",
+      "color": "Couleur",
+      "description": "Description"
+    },
+    "new": "Nouveau VLAN",
+    "edit": "Modifier le VLAN",
+    "empty": "Aucun VLAN — créez-en un pour l'assigner à des sous-réseaux et des ports."
+  },
+  "subnet": {
+    "label": "Sous-réseau",
+    "labelPlural": "Sous-réseaux",
+    "subtitle": "Sous-réseaux IPv4 avec détection de chevauchement et statistiques d'usage.",
+    "fields": {
+      "cidr": "CIDR",
+      "gateway": "Passerelle",
+      "vlan": "VLAN",
+      "site": "Site",
+      "description": "Description",
+      "dhcp": "DHCP",
+      "dhcpEnabled": "DHCP activé",
+      "dhcpRangeStart": "Début plage DHCP",
+      "dhcpRangeEnd": "Fin plage DHCP",
+      "usage": "Usage",
+      "total": "Total",
+      "used": "Utilisées",
+      "free": "Libres"
+    },
+    "new": "Nouveau sous-réseau",
+    "edit": "Modifier le sous-réseau",
+    "empty": "Aucun sous-réseau — créez-en un pour planifier votre plan d'adressage.",
+    "viewGrid": "Vue grille",
+    "viewTable": "Vue tableau",
+    "exportCsv": "Exporter CSV",
+    "nextFree": "Prochaine IP libre",
+    "nextFreeFound": "Prochaine adresse libre : {address}",
+    "nextFreeNone": "Aucune adresse libre dans ce sous-réseau.",
+    "stats": {
+      "used": "{count} utilisées",
+      "free": "{count} libres",
+      "total": "sur {count}"
+    }
+  },
+  "ip": {
+    "label": "IP",
+    "labelPlural": "IP",
+    "fields": {
+      "address": "Adresse",
+      "hostname": "Nom d'hôte",
+      "mac": "Adresse MAC",
+      "device": "Équipement",
+      "status": "Statut",
+      "description": "Description"
+    },
+    "new": "Nouvelle IP",
+    "edit": "Modifier l'IP",
+    "status": {
+      "reserved": "Réservée",
+      "assigned": "Attribuée",
+      "dhcp": "DHCP",
+      "free": "Libre"
+    }
+  },
+  "device": {
+    "label": "Équipement",
+    "labelPlural": "Équipements",
+    "subtitle": "Serveurs, postes, bornes Wi-Fi, imprimantes…",
+    "fields": {
+      "name": "Nom",
+      "type": "Type",
+      "vendor": "Fabricant",
+      "model": "Modèle",
+      "serial": "N° de série",
+      "room": "Salle",
+      "description": "Description"
+    },
+    "new": "Nouvel équipement",
+    "edit": "Modifier l'équipement",
+    "empty": "Aucun équipement pour le moment.",
+    "types": {
+      "server": "Serveur",
+      "desktop": "Poste fixe",
+      "laptop": "Portable",
+      "printer": "Imprimante",
+      "phone": "Téléphone",
+      "ap": "Borne Wi-Fi",
+      "camera": "Caméra",
+      "ups": "Onduleur",
+      "other": "Autre"
+    }
+  },
+  "switch": {
+    "label": "Commutateur",
+    "labelPlural": "Commutateurs",
+    "subtitle": "Commutateurs, plans de ports et liens inter-équipements.",
+    "fields": {
+      "name": "Nom",
+      "vendor": "Fabricant",
+      "model": "Modèle",
+      "serial": "N° de série",
+      "managementIp": "IP de management",
+      "room": "Salle",
+      "rackPosition": "Position rack",
+      "portCount": "Nombre de ports",
+      "firmware": "Firmware",
+      "snmpCommunity": "Communauté SNMP",
+      "description": "Description"
+    },
+    "new": "Nouveau commutateur",
+    "edit": "Modifier le commutateur",
+    "empty": "Aucun commutateur — créez-en un pour générer ses ports automatiquement.",
+    "portCountImmutable": "Le nombre de ports ne peut pas être modifié après création.",
+    "rackView": "Vue rack",
+    "ports": "Ports",
+    "links": "Liens",
+    "portStats": "{used} ports utilisés sur {total}",
+    "snmpCommunityHint": "Stockée telle quelle. Visible uniquement par les administrateurs."
+  },
+  "port": {
+    "label": "Port",
+    "labelPlural": "Ports",
+    "fields": {
+      "number": "#",
+      "label": "Libellé",
+      "mode": "Mode",
+      "nativeVlan": "VLAN natif",
+      "taggedVlans": "VLAN tagués",
+      "adminStatus": "Statut admin",
+      "connectedDevice": "Équipement connecté",
+      "connectedIp": "IP connectée",
+      "notes": "Notes"
+    },
+    "edit": "Modifier le port",
+    "modes": {
+      "access": "Accès",
+      "trunk": "Trunk",
+      "hybrid": "Hybride",
+      "disabled": "Désactivé"
+    },
+    "adminStatus": {
+      "up": "Actif",
+      "down": "Inactif"
+    },
+    "addTaggedVlan": "Ajouter un VLAN tagué",
+    "noTaggedVlans": "Aucun VLAN tagué."
+  },
+  "audit": {
+    "subtitle": "Toutes les créations, modifications et suppressions sont tracées ici.",
+    "fields": {
+      "when": "Quand",
+      "user": "Utilisateur",
+      "action": "Action",
+      "entity": "Entité",
+      "entityId": "ID",
+      "changes": "Changements",
+      "ip": "IP d'origine",
+      "userAgent": "User agent"
+    },
+    "actions": {
+      "create": "Création",
+      "update": "Modification",
+      "delete": "Suppression"
+    },
+    "filters": {
+      "entity": "Type d'entité",
+      "entityId": "ID d'entité",
+      "userId": "ID utilisateur",
+      "from": "Du",
+      "to": "Au"
+    },
+    "viewDiff": "Voir le diff",
+    "before": "Avant",
+    "after": "Après",
+    "noChanges": "Aucune modification de champ enregistrée."
+  },
+  "settings": {
+    "subtitle": "Gérez les sites et les salles. Seuls les administrateurs peuvent modifier.",
+    "sitesTab": "Sites",
+    "roomsTab": "Salles"
   }
 }

@@ -10,6 +10,8 @@
     "delete": "Delete",
     "edit": "Edit",
     "create": "Create",
+    "add": "Add",
+    "remove": "Remove",
     "search": "Search",
     "close": "Close",
     "confirm": "Confirm",
@@ -19,7 +21,58 @@
     "error": "Error",
     "success": "Success",
     "back": "Back",
-    "comingSoon": "Coming soon"
+    "comingSoon": "Coming soon",
+    "all": "All",
+    "none": "None",
+    "filters": "Filters",
+    "reset": "Reset",
+    "apply": "Apply",
+    "more": "More",
+    "viewDetails": "View details",
+    "copy": "Copy",
+    "copied": "Copied",
+    "openInNewTab": "Open in new tab",
+    "optional": "Optional",
+    "required": "Required",
+    "empty": {
+      "title": "Nothing here yet",
+      "description": "Once you add data it will show up in this list."
+    },
+    "pagination": {
+      "range": "{start}–{end} of {total}",
+      "pageOf": "{page} / {total}",
+      "previous": "Previous page",
+      "next": "Next page"
+    },
+    "confirmDelete": {
+      "title": "Delete {label}?",
+      "message": "This action cannot be undone."
+    },
+    "validation": {
+      "required": "This field is required.",
+      "invalidCidr": "Enter a valid IPv4 CIDR, e.g. 10.0.30.0/24.",
+      "invalidIp": "Enter a valid IPv4 address.",
+      "invalidMac": "Enter a valid MAC address, e.g. aa:bb:cc:dd:ee:ff.",
+      "invalidHexColor": "Enter a hex color, e.g. #2563eb.",
+      "vlanIdRange": "VLAN ID must be between 1 and 4094.",
+      "maxLength": "Max {max} characters.",
+      "minLength": "Min {min} characters.",
+      "pattern": "Invalid format."
+    }
+  },
+  "errorCodes": {
+    "NOT_FOUND": "Resource not found.",
+    "SUBNET_OVERLAP": "This CIDR overlaps an existing subnet.",
+    "DUPLICATE_CODE": "This code is already in use.",
+    "DUPLICATE_VLAN_ID": "This VLAN ID already exists.",
+    "VLAN_ID_OUT_OF_RANGE": "VLAN ID must be between 1 and 4094.",
+    "DUPLICATE_IP": "This IP is already registered.",
+    "DUPLICATE_NAME": "This name is already taken.",
+    "DUPLICATE_PORT": "A port with this number already exists on this switch.",
+    "DUPLICATE_LINK": "A link between these two ports already exists.",
+    "INVALID_LINK": "A port cannot link to itself.",
+    "INTEGRITY_VIOLATION": "Database constraint violation.",
+    "NETWORK_ERROR": "Cannot reach the server."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -75,5 +128,232 @@
     "menu": {
       "signedInAs": "Signed in as"
     }
+  },
+  "dashboard": {
+    "subtitle": "Overview of your network inventory.",
+    "stats": {
+      "subnets": "Subnets",
+      "vlans": "VLANs",
+      "switches": "Switches",
+      "devices": "Devices",
+      "ipsUsed": "IPs used",
+      "ipsTotal": "IPs total",
+      "portsUsed": "Ports used",
+      "portsTotal": "Ports total"
+    },
+    "recent": {
+      "title": "Recent activity",
+      "empty": "No recorded changes yet.",
+      "viewAll": "View full audit log"
+    }
+  },
+  "site": {
+    "label": "Site",
+    "labelPlural": "Sites",
+    "fields": {
+      "code": "Code",
+      "name": "Name",
+      "address": "Address"
+    },
+    "new": "New site",
+    "edit": "Edit site",
+    "empty": "No sites yet — create one to start tracking inventory."
+  },
+  "room": {
+    "label": "Room",
+    "labelPlural": "Rooms",
+    "fields": {
+      "site": "Site",
+      "code": "Code",
+      "description": "Description"
+    },
+    "new": "New room",
+    "edit": "Edit room",
+    "empty": "No rooms yet."
+  },
+  "vlan": {
+    "label": "VLAN",
+    "labelPlural": "VLANs",
+    "subtitle": "Tag-aware VLANs and their colors.",
+    "fields": {
+      "vlanId": "VLAN ID",
+      "name": "Name",
+      "color": "Color",
+      "description": "Description"
+    },
+    "new": "New VLAN",
+    "edit": "Edit VLAN",
+    "empty": "No VLANs yet — create one to assign to subnets and switch ports."
+  },
+  "subnet": {
+    "label": "Subnet",
+    "labelPlural": "Subnets",
+    "subtitle": "IPv4 subnets with overlap prevention and usage stats.",
+    "fields": {
+      "cidr": "CIDR",
+      "gateway": "Gateway",
+      "vlan": "VLAN",
+      "site": "Site",
+      "description": "Description",
+      "dhcp": "DHCP",
+      "dhcpEnabled": "DHCP enabled",
+      "dhcpRangeStart": "DHCP range start",
+      "dhcpRangeEnd": "DHCP range end",
+      "usage": "Usage",
+      "total": "Total",
+      "used": "Used",
+      "free": "Free"
+    },
+    "new": "New subnet",
+    "edit": "Edit subnet",
+    "empty": "No subnets yet — create one to start planning your IP space.",
+    "viewGrid": "Grid view",
+    "viewTable": "Table view",
+    "exportCsv": "Export CSV",
+    "nextFree": "Next free IP",
+    "nextFreeFound": "Next free address: {address}",
+    "nextFreeNone": "No free address left in this subnet.",
+    "stats": {
+      "used": "{count} used",
+      "free": "{count} free",
+      "total": "of {count}"
+    }
+  },
+  "ip": {
+    "label": "IP",
+    "labelPlural": "IPs",
+    "fields": {
+      "address": "Address",
+      "hostname": "Hostname",
+      "mac": "MAC address",
+      "device": "Device",
+      "status": "Status",
+      "description": "Description"
+    },
+    "new": "New IP",
+    "edit": "Edit IP",
+    "status": {
+      "reserved": "Reserved",
+      "assigned": "Assigned",
+      "dhcp": "DHCP",
+      "free": "Free"
+    }
+  },
+  "device": {
+    "label": "Device",
+    "labelPlural": "Devices",
+    "subtitle": "Servers, workstations, access points, printers…",
+    "fields": {
+      "name": "Name",
+      "type": "Type",
+      "vendor": "Vendor",
+      "model": "Model",
+      "serial": "Serial number",
+      "room": "Room",
+      "description": "Description"
+    },
+    "new": "New device",
+    "edit": "Edit device",
+    "empty": "No devices yet.",
+    "types": {
+      "server": "Server",
+      "desktop": "Desktop",
+      "laptop": "Laptop",
+      "printer": "Printer",
+      "phone": "Phone",
+      "ap": "Access point",
+      "camera": "Camera",
+      "ups": "UPS",
+      "other": "Other"
+    }
+  },
+  "switch": {
+    "label": "Switch",
+    "labelPlural": "Switches",
+    "subtitle": "Switches, their port maps and inter-switch links.",
+    "fields": {
+      "name": "Name",
+      "vendor": "Vendor",
+      "model": "Model",
+      "serial": "Serial number",
+      "managementIp": "Management IP",
+      "room": "Room",
+      "rackPosition": "Rack position",
+      "portCount": "Port count",
+      "firmware": "Firmware",
+      "snmpCommunity": "SNMP community",
+      "description": "Description"
+    },
+    "new": "New switch",
+    "edit": "Edit switch",
+    "empty": "No switches yet — create one to auto-generate its ports.",
+    "portCountImmutable": "The port count cannot be changed once the switch is created.",
+    "rackView": "Rack view",
+    "ports": "Ports",
+    "links": "Links",
+    "portStats": "{used} of {total} ports in use",
+    "snmpCommunityHint": "Stored as-is in the database. Only visible to administrators."
+  },
+  "port": {
+    "label": "Port",
+    "labelPlural": "Ports",
+    "fields": {
+      "number": "#",
+      "label": "Label",
+      "mode": "Mode",
+      "nativeVlan": "Native VLAN",
+      "taggedVlans": "Tagged VLANs",
+      "adminStatus": "Admin status",
+      "connectedDevice": "Connected device",
+      "connectedIp": "Connected IP",
+      "notes": "Notes"
+    },
+    "edit": "Edit port",
+    "modes": {
+      "access": "Access",
+      "trunk": "Trunk",
+      "hybrid": "Hybrid",
+      "disabled": "Disabled"
+    },
+    "adminStatus": {
+      "up": "Up",
+      "down": "Down"
+    },
+    "addTaggedVlan": "Add tagged VLAN",
+    "noTaggedVlans": "No tagged VLANs."
+  },
+  "audit": {
+    "subtitle": "Every create, update, and delete is recorded here.",
+    "fields": {
+      "when": "When",
+      "user": "User",
+      "action": "Action",
+      "entity": "Entity",
+      "entityId": "ID",
+      "changes": "Changes",
+      "ip": "Origin IP",
+      "userAgent": "User agent"
+    },
+    "actions": {
+      "create": "Create",
+      "update": "Update",
+      "delete": "Delete"
+    },
+    "filters": {
+      "entity": "Entity type",
+      "entityId": "Entity ID",
+      "userId": "User ID",
+      "from": "From",
+      "to": "To"
+    },
+    "viewDiff": "View diff",
+    "before": "Before",
+    "after": "After",
+    "noChanges": "No field changes recorded."
+  },
+  "settings": {
+    "subtitle": "Manage sites and rooms. Only administrators can edit.",
+    "sitesTab": "Sites",
+    "roomsTab": "Rooms"
   }
 }
