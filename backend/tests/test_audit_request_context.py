@@ -56,21 +56,39 @@ async def test_middleware_captures_client_host_and_user_agent(
 
 
 @pytest.mark.asyncio
-async def test_middleware_prefers_x_forwarded_for(
+async def test_middleware_trusts_x_real_ip_not_x_forwarded_for(
     client: AsyncClient,
 ) -> None:
-    """When deployed behind nginx, the first hop in X-Forwarded-For is the
-    real client; `request.client.host` becomes the proxy itself."""
+    """Behind nginx (which sets X-Real-IP unconditionally), the audit log
+    must record the value nginx vouched for — not whatever the client
+    placed in the X-Forwarded-For chain. XFF's first entry is fully
+    attacker-controlled with our `$proxy_add_x_forwarded_for` config."""
     r = await client.get(
         _PROBE_PATH,
         headers={
-            "x-forwarded-for": "198.51.100.7, 10.0.0.1",
+            "x-real-ip": "198.51.100.7",
+            # A malicious client trying to spoof a different identity in XFF.
+            "x-forwarded-for": "1.2.3.4, 10.0.0.1",
             "user-agent": "TestAgent/1.0",
         },
     )
     assert r.status_code == 200
     body = r.json()
     assert body["ip"] == "198.51.100.7"
+
+
+@pytest.mark.asyncio
+async def test_middleware_ignores_x_forwarded_for_without_x_real_ip(
+    client: AsyncClient,
+) -> None:
+    """No X-Real-IP → fall back to the TCP peer, never trust XFF alone."""
+    r = await client.get(
+        _PROBE_PATH,
+        headers={"x-forwarded-for": "1.2.3.4", "user-agent": "TestAgent/1.0"},
+    )
+    assert r.status_code == 200
+    # The transport is configured with client=(203.0.113.42, 51234)
+    assert r.json()["ip"] == "203.0.113.42"
 
 
 @pytest.mark.asyncio

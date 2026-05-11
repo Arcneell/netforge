@@ -35,6 +35,7 @@ from app.services.audit import (
     current_request_ua_var,
     register_audit_listeners,
 )
+from app.utils.request import client_ip
 
 logger = logging.getLogger("netforge")
 
@@ -96,13 +97,9 @@ def create_app() -> FastAPI:
 
         # Make request metadata visible to the audit-log SQLAlchemy listeners,
         # which fire deep inside the ORM session and have no Request handle.
-        # X-Forwarded-For wins when the app is reverse-proxied behind nginx
-        # (cf. docs/07-deployment.md) — the first hop is the client.
-        forwarded = request.headers.get("x-forwarded-for")
-        client_ip = forwarded.split(",")[0].strip() if forwarded else (
-            request.client.host if request.client else None
-        )
-        current_request_ip_var.set(client_ip)
+        # See app/utils/request.py for the trust-order rationale (TL;DR: we
+        # rely on nginx's X-Real-IP, never on the client-spoofable XFF chain).
+        current_request_ip_var.set(client_ip(request))
         current_request_ua_var.set(request.headers.get("user-agent"))
 
         response: Response
