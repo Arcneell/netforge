@@ -16,8 +16,10 @@ const { t } = useI18n()
 const { error: toastError } = useToast()
 const { describe } = useApiErrorMessage()
 
-// Order mirrors docs/08-import-csv.md "Recommended import order" — sites first,
-// links last. We expose this directly to the user as guidance on the page.
+// Recommended import order — sites first, links last. IPs come BEFORE ports
+// because `_persist_port` resolves `connected_ip` via the Ip table and errors
+// out if the IP doesn't exist yet; round-tripping a CSV with port→IP
+// associations on a fresh restore requires this ordering.
 const ORDERED: ImportEntity[] = [
   'sites',
   'rooms',
@@ -25,8 +27,8 @@ const ORDERED: ImportEntity[] = [
   'subnets',
   'devices',
   'switches',
-  'ports',
   'ips',
+  'ports',
   'links',
 ]
 
