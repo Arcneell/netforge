@@ -169,3 +169,61 @@ def test_friendly_integrity_recognises_known_constraints() -> None:
         "duplicate key vlans_vlan_id_key"
     )
     assert "constraint violation" in service._friendly_integrity("???")
+
+
+# --- Regression: round-trip blank optional fields ------------------------- #
+
+
+def test_vlan_row_accepts_blank_color() -> None:
+    # Blank cells in the exported CSV used to be rejected by the hex pattern,
+    # breaking export → import round-trips for VLANs with no color set.
+    row = service._VlanRow(vlan_id=10, name="users", color="")
+    assert row.color is None
+
+
+def test_switch_row_accepts_blank_site_and_room_codes() -> None:
+    # `room_id` is nullable on Switch — roomless switches must round-trip.
+    row = service._SwitchRow(name="SW-A", site_code="", room_code="", port_count=24)
+    assert row.site_code is None
+    assert row.room_code is None
+
+
+# --- Regression: ok_rows reflects rows actually attempted ----------------- #
+
+
+@pytest.mark.asyncio
+async def test_ok_rows_only_counts_rows_persisted_before_failure() -> None:
+    # Apply phase: first row succeeds, second hits a _RefError, third+ never
+    # attempted. Buggy code reported `ok_rows = len(parsed) - 1` (i.e. 2 of 3
+    # "ok"), miscounting the third row that never even ran.
+    db = _fresh_db()
+    scalar_result = AsyncMock()
+    scalar_result.scalar_one_or_none = lambda: None
+    db.execute = AsyncMock(return_value=scalar_result)
+
+    call_count = {"n": 0}
+
+    async def fake_persist(_db: object, _model: object) -> None:
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            raise service._RefError("code", "X", "boom")
+
+    monkeyed = service._ImportSpec(service._SiteRow, fake_persist)
+    original = service.SPECS["sites"]
+    service.SPECS["sites"] = monkeyed
+    try:
+        report = await service.run_import(
+            db,
+            "sites",
+            _csv("code;name", "A;Alpha", "B;Bravo", "C;Charlie"),
+            dry_run=False,
+        )
+    finally:
+        service.SPECS["sites"] = original
+
+    assert report.parsed_rows == 3
+    assert report.ok_rows == 1
+    assert len(report.error_rows) == 1
+    assert report.error_rows[0].line == 3  # 2nd data row = file line 3
+    assert report.applied is False
+    db.rollback.assert_awaited_once()
