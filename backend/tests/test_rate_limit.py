@@ -80,15 +80,31 @@ async def test_health_and_auth_endpoints_are_exempt() -> None:
 
 
 @pytest.mark.asyncio
-async def test_per_ip_isolation_via_forwarded_for() -> None:
-    # Two distinct X-Forwarded-For values share no bucket — one IP exhausting
-    # its quota mustn't block another.
+async def test_per_ip_isolation_via_real_ip_header() -> None:
+    # Two distinct X-Real-IP values share no bucket — one IP exhausting its
+    # quota mustn't block another. X-Real-IP is nginx-set and trusted.
     app = _make_app(max_per_window=1, window_seconds=60)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        a1 = await client.post("/things", headers={"x-forwarded-for": "10.0.0.1"})
-        a2 = await client.post("/things", headers={"x-forwarded-for": "10.0.0.1"})
-        b1 = await client.post("/things", headers={"x-forwarded-for": "10.0.0.2"})
+        a1 = await client.post("/things", headers={"x-real-ip": "10.0.0.1"})
+        a2 = await client.post("/things", headers={"x-real-ip": "10.0.0.1"})
+        b1 = await client.post("/things", headers={"x-real-ip": "10.0.0.2"})
     assert a1.status_code == 200
     assert a2.status_code == 429
     assert b1.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_x_forwarded_for_is_not_trusted_for_key() -> None:
+    # Regression for the Codex P1 finding on PR #6: a client that rotates
+    # X-Forwarded-For per request must NOT get a fresh bucket each time.
+    # Without X-Real-IP, every request hashes to the same TCP peer key.
+    app = _make_app(max_per_window=2, window_seconds=60)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r1 = await client.post("/things", headers={"x-forwarded-for": "1.1.1.1"})
+        r2 = await client.post("/things", headers={"x-forwarded-for": "2.2.2.2"})
+        r3 = await client.post("/things", headers={"x-forwarded-for": "3.3.3.3"})
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r3.status_code == 429  # would be 200 if XFF still keyed the bucket
