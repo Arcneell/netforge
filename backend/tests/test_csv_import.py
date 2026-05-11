@@ -188,6 +188,17 @@ def test_switch_row_accepts_blank_site_and_room_codes() -> None:
     assert row.room_code is None
 
 
+def test_switch_row_rejects_partial_location() -> None:
+    # Only one of (site_code, room_code) blank is a user error, not roomless.
+    # Without this check, the supplied code would silently be ignored.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        service._SwitchRow(name="SW-A", site_code="PAR", room_code="", port_count=24)
+    with pytest.raises(ValidationError):
+        service._SwitchRow(name="SW-A", site_code="", room_code="SRV-01", port_count=24)
+
+
 # --- Regression: ok_rows reflects rows actually attempted ----------------- #
 
 

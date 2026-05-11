@@ -153,8 +153,8 @@ For a from-scratch install, import in this order (dependencies):
 4. `subnets.csv`
 5. `devices.csv`
 6. `switches.csv`
-7. `ports.csv`
-8. `ips.csv` (after devices for the `device_name` lookup)
+7. `ips.csv` (after devices for the `device_name` lookup)
+8. `ports.csv` (after IPs because `connected_ip` resolves against `ips.address`)
 9. `links.csv`
 
 ## Export
