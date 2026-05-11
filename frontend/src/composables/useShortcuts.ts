@@ -19,7 +19,7 @@ export interface Shortcut {
 
 export const SHORTCUTS: Shortcut[] = [
   { display: '⌘ K / Ctrl K', descriptionKey: 'shortcuts.descriptions.search' },
-  { display: '?', descriptionKey: 'shortcuts.descriptions.help' },
+  { display: '? / F1', descriptionKey: 'shortcuts.descriptions.help' },
   { display: 'g d', descriptionKey: 'shortcuts.descriptions.goDashboard' },
   { display: 'g s', descriptionKey: 'shortcuts.descriptions.goSubnets' },
   { display: 'g v', descriptionKey: 'shortcuts.descriptions.goVlans' },
@@ -43,6 +43,20 @@ function isTypingTarget(target: EventTarget | null): boolean {
   const tag = el.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   if (el.isContentEditable) return true
+  return false
+}
+
+/**
+ * Layout-resilient match for "?". On QWERTY US `?` is Shift+/ (physical key
+ * Slash); on AZERTY FR `?` is Shift+, (physical key Comma). e.key alone is
+ * unreliable across layouts in some browser/OS combos, so we ALSO match by
+ * e.code — the physical key location — and finally by F1 as a universal
+ * help shortcut.
+ */
+function isHelpShortcut(e: KeyboardEvent): boolean {
+  if (e.key === 'F1') return true
+  if (e.key === '?') return true
+  if (e.shiftKey && (e.code === 'Slash' || e.code === 'Comma')) return true
   return false
 }
 
@@ -74,22 +88,25 @@ export function useGlobalShortcuts(handlers: Handlers): void {
   function onKey(e: KeyboardEvent) {
     if (isTypingTarget(e.target)) return
 
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    // Cmd/Ctrl K — opens the search palette.
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault()
       handlers.onSearch()
       clearLeader()
       return
     }
 
-    // No modifiers from here on — let Cmd-A, Alt-Tab, etc. through unchanged.
-    if (e.metaKey || e.ctrlKey || e.altKey) return
-
-    if (e.key === '?') {
+    // F1 deserves to work alongside Ctrl/Cmd, so check help BEFORE the
+    // modifier short-circuit below.
+    if (isHelpShortcut(e)) {
       e.preventDefault()
       handlers.onHelp()
       clearLeader()
       return
     }
+
+    // No modifiers from here on — let Cmd-A, Alt-Tab, etc. through unchanged.
+    if (e.metaKey || e.ctrlKey || e.altKey) return
 
     if (e.key === '/') {
       e.preventDefault()
@@ -98,6 +115,8 @@ export function useGlobalShortcuts(handlers: Handlers): void {
       return
     }
 
+    // Resolve the second key of a g-leader sequence by lowercased character —
+    // Caps Lock yields 'T' which `'t'.toLowerCase()` covers.
     if (waitingForSecond) {
       const dest = NAV[e.key.toLowerCase()]
       if (dest) {
@@ -108,10 +127,16 @@ export function useGlobalShortcuts(handlers: Handlers): void {
       return
     }
 
-    if (e.key === 'g') {
+    // Same lowercase trick for the leader itself: 'G' under Caps Lock should
+    // still start a sequence.
+    if (e.key === 'g' || e.key === 'G') {
+      // Don't preventDefault — `g` has no browser default and preventDefault
+      // here would block "g" from being typed in non-input focusable widgets
+      // like contenteditable cells we might introduce later.
       waitingForSecond = true
       // GitHub uses a ~1s window before the leader expires — same here.
-      resetTimer = setTimeout(clearLeader, 1000)
+      if (resetTimer) clearTimeout(resetTimer)
+      resetTimer = setTimeout(clearLeader, 1500)
     }
   }
 

@@ -71,15 +71,20 @@ function routeFor(r: SearchResult): { name: string; params?: Record<string, stri
     case 'switch':
       return { name: 'switch-detail', params: { id: r.id } }
     case 'ip':
-      // We don't have a per-IP route; jump to the containing subnet detail.
-      // The search backend already filters by subnet membership, so we cheat
-      // and use the IP's id as a query hint — the SubnetDetailView will fall
-      // back to its own state if it doesn't know what to do with it.
-      return { name: 'subnets' }
+      // parent_id is the IP's subnet — jump to that subnet's detail page.
+      // No per-IP route exists; the SubnetDetailView shows the full grid
+      // including the IP we want.
+      return r.parent_id != null
+        ? { name: 'subnet-detail', params: { id: r.parent_id } }
+        : { name: 'subnets' }
     case 'device':
       return { name: 'devices' }
     case 'port':
-      return null // handled below — needs the switch id, not stored on SearchResult
+      // parent_id is the port's switch — the switch detail page lists every
+      // port and lets the user click into the one they searched for.
+      return r.parent_id != null
+        ? { name: 'switch-detail', params: { id: r.parent_id } }
+        : { name: 'switches' }
     default:
       return null
   }
@@ -162,7 +167,6 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
               :placeholder="t('common.search') + '…'"
               autocomplete="off"
               spellcheck="false"
-              @keydown="onKey"
             />
             <button
               v-if="query"

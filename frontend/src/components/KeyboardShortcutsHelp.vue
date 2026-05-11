@@ -15,17 +15,19 @@ const { t } = useI18n()
       <li
         v-for="s in SHORTCUTS"
         :key="s.display"
-        class="flex items-center justify-between py-1 px-2 rounded hover:bg-surface-hover"
+        class="flex items-center justify-between py-1 px-2 rounded hover:bg-surface-hover gap-3"
       >
         <span class="text-sm text-fg">{{ t(s.descriptionKey) }}</span>
-        <span class="flex items-center gap-1">
-          <kbd
-            v-for="(part, i) in s.display.split(' ')"
-            :key="i"
-            class="font-mono text-xs px-1.5 py-0.5 rounded bg-muted border border-border text-fg"
-          >
-            {{ part }}
-          </kbd>
+        <span class="flex items-center gap-1 flex-shrink-0">
+          <template v-for="(part, i) in s.display.split(' ')" :key="i">
+            <span v-if="part === '/'" class="text-xs text-fg-muted">/</span>
+            <kbd
+              v-else
+              class="font-mono text-xs px-1.5 py-0.5 rounded bg-muted border border-border text-fg whitespace-nowrap"
+            >
+              {{ part }}
+            </kbd>
+          </template>
         </span>
       </li>
     </ul>

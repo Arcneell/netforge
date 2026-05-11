@@ -12,6 +12,10 @@ class SearchResult(BaseModel):
     id: int
     label: str
     context: str | None = None
+    # Owner needed to route to a useful page: IP → subnet detail,
+    # port → switch detail. Devices and switches are routed by `id`,
+    # so this stays None for those types.
+    parent_id: int | None = None
 
 
 class SearchResponse(BaseModel):
