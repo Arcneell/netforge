@@ -35,6 +35,7 @@ const emit = defineEmits<{
 
 const container = ref<HTMLDivElement | null>(null)
 const cy = shallowRef<Core | null>(null)
+const resizeObserver = ref<ResizeObserver | null>(null)
 const ui = useUiStore()
 
 // Compute layout options on demand — dagre layout config differs from cose/etc.
@@ -165,10 +166,26 @@ onMounted(() => {
   cy.value.on('tap', (ev: EventObject) => {
     if (ev.target === cy.value) emit('select-clear')
   })
+
+  // Cytoscape needs a sized container to lay out — but on first mount the
+  // flex cascade above us may still be settling, so the container is 0×0
+  // and the graph renders into the void. ResizeObserver fires once the
+  // container gets its real dimensions; we resize + relayout + fit then.
+  resizeObserver.value = new ResizeObserver(() => {
+    if (!cy.value || !container.value) return
+    const { clientWidth, clientHeight } = container.value
+    if (clientWidth === 0 || clientHeight === 0) return
+    cy.value.resize()
+    cy.value.fit(undefined, 40)
+  })
+  resizeObserver.value.observe(container.value)
+
   applyDataset()
 })
 
 onBeforeUnmount(() => {
+  resizeObserver.value?.disconnect()
+  resizeObserver.value = null
   cy.value?.destroy()
   cy.value = null
 })

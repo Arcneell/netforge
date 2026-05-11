@@ -93,7 +93,7 @@ const actionTone = {
       >
         <div class="flex items-center justify-between mb-3">
           <span
-            class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-primary-50 text-primary-600 dark:bg-primary-100/20 dark:text-primary-50"
+            class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300"
           >
             <component :is="c.icon" class="w-4 h-4" aria-hidden="true" />
           </span>
