@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "NetForge",
+    "tagline": "Network infrastructure, made simple."
+  },
+  "common": {
+    "loading": "Loading…",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "close": "Close",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "actions": "Actions",
+    "error": "Error",
+    "success": "Success",
+    "back": "Back",
+    "comingSoon": "Coming soon"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "subnets": "Subnets",
+    "vlans": "VLANs",
+    "switches": "Switches",
+    "devices": "Devices",
+    "topology": "Topology",
+    "import": "Import",
+    "audit": "Audit log",
+    "settings": "Settings"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "locale": {
+    "label": "Language",
+    "en": "English",
+    "fr": "Français"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signInWith": "Sign in with {provider}",
+    "signInPrompt": "Sign in to access NetForge.",
+    "signOut": "Sign out",
+    "loadingSession": "Verifying session…",
+    "providers": {
+      "github": "GitHub",
+      "oidc": "SSO",
+      "default": "your provider"
+    },
+    "errors": {
+      "unauthorized": "Your session has expired. Please sign in again.",
+      "forbidden": "You don't have permission to access this resource."
+    }
+  },
+  "errors": {
+    "network": "Unable to reach the server.",
+    "unknown": "Something went wrong.",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "The page you're looking for doesn't exist or has been moved.",
+    "forbiddenTitle": "Access denied",
+    "forbiddenBody": "Your account doesn't have permission to view this page."
+  },
+  "user": {
+    "role": {
+      "admin": "Administrator",
+      "viewer": "Viewer"
+    },
+    "menu": {
+      "signedInAs": "Signed in as"
+    }
+  }
+}

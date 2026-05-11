@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>NetForge</title>
+    <script>
+      // Apply the persisted theme before paint to avoid a flash of the wrong palette.
+      (function () {
+        try {
+          var stored = localStorage.getItem('netforge.theme')
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          var theme = stored || (prefersDark ? 'dark' : 'light')
+          if (theme === 'dark') document.documentElement.classList.add('dark')
+          document.documentElement.dataset.theme = theme
+        } catch (_) {}
+      })()
+    </script>
+  </head>
+  <body class="h-full bg-bg text-fg antialiased">
+    <div id="app" class="h-full"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
