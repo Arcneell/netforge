@@ -13,6 +13,7 @@
     "add": "Ajouter",
     "remove": "Retirer",
     "search": "Rechercher",
+    "searchHint": "Tapez au moins 2 caractères — IP, hostnames, MAC, switches, équipements…",
     "close": "Fermer",
     "confirm": "Confirmer",
     "yes": "Oui",
@@ -72,7 +73,8 @@
     "DUPLICATE_LINK": "Un lien existe déjà entre ces deux ports.",
     "INVALID_LINK": "Un port ne peut pas être lié à lui-même.",
     "INTEGRITY_VIOLATION": "Violation de contrainte en base.",
-    "NETWORK_ERROR": "Serveur injoignable."
+    "NETWORK_ERROR": "Serveur injoignable.",
+    "RATE_LIMITED": "Trop de requêtes — ralentissez."
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -390,6 +392,24 @@
       "fiber": "Fibre",
       "dac": "DAC",
       "virtual": "Virtuel"
+    }
+  },
+  "shortcuts": {
+    "title": "Raccourcis clavier",
+    "subtitle": "Naviguez plus vite. La plupart des raccourcis utilisent une touche \"chef\" (g) suivie d'une lettre.",
+    "navigate": "Naviguer",
+    "open": "Ouvrir",
+    "descriptions": {
+      "search": "Ouvrir la palette de recherche",
+      "help": "Afficher cette liste",
+      "goDashboard": "Aller au tableau de bord",
+      "goSubnets": "Aller aux sous-réseaux",
+      "goVlans": "Aller aux VLANs",
+      "goSwitches": "Aller aux commutateurs",
+      "goDevices": "Aller aux équipements",
+      "goTopology": "Aller à la topologie",
+      "goImport": "Aller à l'import",
+      "goAudit": "Aller au journal d'audit"
     }
   },
   "import": {

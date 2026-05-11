@@ -13,6 +13,7 @@
     "add": "Add",
     "remove": "Remove",
     "search": "Search",
+    "searchHint": "Type at least 2 characters — IPs, hostnames, MACs, switches, devices…",
     "close": "Close",
     "confirm": "Confirm",
     "yes": "Yes",
@@ -72,7 +73,8 @@
     "DUPLICATE_LINK": "A link between these two ports already exists.",
     "INVALID_LINK": "A port cannot link to itself.",
     "INTEGRITY_VIOLATION": "Database constraint violation.",
-    "NETWORK_ERROR": "Cannot reach the server."
+    "NETWORK_ERROR": "Cannot reach the server.",
+    "RATE_LIMITED": "Too many requests — please slow down."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -390,6 +392,24 @@
       "fiber": "Fiber",
       "dac": "DAC",
       "virtual": "Virtual"
+    }
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "subtitle": "Speed-up navigation. Most shortcuts use a leader key (g) followed by a letter.",
+    "navigate": "Navigate",
+    "open": "Open",
+    "descriptions": {
+      "search": "Open the search palette",
+      "help": "Show this list",
+      "goDashboard": "Go to Dashboard",
+      "goSubnets": "Go to Subnets",
+      "goVlans": "Go to VLANs",
+      "goSwitches": "Go to Switches",
+      "goDevices": "Go to Devices",
+      "goTopology": "Go to Topology",
+      "goImport": "Go to Import",
+      "goAudit": "Go to Audit log"
     }
   },
   "import": {

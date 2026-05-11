@@ -66,6 +66,15 @@ class Settings(BaseSettings):
     # Empty string disables this — only the very first user to log in becomes admin.
     bootstrap_admin_email: str = ""
 
+    # ------------------------------------------------------------------
+    # Rate limiting
+    # ------------------------------------------------------------------
+    # Cap write methods (POST/PUT/PATCH/DELETE) per IP per window. Defaults
+    # are generous enough for normal admin use and tight enough to stop a
+    # runaway script.
+    rate_limit_writes_per_window: int = 60
+    rate_limit_window_seconds: int = 60
+
     # Observability
     log_level: str = "info"
 
