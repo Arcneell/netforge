@@ -206,12 +206,17 @@ def upgrade() -> None:
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("entra_oid", postgresql.UUID(as_uuid=False), nullable=False, unique=True),
+        # Pluggable auth: (provider, subject) uniquely identifies an external account.
+        # provider examples: "github", "oidc"
+        # subject is the opaque user ID returned by the provider.
+        sa.Column("provider", sa.String(32), nullable=False),
+        sa.Column("subject", sa.String(255), nullable=False),
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("display_name", sa.String(255)),
         sa.Column("role", postgresql.ENUM(name="user_role", create_type=False), nullable=False, server_default="viewer"),
         sa.Column("last_login_at", sa.DateTime(timezone=True)),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint("provider", "subject", name="users_provider_subject_uniq"),
     )
 
     op.create_table(

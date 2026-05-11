@@ -15,9 +15,10 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -36,9 +37,17 @@ class AuditAction(str, Enum):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("provider", "subject", name="users_provider_subject_uniq"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    entra_oid: Mapped[str] = mapped_column(UUID(as_uuid=False), unique=True, nullable=False)
+    # Provider key — short stable identifier ("github", "oidc", ...).
+    # Pluggable: see app/auth/factory.py.
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Subject as returned by the provider — opaque string.
+    # GitHub: numeric user.id rendered as string. OIDC: the `sub` claim.
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(
@@ -59,7 +68,7 @@ class Session(Base):
 
     __tablename__ = "sessions"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # hashed opaque token
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # opaque random token
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,

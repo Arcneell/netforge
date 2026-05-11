@@ -7,10 +7,11 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
 from app.config import get_settings
-from app.routers import health
+from app.routers import auth, health
 
 logger = logging.getLogger("netforge")
 
@@ -32,6 +33,18 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
+    )
+
+    # Short-lived signed cookie used by authlib to store the OAuth `state`
+    # between the authorize redirect and the callback. Distinct from the
+    # long-lived `netforge_session` cookie that identifies the logged-in user.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_signing_key,
+        session_cookie="netforge_oauth_state",
+        same_site="lax",
+        https_only=settings.session_cookie_secure,
+        max_age=600,  # 10 minutes — only needs to outlive the OAuth round-trip
     )
 
     if settings.cors_origins_list:
@@ -75,6 +88,7 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(health.router, prefix="/api")
+    app.include_router(auth.router, prefix="/api")
 
     return app
 
