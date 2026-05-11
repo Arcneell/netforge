@@ -67,7 +67,18 @@ async def client() -> AsyncIterator[AsyncClient]:
 
 
 # Read endpoints — sample list, every one is identical structurally.
-_READ_PATHS = ["/api/sites", "/api/rooms", "/api/vlans", "/api/subnets", "/api/ips"]
+_READ_PATHS = [
+    "/api/sites",
+    "/api/rooms",
+    "/api/vlans",
+    "/api/subnets",
+    "/api/ips",
+    "/api/devices",
+    "/api/switches",
+    "/api/switches/1/ports",
+    "/api/links",
+    "/api/audit",
+]
 
 # Write endpoints — minimal payloads sufficient to trip the dependency chain.
 _WRITE_CASES = [
@@ -76,11 +87,20 @@ _WRITE_CASES = [
     ("POST", "/api/vlans", {"vlan_id": 100, "name": "X"}),
     ("POST", "/api/subnets", {"cidr": "10.0.99.0/24", "site_id": 1}),
     ("POST", "/api/ips", {"subnet_id": 1, "address": "10.0.99.1", "status": "reserved"}),
+    ("POST", "/api/devices", {"name": "X", "type": "server"}),
+    ("POST", "/api/switches", {"name": "SW-X", "port_count": 24}),
+    ("POST", "/api/links", {"port_a_id": 1, "port_b_id": 2, "link_type": "copper"}),
+    ("PUT", "/api/ports/1", {"label": "x"}),
+    ("POST", "/api/ports/1/vlans", {"vlan_id": 100}),
     ("DELETE", "/api/sites/1", None),
     ("DELETE", "/api/rooms/1", None),
     ("DELETE", "/api/vlans/1", None),
     ("DELETE", "/api/subnets/1", None),
     ("DELETE", "/api/ips/1", None),
+    ("DELETE", "/api/devices/1", None),
+    ("DELETE", "/api/switches/1", None),
+    ("DELETE", "/api/links/1", None),
+    ("DELETE", "/api/ports/1/vlans/2", None),
 ]
 
 
@@ -112,3 +132,11 @@ async def test_writes_forbidden_for_viewer(
     r = await client.request(method, path, json=body, cookies={"netforge_session": "sess"})
     assert r.status_code == 403
     assert r.json()["detail"]["error"]["code"] == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_audit_endpoint_forbidden_for_viewer(client: AsyncClient) -> None:
+    """Audit log is admin-only even on GET."""
+    _install_db(user=_viewer())
+    r = await client.get("/api/audit", cookies={"netforge_session": "sess"})
+    assert r.status_code == 403
