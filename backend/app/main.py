@@ -15,7 +15,9 @@ from app.routers import (
     audit,
     auth,
     devices,
+    exports,
     health,
+    imports,
     ips,
     links,
     ports,
@@ -122,6 +124,8 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/api")
     app.include_router(search.router, prefix="/api")
     app.include_router(topology.router, prefix="/api")
+    app.include_router(imports.router, prefix="/api")
+    app.include_router(exports.router, prefix="/api")
 
     return app
 

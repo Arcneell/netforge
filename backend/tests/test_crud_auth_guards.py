@@ -81,6 +81,7 @@ _READ_PATHS = [
     "/api/search?q=foo",
     "/api/topology",
     "/api/subnets/1/ips",
+    "/api/exports/sites",
 ]
 
 # Write endpoints — minimal payloads sufficient to trip the dependency chain.
