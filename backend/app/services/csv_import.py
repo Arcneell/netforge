@@ -21,7 +21,7 @@ from ipaddress import IPv4Address, IPv4Network
 from typing import Any, Awaitable, Callable
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -201,6 +201,18 @@ class _SwitchRow(BaseModel):
     def _validate_ip(cls, v: Any) -> str | None:
         v = _empty_to_none(v)
         return None if v is None else str(IPv4Address(v))
+
+    @model_validator(mode="after")
+    def _both_or_neither_location(self) -> "_SwitchRow":
+        # Without this, a row like `site_code=PAR;room_code=` would silently
+        # land in the DB as roomless — and the supplied site code would never
+        # be validated against the sites table. Force the user to either fill
+        # both cells (switch lives in a room) or leave both blank (roomless).
+        if (self.site_code is None) != (self.room_code is None):
+            raise ValueError(
+                "site_code and room_code must both be set or both be blank"
+            )
+        return self
 
 
 def _parse_csv_list(v: Any) -> list[int] | None:
