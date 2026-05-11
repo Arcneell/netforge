@@ -355,5 +355,40 @@
     "subtitle": "Gérez les sites et les salles. Seuls les administrateurs peuvent modifier.",
     "sitesTab": "Sites",
     "roomsTab": "Salles"
+  },
+  "topology": {
+    "subtitle": "Liens inter-commutateurs sous forme de graphe interactif.",
+    "layout": "Disposition",
+    "layouts": {
+      "dagre": "Hiérarchique",
+      "cose": "Forces dirigées",
+      "breadthfirst": "Largeur d'abord",
+      "circle": "Cercle",
+      "grid": "Grille"
+    },
+    "fit": "Ajuster à l'écran",
+    "relayout": "Recalculer la disposition",
+    "exportPng": "Exporter PNG",
+    "selectPrompt": "Cliquez sur un commutateur ou un lien dans le graphe pour voir ses détails ici.",
+    "openSwitch": "Ouvrir le commutateur",
+    "link": "Lien",
+    "empty": {
+      "title": "Aucune topologie à afficher",
+      "description": "Créez des commutateurs et des liens inter-commutateurs pour les voir apparaître ici."
+    }
+  },
+  "link": {
+    "fields": {
+      "type": "Type",
+      "speed": "Vitesse",
+      "portA": "Port A",
+      "portB": "Port B"
+    },
+    "types": {
+      "copper": "Cuivre",
+      "fiber": "Fibre",
+      "dac": "DAC",
+      "virtual": "Virtuel"
+    }
   }
 }

@@ -132,3 +132,12 @@ export type AuditAction = S['AuditAction']
 // ---------------------------------------------------------------------------
 export type SearchResult = S['SearchResult']
 export type SearchResponse = S['SearchResponse']
+
+// ---------------------------------------------------------------------------
+// Topology
+// ---------------------------------------------------------------------------
+export type TopologyNode = S['TopologyNode']
+export type TopologyEdge = S['TopologyEdge']
+export type TopologyNodeData = S['TopologyNodeData']
+export type TopologyEdgeData = S['TopologyEdgeData']
+export type TopologyResponse = S['TopologyResponse']

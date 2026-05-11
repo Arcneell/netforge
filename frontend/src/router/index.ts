@@ -71,8 +71,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'topology',
         name: 'topology',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: { titleKey: 'nav.topology' },
+        component: () => import('@/views/TopologyView.vue'),
         meta: { titleKey: 'nav.topology' },
       },
       {
