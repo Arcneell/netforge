@@ -3,7 +3,7 @@ import { computed, useAttrs } from 'vue'
 
 const props = withDefaults(
   defineProps<{
-    modelValue?: string | number
+    modelValue?: string | number | null
     type?: string
     placeholder?: string
     disabled?: boolean
@@ -32,7 +32,7 @@ const classes = computed(() => [
     :id="id"
     v-bind="attrs"
     :type="type"
-    :value="modelValue"
+    :value="modelValue ?? ''"
     :placeholder="placeholder"
     :disabled="disabled"
     :aria-invalid="invalid || undefined"

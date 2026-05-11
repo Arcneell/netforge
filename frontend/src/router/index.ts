@@ -35,29 +35,37 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'subnets',
         name: 'subnets',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: { titleKey: 'nav.subnets' },
+        component: () => import('@/views/SubnetsListView.vue'),
         meta: { titleKey: 'nav.subnets' },
+      },
+      {
+        path: 'subnets/:id',
+        name: 'subnet-detail',
+        component: () => import('@/views/SubnetDetailView.vue'),
+        meta: { titleKey: 'subnet.label' },
       },
       {
         path: 'vlans',
         name: 'vlans',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: { titleKey: 'nav.vlans' },
+        component: () => import('@/views/VlansListView.vue'),
         meta: { titleKey: 'nav.vlans' },
       },
       {
         path: 'switches',
         name: 'switches',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: { titleKey: 'nav.switches' },
+        component: () => import('@/views/SwitchesListView.vue'),
         meta: { titleKey: 'nav.switches' },
+      },
+      {
+        path: 'switches/:id',
+        name: 'switch-detail',
+        component: () => import('@/views/SwitchDetailView.vue'),
+        meta: { titleKey: 'switch.label' },
       },
       {
         path: 'devices',
         name: 'devices',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: { titleKey: 'nav.devices' },
+        component: () => import('@/views/DevicesListView.vue'),
         meta: { titleKey: 'nav.devices' },
       },
       {
@@ -77,15 +85,13 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'audit',
         name: 'audit',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: { titleKey: 'nav.audit' },
+        component: () => import('@/views/AuditView.vue'),
         meta: { minRole: 'admin', titleKey: 'nav.audit' },
       },
       {
         path: 'settings',
         name: 'settings',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: { titleKey: 'nav.settings' },
+        component: () => import('@/views/SettingsView.vue'),
         meta: { minRole: 'admin', titleKey: 'nav.settings' },
       },
       {
