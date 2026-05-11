@@ -45,3 +45,20 @@ export function formatNumber(value: number): string {
   if (!Number.isFinite(value)) return '—'
   return new Intl.NumberFormat(i18n.global.locale.value).format(value)
 }
+
+/**
+ * Human-readable file size — 1024-based (KiB/MiB/GiB), matching what the
+ * backend's `_MAX_BYTES` constant counts.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—'
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let n = bytes
+  let i = 0
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024
+    i++
+  }
+  const digits = n < 10 && i > 0 ? 1 : 0
+  return `${n.toFixed(digits)} ${units[i]}`
+}

@@ -391,5 +391,45 @@
       "dac": "DAC",
       "virtual": "Virtuel"
     }
+  },
+  "import": {
+    "subtitle": "Importez en masse depuis des fichiers CSV. Lancez d'abord une validation à blanc pour repérer les erreurs sans rien écrire.",
+    "entity": "Entité",
+    "entityHint": "Un fichier par entité, dans l'ordre indiqué ci-dessous.",
+    "file": "Fichier CSV",
+    "filePrompt": "Déposez un fichier .csv ici, ou cliquez pour le choisir",
+    "fileSelected": "{name} · {size}",
+    "fileReset": "Choisir un autre fichier",
+    "dryRun": "Validation à blanc (n'écrit jamais)",
+    "dryRunHint": "Recommandé pour le premier essai — la base est annulée même si tout se valide correctement.",
+    "submit": "Lancer l'import",
+    "submitDryRun": "Valider (à blanc)",
+    "exportTemplate": "Télécharger les données actuelles comme modèle",
+    "exportTemplateHint": "Exporte l'entité en CSV avec exactement les colonnes attendues par l'import.",
+    "orderTitle": "Ordre d'import recommandé",
+    "orderHint": "Dépendances entre entités — suivez cet ordre pour une installation neuve.",
+    "report": {
+      "title": "Dernier rapport d'import",
+      "appliedTrue": "Appliqué",
+      "appliedFalse": "Non appliqué (à blanc ou erreurs)",
+      "parsedRows": "Lignes lues",
+      "okRows": "Lignes valides",
+      "errorRows": "Lignes en erreur",
+      "errorsTitle": "Erreurs",
+      "noErrors": "Aucune erreur ligne par ligne.",
+      "successAll": "Les {count} lignes ont été importées avec succès.",
+      "successDryRun": "Les {count} lignes passent la validation. Relancez sans validation à blanc pour appliquer.",
+      "partial": "{ok} ligne(s) sur {total} seraient appliquées — corrigez les erreurs listées et relancez.",
+      "columns": {
+        "line": "Ligne",
+        "column": "Colonne",
+        "value": "Valeur",
+        "error": "Erreur"
+      }
+    },
+    "errors": {
+      "tooLarge": "Le fichier dépasse la limite d'upload de 10 Mio.",
+      "notCsv": "Seuls les fichiers .csv sont acceptés."
+    }
   }
 }
