@@ -105,6 +105,7 @@
     "providers": {
       "github": "GitHub",
       "oidc": "SSO",
+      "dev": "dev (sans IdP)",
       "default": "votre fournisseur"
     },
     "errors": {
