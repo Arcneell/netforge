@@ -1,0 +1,120 @@
+@import url('https://rsms.me/inter/inter.css');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Semantic color tokens. Pair (light, dark) — surface/foreground/border palette
+   plus a teal primary scale. Tailwind reads these via rgb(var(--...) / <a>).
+   --------------------------------------------------------------------------- */
+:root {
+  --color-bg: 248 250 252;            /* slate-50  */
+  --color-surface: 255 255 255;       /* white     */
+  --color-surface-hover: 241 245 249; /* slate-100 */
+  --color-border: 226 232 240;        /* slate-200 */
+  --color-muted: 241 245 249;         /* slate-100 */
+  --color-fg: 15 23 42;               /* slate-900 */
+  --color-fg-muted: 100 116 139;      /* slate-500 */
+
+  --color-primary-50:  236 254 255;
+  --color-primary-100: 207 250 254;
+  --color-primary-200: 165 243 252;
+  --color-primary-300: 103 232 249;
+  --color-primary-400: 34 211 238;
+  --color-primary-500: 6 182 212;
+  --color-primary-600: 8 145 178;
+  --color-primary-700: 14 116 144;
+  --color-primary-800: 21 94 117;
+  --color-primary-900: 22 78 99;
+  --color-primary-950: 8 51 68;
+
+  --color-success: 16 185 129;
+  --color-warning: 245 158 11;
+  --color-danger:  239 68 68;
+
+  color-scheme: light;
+}
+
+.dark {
+  --color-bg: 9 11 17;
+  --color-surface: 17 21 30;
+  --color-surface-hover: 26 32 44;
+  --color-border: 36 43 56;
+  --color-muted: 26 32 44;
+  --color-fg: 226 232 240;
+  --color-fg-muted: 148 163 184;
+
+  --color-primary-50:  8 51 68;
+  --color-primary-100: 22 78 99;
+  --color-primary-200: 21 94 117;
+  --color-primary-300: 14 116 144;
+  --color-primary-400: 8 145 178;
+  --color-primary-500: 6 182 212;
+  --color-primary-600: 34 211 238;
+  --color-primary-700: 103 232 249;
+  --color-primary-800: 165 243 252;
+  --color-primary-900: 207 250 254;
+  --color-primary-950: 236 254 255;
+
+  color-scheme: dark;
+}
+
+/* Global polish */
+html,
+body {
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+*,
+*::before,
+*::after {
+  border-color: rgb(var(--color-border));
+}
+
+::selection {
+  background: rgb(var(--color-primary-500) / 0.25);
+}
+
+/* Visible, consistent keyboard-focus ring on every interactive element */
+:focus-visible {
+  outline: 2px solid rgb(var(--color-primary-500));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Thin, theme-aware scrollbars (WebKit + Firefox) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--color-border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-border));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-fg-muted));
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+@layer components {
+  .nf-card {
+    @apply bg-surface border border-border rounded-lg shadow-card;
+  }
+  .nf-input {
+    @apply w-full px-3 py-2 text-sm bg-surface border border-border rounded-md
+           text-fg placeholder:text-fg-muted
+           focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500
+           disabled:opacity-50 disabled:cursor-not-allowed transition;
+  }
+  .nf-link {
+    @apply text-primary-600 hover:text-primary-700 hover:underline underline-offset-2;
+  }
+}

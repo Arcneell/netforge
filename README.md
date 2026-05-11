@@ -48,7 +48,19 @@ docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
 curl http://localhost:8000/api/health
 ```
 
-Interactive OpenAPI docs at `http://localhost:8000/api/docs`. For production, see [docs/07-deployment.md](docs/07-deployment.md).
+Interactive OpenAPI docs at `http://localhost:8000/api/docs`.
+
+For the SPA (runs locally with HMR; proxies `/api/*` to the backend container):
+
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run gen:types   # once the backend is up — generates typed API client
+npm run dev         # http://localhost:5173
+```
+
+For production, see [docs/07-deployment.md](docs/07-deployment.md).
 
 ## Status
 
