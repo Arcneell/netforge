@@ -111,9 +111,10 @@ const selectedEdge = computed<TopologyEdge | null>(() =>
     : null,
 )
 
-// The node `id` arrives as e.g. "switch-42" — strip the prefix to navigate.
+// The node `id` arrives as e.g. "sw-42" (see backend services/topology.py) —
+// strip the prefix to recover the numeric Switch.id for routing.
 function switchIdFromNodeId(nodeId: string): number | null {
-  const m = nodeId.match(/^switch-(\d+)$/)
+  const m = nodeId.match(/^sw-(\d+)$/)
   return m ? Number(m[1]) : null
 }
 
