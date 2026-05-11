@@ -45,19 +45,29 @@ git clone https://github.com/<your-org>/netforge.git && cd netforge
 cp .env.example .env
 docker compose -f docker-compose.dev.yml up -d
 docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
-curl http://localhost:8000/api/health
 ```
 
-Interactive OpenAPI docs at `http://localhost:8000/api/docs`.
+The stack ships three services:
 
-For the SPA (runs locally with HMR; proxies `/api/*` to the backend container):
+| Service | URL | Notes |
+|---------|-----|-------|
+| SPA (Vite, HMR) | <http://localhost:5173> | the page you'll use |
+| Backend (FastAPI) | <http://localhost:8000/api/docs> | OpenAPI explorer |
+| Postgres | localhost:5432 | psql / dump from the host |
+
+OAuth callback URLs registered on your IdP must point at `http://localhost:5173/api/auth/callback` (the SPA proxies the callback through to the backend).
+
+### Run the SPA on the host instead of in Docker
+
+If you want native filesystem speed on Windows / macOS, skip the `frontend` container and run Vite yourself:
 
 ```bash
+docker compose -f docker-compose.dev.yml up -d postgres backend
 cd frontend
 cp .env.example .env.local
 npm install
-npm run gen:types   # once the backend is up — generates typed API client
-npm run dev         # http://localhost:5173
+npm run gen:types
+npm run dev
 ```
 
 For production, see [docs/07-deployment.md](docs/07-deployment.md).

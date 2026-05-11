@@ -1,17 +1,22 @@
-# docker-compose.dev.yml — minimal stack for local development.
+# docker-compose.dev.yml — full local stack for development.
 #
-# Start:
+# Start everything (postgres + backend + frontend):
 #   docker compose -f docker-compose.dev.yml up -d
 #
-# Then:
+# Apply migrations + smoke-test:
 #   docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
 #   curl http://localhost:8000/api/health
 #
-# Differences vs production (docker-compose.yml, coming in Phase 11):
-#   - no frontend (use vite dev server locally)
+# Endpoints:
+#   - SPA (Vite, HMR enabled):  http://localhost:5173
+#   - Backend OpenAPI:           http://localhost:8000/api/docs
+#   - Postgres:                  localhost:5432 (psql from host)
+#
+# Differences vs production:
+#   - frontend runs Vite dev server (not nginx + built bundle)
 #   - backend started with --reload and the source mounted as a volume
-#   - postgres exposed on localhost:5432 so you can connect with psql from the host
-#   - no TLS, no nginx
+#   - postgres port exposed on localhost
+#   - no TLS, no nginx reverse proxy
 
 services:
   postgres:
@@ -44,7 +49,10 @@ services:
       ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
       ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
       ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
-      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+      # PUBLIC_URL drives OAuth/OIDC redirect URIs. When the SPA proxies /api/*,
+      # the browser-visible host is the Vite dev server (5173), so callbacks
+      # must come back through there to land on the SPA after auth.
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:5173}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
     ports:
@@ -53,5 +61,32 @@ services:
       - ./backend:/app
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+  frontend:
+    image: node:20-alpine
+    restart: unless-stopped
+    working_dir: /app
+    depends_on:
+      - backend
+    environment:
+      # Inside the docker network, the backend is reachable by service name.
+      # `vite.config.ts` reads VITE_BACKEND_URL to wire the /api proxy.
+      VITE_BACKEND_URL: http://backend:8000
+      VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-oidc}
+      # Polling-based file watcher — Docker Desktop on Windows / WSL doesn't
+      # propagate inotify events into the container, so HMR needs this to fire.
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      # Named volume masks the host's node_modules — keeps native deps Linux-built
+      # inside the container even when the bind-mounted host directory is Windows.
+      - frontend_node_modules:/app/node_modules
+    # `npm install` is fast after the first run because the named volume persists
+    # the install across `compose down`. `--host` is required to expose Vite on 0.0.0.0.
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+
 volumes:
   pgdata_dev:
+  frontend_node_modules:
