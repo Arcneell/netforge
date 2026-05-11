@@ -141,3 +141,9 @@ export type TopologyEdge = S['TopologyEdge']
 export type TopologyNodeData = S['TopologyNodeData']
 export type TopologyEdgeData = S['TopologyEdgeData']
 export type TopologyResponse = S['TopologyResponse']
+
+// ---------------------------------------------------------------------------
+// Imports
+// ---------------------------------------------------------------------------
+export type ImportReport = S['ImportReport']
+export type ImportErrorRow = S['ImportErrorRow']
