@@ -73,3 +73,30 @@ class SubnetRead(SubnetBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+# --- Utility responses (phase 4) ---------------------------------------------
+
+
+class SubnetIpEntry(BaseModel):
+    """One row in the GET /api/subnets/{id}/ips response.
+
+    `status` may be one of the stored statuses (`reserved`, `assigned`, `dhcp`)
+    OR the synthetic `"free"` for addresses that have no row in `ips`.
+    """
+
+    address: str
+    status: str
+    hostname: str | None = None
+    mac: str | None = None
+    device_id: int | None = None
+    description: str | None = None
+
+
+class SubnetIpsResponse(BaseModel):
+    subnet: SubnetRead
+    ips: list[SubnetIpEntry]
+
+
+class NextFreeIpResponse(BaseModel):
+    address: str

@@ -1,4 +1,14 @@
-"""Subnets service — relies on the GiST exclusion constraint for overlap."""
+"""Subnets service — relies on the GiST exclusion constraint for overlap.
+
+Also hosts the utility endpoints declared in phase 4:
+
+- `next_free_ip(subnet_id)` — first unused host address in the subnet.
+- `list_subnet_ips(subnet_id)` — every host address with its status
+  (assigned/reserved/dhcp or synthetic `"free"` for the unused ones).
+
+Both refuse to operate on networks larger than `_MAX_HOSTS_FOR_SCAN` host
+addresses to keep response sizes and Python set memory bounded.
+"""
 
 from __future__ import annotations
 
@@ -7,10 +17,16 @@ from ipaddress import IPv4Address, IPv4Network
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.ip import Ip
 from app.models.subnet import Subnet
 from app.schemas.common import PageParams
-from app.schemas.subnet import SubnetCreate, SubnetUpdate
+from app.schemas.subnet import SubnetCreate, SubnetIpEntry, SubnetUpdate
 from app.services.errors import business_rule, catch_integrity_errors, not_found
+
+# Hard cap on /N scans: 4096 host addresses (i.e. /20). Anything larger is a
+# planning error in a documentation tool — surface a 400 rather than try to
+# materialise 65k entries.
+_MAX_HOSTS_FOR_SCAN = 4096
 
 
 async def list_subnets(
@@ -95,3 +111,73 @@ async def delete_subnet(db: AsyncSession, subnet_id: int) -> None:
     await db.delete(subnet)
     with catch_integrity_errors():
         await db.commit()
+
+
+# --- Utility queries (phase 4) ----------------------------------------------
+
+
+def _check_size(network: IPv4Network) -> None:
+    # network.hosts() excludes network/broadcast; .num_addresses includes them.
+    if network.num_addresses > _MAX_HOSTS_FOR_SCAN:
+        business_rule(
+            "SUBNET_TOO_LARGE",
+            f"Operation refused: subnet has more than {_MAX_HOSTS_FOR_SCAN} addresses.",
+            details={"cidr": str(network), "max": _MAX_HOSTS_FOR_SCAN},
+        )
+
+
+async def _used_addresses(db: AsyncSession, subnet_id: int) -> dict[str, Ip]:
+    result = await db.execute(select(Ip).where(Ip.subnet_id == subnet_id))
+    return {str(ip.address): ip for ip in result.scalars().all()}
+
+
+async def next_free_ip(db: AsyncSession, subnet_id: int) -> str:
+    subnet = await get_subnet(db, subnet_id)
+    network = IPv4Network(subnet.cidr, strict=False)
+    _check_size(network)
+
+    used = await _used_addresses(db, subnet_id)
+    skip: set[str] = {str(IPv4Address(subnet.gateway))} if subnet.gateway else set()
+
+    for host in network.hosts():
+        s = str(host)
+        if s in used or s in skip:
+            continue
+        return s
+
+    business_rule(
+        "SUBNET_FULL",
+        "No free IP available in this subnet.",
+        details={"cidr": str(network)},
+    )
+
+
+async def list_subnet_ips(
+    db: AsyncSession, subnet_id: int
+) -> tuple[Subnet, list[SubnetIpEntry]]:
+    subnet = await get_subnet(db, subnet_id)
+    network = IPv4Network(subnet.cidr, strict=False)
+    _check_size(network)
+
+    used = await _used_addresses(db, subnet_id)
+
+    entries: list[SubnetIpEntry] = []
+    for host in network.hosts():
+        s = str(host)
+        ip = used.get(s)
+        if ip is None:
+            entries.append(SubnetIpEntry(address=s, status="free"))
+        else:
+            entries.append(
+                SubnetIpEntry(
+                    address=s,
+                    status=ip.status.value
+                    if hasattr(ip.status, "value")
+                    else str(ip.status),
+                    hostname=ip.hostname,
+                    mac=None if ip.mac is None else str(ip.mac),
+                    device_id=ip.device_id,
+                    description=ip.description,
+                )
+            )
+    return subnet, entries

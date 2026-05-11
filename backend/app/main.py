@@ -20,9 +20,11 @@ from app.routers import (
     links,
     ports,
     rooms,
+    search,
     sites,
     subnets,
     switches,
+    topology,
     vlans,
 )
 from app.services.audit import register_audit_listeners
@@ -118,6 +120,8 @@ def create_app() -> FastAPI:
     app.include_router(ports.router, prefix="/api")
     app.include_router(links.router, prefix="/api")
     app.include_router(audit.router, prefix="/api")
+    app.include_router(search.router, prefix="/api")
+    app.include_router(topology.router, prefix="/api")
 
     return app
 
