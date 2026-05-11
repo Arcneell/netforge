@@ -83,6 +83,13 @@ class _VlanRow(BaseModel):
     description: str | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
 
+    @field_validator("color", mode="before")
+    @classmethod
+    def _empty_color_to_none(cls, v: Any) -> Any:
+        # Blank cells exported by the CSV writer must round-trip — otherwise
+        # re-importing any export with VLANs missing a color fails the pattern.
+        return _empty_to_none(v)
+
 
 class _SubnetRow(BaseModel):
     """Upsert by `cidr`."""
@@ -176,11 +183,18 @@ class _SwitchRow(BaseModel):
     model: str | None = Field(default=None, max_length=100)
     serial: str | None = Field(default=None, max_length=100)
     management_ip: str | None = None
-    site_code: str = Field(min_length=1, max_length=20)
-    room_code: str = Field(min_length=1, max_length=50)
+    # `room_id` is nullable on Switch — let blank cells round-trip on export.
+    # Either both site/room codes are set (switch is in a room) or neither.
+    site_code: str | None = Field(default=None, max_length=20)
+    room_code: str | None = Field(default=None, max_length=50)
     rack_position: str | None = Field(default=None, max_length=20)
     port_count: int = Field(gt=0, le=1024)
     firmware_version: str | None = Field(default=None, max_length=50)
+
+    @field_validator("site_code", "room_code", mode="before")
+    @classmethod
+    def _blank_code_to_none(cls, v: Any) -> Any:
+        return _empty_to_none(v)
 
     @field_validator("management_ip", mode="before")
     @classmethod
@@ -494,10 +508,17 @@ async def _persist_switch(db: AsyncSession, row: _SwitchRow) -> None:
                 "shrinking port_count via CSV import is refused.",
             )
         if row.port_count > existing.port_count:
+            # Don't touch `existing.ports` — that would lazy-load the whole
+            # relationship inside the async session and trip MissingGreenlet.
+            # Insert by FK instead; cascades + uniqueness are guarded at the
+            # DB level so this is equivalent.
             for n in range(existing.port_count + 1, row.port_count + 1):
-                existing.ports.append(
+                db.add(
                     Port(
-                        number=n, mode=PortMode.access, admin_status=PortAdminStatus.up
+                        switch_id=existing.id,
+                        number=n,
+                        mode=PortMode.access,
+                        admin_status=PortAdminStatus.up,
                     )
                 )
             existing.port_count = row.port_count
@@ -693,6 +714,10 @@ async def run_import(
 
     # ---- Apply phase — one transaction, flush per row to localize errors -
     apply_errors: list[ImportErrorRow] = []
+    # Tracks rows successfully persisted before any failure aborts the loop.
+    # `len(parsed) - len(apply_errors)` would be wrong: it'd credit rows we
+    # never even attempted because we `break` on first failure.
+    success_count = 0
     for line, model, _raw in parsed:
         try:
             await spec.persist(db, model)
@@ -720,12 +745,13 @@ async def run_import(
                 )
             )
             break
+        success_count += 1
 
     if apply_errors or dry_run:
         await db.rollback()
         return ImportReport(
             parsed_rows=len(rows),
-            ok_rows=len(parsed) - len(apply_errors),
+            ok_rows=success_count,
             error_rows=apply_errors,
             applied=False,
         )
