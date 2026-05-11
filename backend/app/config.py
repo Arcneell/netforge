@@ -70,11 +70,6 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
-    @property
-    def database_url_sync(self) -> str:
-        """Sync version of DATABASE_URL (used by Alembic)."""
-        return self.database_url.replace("+asyncpg", "")
-
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
