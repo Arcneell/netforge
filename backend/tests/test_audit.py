@@ -15,6 +15,8 @@ from app.models.user import AuditAction
 from app.services.audit import (
     _dump_columns,
     _jsonsafe,
+    current_request_ip_var,
+    current_request_ua_var,
     current_user_id_var,
 )
 
@@ -82,3 +84,22 @@ def test_context_var_is_request_scoped() -> None:
         current_user_id_var.reset(token)
 
     assert current_user_id_var.get() is None
+
+
+def test_request_metadata_context_vars_default_to_none() -> None:
+    assert current_request_ip_var.get() is None
+    assert current_request_ua_var.get() is None
+
+
+def test_request_metadata_context_vars_round_trip() -> None:
+    ip_tok = current_request_ip_var.set("10.0.0.42")
+    ua_tok = current_request_ua_var.set("curl/8.4.0")
+    try:
+        assert current_request_ip_var.get() == "10.0.0.42"
+        assert current_request_ua_var.get() == "curl/8.4.0"
+    finally:
+        current_request_ip_var.reset(ip_tok)
+        current_request_ua_var.reset(ua_tok)
+
+    assert current_request_ip_var.get() is None
+    assert current_request_ua_var.get() is None
