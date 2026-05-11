@@ -25,6 +25,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from app.utils.request import client_ip
+
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 # Paths that should pass through unconditionally. Health probes must not be
@@ -55,7 +57,7 @@ class WriteRateLimitMiddleware(BaseHTTPMiddleware):
         if request.method not in WRITE_METHODS or request.url.path in _EXEMPT_PATHS:
             return await call_next(request)
 
-        key = _client_ip(request)
+        key = client_ip(request) or "unknown"
         now = time.monotonic()
         with self._lock:
             bucket = self._hits.setdefault(key, deque())
@@ -82,9 +84,3 @@ class WriteRateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _client_ip(request: Request) -> str:
-    # Mirror the audit-log middleware: X-Forwarded-For wins behind nginx.
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
