@@ -391,5 +391,45 @@
       "dac": "DAC",
       "virtual": "Virtual"
     }
+  },
+  "import": {
+    "subtitle": "Bulk-load entities from CSV files. Run a dry-run first to preview validation errors without writing anything.",
+    "entity": "Entity",
+    "entityHint": "One file per entity, in the order shown below.",
+    "file": "CSV file",
+    "filePrompt": "Drop a .csv file here, or click to pick one",
+    "fileSelected": "{name} · {size}",
+    "fileReset": "Choose another file",
+    "dryRun": "Dry-run (validate only, never writes)",
+    "dryRunHint": "Recommended for the first pass — the database is rolled back even if everything parses cleanly.",
+    "submit": "Run import",
+    "submitDryRun": "Validate (dry-run)",
+    "exportTemplate": "Download current data as template",
+    "exportTemplateHint": "Exports the entity as a CSV with the exact column names the importer expects.",
+    "orderTitle": "Recommended import order",
+    "orderHint": "Dependencies between entities — import in this order on a fresh install.",
+    "report": {
+      "title": "Last import report",
+      "appliedTrue": "Applied",
+      "appliedFalse": "Not applied (dry-run or errors)",
+      "parsedRows": "Parsed rows",
+      "okRows": "Successful rows",
+      "errorRows": "Error rows",
+      "errorsTitle": "Errors",
+      "noErrors": "No row-level errors.",
+      "successAll": "All {count} rows imported successfully.",
+      "successDryRun": "All {count} rows pass validation. Re-run without dry-run to apply.",
+      "partial": "{ok} of {total} rows would apply — fix the listed errors and re-run.",
+      "columns": {
+        "line": "Line",
+        "column": "Column",
+        "value": "Value",
+        "error": "Error"
+      }
+    },
+    "errors": {
+      "tooLarge": "File exceeds the 10 MiB upload limit.",
+      "notCsv": "Only .csv files are accepted."
+    }
   }
 }

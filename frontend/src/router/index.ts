@@ -77,8 +77,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'import',
         name: 'import',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: { titleKey: 'nav.import' },
+        component: () => import('@/views/ImportView.vue'),
         meta: { minRole: 'admin', titleKey: 'nav.import' },
       },
       {
