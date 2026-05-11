@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
 from app.config import get_settings
-from app.routers import auth, health
+from app.routers import auth, health, ips, rooms, sites, subnets, vlans
 
 logger = logging.getLogger("netforge")
 
@@ -89,6 +89,11 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
+    app.include_router(sites.router, prefix="/api")
+    app.include_router(rooms.router, prefix="/api")
+    app.include_router(vlans.router, prefix="/api")
+    app.include_router(subnets.router, prefix="/api")
+    app.include_router(ips.router, prefix="/api")
 
     return app
 
