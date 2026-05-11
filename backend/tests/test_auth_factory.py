@@ -3,6 +3,7 @@
 import pytest
 from authlib.integrations.starlette_client import OAuth
 
+from app.auth.dev import DevAuthProvider
 from app.auth.factory import make_provider
 from app.auth.github import GitHubProvider
 from app.auth.oidc import OIDCProvider
@@ -63,3 +64,23 @@ def test_make_provider_is_case_insensitive() -> None:
     )
     provider = make_provider(settings, OAuth())
     assert provider.name == "github"
+
+
+def test_make_provider_dev() -> None:
+    settings = Settings(
+        auth_provider="dev",
+        dev_admin_email="me@example.test",
+        dev_admin_name="Me",
+        session_cookie_secure=False,
+    )
+    provider = make_provider(settings, OAuth())
+    assert isinstance(provider, DevAuthProvider)
+    assert provider.name == "dev"
+
+
+def test_make_provider_dev_refuses_secure_cookies() -> None:
+    # SESSION_COOKIE_SECURE=true is the strongest "this is production" signal
+    # we have — the factory must refuse to hand out a passwordless admin login.
+    settings = Settings(auth_provider="dev", session_cookie_secure=True)
+    with pytest.raises(RuntimeError, match="SESSION_COOKIE_SECURE"):
+        make_provider(settings, OAuth())

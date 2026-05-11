@@ -25,10 +25,16 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Authentication
     # ------------------------------------------------------------------
-    # Which provider to use. One of: "github", "oidc".
+    # Which provider to use. One of: "github", "oidc", "dev".
     # Adding a new IdP usually means picking "oidc" and pointing OIDC_ISSUER_URL
     # at it (Keycloak, Authentik, Entra ID, Google Workspace, GitLab, ...).
+    # "dev" bypasses OAuth entirely and logs in a fixed admin user — local
+    # testing only, refuses to start when SESSION_COOKIE_SECURE is true.
     auth_provider: str = "github"
+
+    # Dev-only fake user surfaced by the "dev" provider. Ignored otherwise.
+    dev_admin_email: str = "admin@example.com"
+    dev_admin_name: str = "Dev Admin"
 
     # GitHub OAuth 2.0 (https://github.com/settings/developers)
     github_client_id: str = ""
