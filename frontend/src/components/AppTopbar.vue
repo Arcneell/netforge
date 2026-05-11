@@ -10,6 +10,8 @@ const { t } = useI18n()
 const { user, role, logout } = useAuth()
 const menuOpen = ref(false)
 
+defineEmits<{ (e: 'open-search'): void }>()
+
 const initials = computed(() => {
   const name = user.value?.display_name || user.value?.email || '?'
   return name
@@ -41,12 +43,11 @@ async function onLogout() {
   <header
     class="h-14 flex items-center gap-3 px-4 border-b border-border bg-surface/80 backdrop-blur sticky top-0 z-10"
   >
-    <!-- Global search trigger (placeholder for Phase 10 cmd+k panel) -->
     <button
       type="button"
       class="hidden md:inline-flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-bg/60 text-sm text-fg-muted hover:bg-surface-hover transition w-full max-w-sm"
       :aria-label="$t('common.search')"
-      disabled
+      @click="$emit('open-search')"
     >
       <Search class="w-4 h-4" aria-hidden="true" />
       <span class="flex-1 text-left">{{ $t('common.search') }}…</span>

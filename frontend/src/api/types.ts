@@ -49,6 +49,7 @@ export type ApiErrorCode =
   | 'INVALID_LINK'
   | 'INTEGRITY_VIOLATION'
   | 'NETWORK_ERROR'
+  | 'RATE_LIMITED'
   | 'UNKNOWN'
 
 // ---------------------------------------------------------------------------
