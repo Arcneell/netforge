@@ -61,12 +61,15 @@ async def _check_address_in_subnet(
     subnet = await db.get(Subnet, subnet_id)
     if subnet is None:
         not_found("Subnet", subnet_id)
-    network = IPv4Network(subnet.cidr, strict=False)
+    # asyncpg deserialises CIDR columns to ipaddress.IPv4Network, which is
+    # not JSON-serialisable — coerce to str for the error response details.
+    cidr_str = str(subnet.cidr)
+    network = IPv4Network(cidr_str, strict=False)
     if IPv4Address(address) not in network:
         business_rule(
             "IP_NOT_IN_SUBNET",
-            f"{address} is not contained in {subnet.cidr}.",
-            details={"address": address, "cidr": subnet.cidr, "subnet_id": subnet_id},
+            f"{address} is not contained in {cidr_str}.",
+            details={"address": address, "cidr": cidr_str, "subnet_id": subnet_id},
         )
 
 
