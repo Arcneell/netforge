@@ -1,0 +1,126 @@
+<script setup lang="ts" generic="T extends { id: number | string }">
+import { useI18n } from 'vue-i18n'
+import { Loader2, Inbox } from 'lucide-vue-next'
+import EmptyState from '@/components/EmptyState.vue'
+
+/**
+ * Minimal accessible table with explicit column slots and one row-click event.
+ * No client-side sorting, filtering, or virtualization on purpose — those
+ * concerns belong to the parent page so it can push them down to the API.
+ */
+export interface DataTableColumn {
+  key: string
+  label: string
+  /** Tailwind classes applied to <th> and each <td>. */
+  cellClass?: string
+  /** Right-align numeric columns. */
+  align?: 'left' | 'right' | 'center'
+  /** Hide on narrow screens. */
+  hideOnSm?: boolean
+}
+
+withDefaults(
+  defineProps<{
+    columns: DataTableColumn[]
+    rows: T[]
+    loading?: boolean
+    /** Title shown in the empty-state when there are zero rows. */
+    emptyTitle?: string
+    emptyDescription?: string
+    /** Adds a hover style + cursor on rows when truthy. */
+    clickable?: boolean
+  }>(),
+  { loading: false, clickable: false },
+)
+
+defineEmits<{
+  (e: 'row-click', row: T): void
+}>()
+
+const { t } = useI18n()
+
+function alignClass(a: DataTableColumn['align']): string {
+  if (a === 'right') return 'text-right'
+  if (a === 'center') return 'text-center'
+  return 'text-left'
+}
+</script>
+
+<template>
+  <div class="nf-card overflow-hidden">
+    <div class="relative overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-muted/60 border-b border-border">
+            <th
+              v-for="col in columns"
+              :key="col.key"
+              :class="[
+                'px-4 py-2 text-xs font-medium text-fg-muted uppercase tracking-wide',
+                alignClass(col.align),
+                col.hideOnSm ? 'hidden md:table-cell' : '',
+              ]"
+              scope="col"
+            >
+              {{ col.label }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading && rows.length === 0">
+            <td :colspan="columns.length" class="p-10">
+              <div class="flex items-center justify-center gap-2 text-fg-muted text-sm">
+                <Loader2 class="w-4 h-4 animate-spin" aria-hidden="true" />
+                {{ t('common.loading') }}
+              </div>
+            </td>
+          </tr>
+          <tr v-else-if="rows.length === 0">
+            <td :colspan="columns.length">
+              <EmptyState
+                :icon="Inbox"
+                :title="emptyTitle ?? t('common.empty.title')"
+                :description="emptyDescription ?? t('common.empty.description')"
+              />
+            </td>
+          </tr>
+          <tr
+            v-for="row in rows"
+            v-else
+            :key="row.id"
+            :class="[
+              'border-b border-border last:border-0',
+              clickable
+                ? 'hover:bg-surface-hover cursor-pointer focus-within:bg-surface-hover'
+                : '',
+            ]"
+            @click="clickable && $emit('row-click', row)"
+          >
+            <td
+              v-for="col in columns"
+              :key="col.key"
+              :class="[
+                'px-4 py-2 text-fg align-middle',
+                alignClass(col.align),
+                col.cellClass ?? '',
+                col.hideOnSm ? 'hidden md:table-cell' : '',
+              ]"
+            >
+              <slot :name="`cell-${col.key}`" :row="row" :value="(row as any)[col.key]">
+                {{ (row as any)[col.key] ?? '—' }}
+              </slot>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <!-- Loading overlay shown when refetching with rows already on screen -->
+      <div
+        v-if="loading && rows.length > 0"
+        class="absolute inset-x-0 top-0 h-0.5 bg-primary-500/40 overflow-hidden"
+      >
+        <div class="h-full w-1/3 bg-primary-500 animate-pulse" />
+      </div>
+    </div>
+    <slot name="footer" />
+  </div>
+</template>

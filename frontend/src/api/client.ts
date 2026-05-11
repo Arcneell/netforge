@@ -1,13 +1,5 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios'
-
-// Shape of every error response from the backend (see backend/app/services/errors.py).
-export interface ApiErrorBody {
-  error: {
-    code: string
-    message: string
-    details?: Record<string, unknown>
-  }
-}
+import type { ApiErrorBody } from '@/api/types'
 
 export class ApiError extends Error {
   status: number
