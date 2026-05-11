@@ -71,6 +71,10 @@ watch(
     const res = await devicesApi.list({ page_size: 200 })
     devices.value = res.items
   },
+  // Run on mount too: parents (e.g. SubnetDetailView's "next free IP" flow)
+  // toggle our `v-if` together with `:open`, so the editor lands with
+  // open=true on its very first render and would otherwise miss the change.
+  { immediate: true },
 )
 
 const statusOptions = computed(() => [
