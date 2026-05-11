@@ -18,5 +18,6 @@ export { portsApi } from './endpoints/ports'
 export { linksApi, type LinkFilters } from './endpoints/links'
 export { auditApi, type AuditFilters } from './endpoints/audit'
 export { searchApi } from './endpoints/search'
+export { topologyApi } from './endpoints/topology'
 
 export type * from './types'

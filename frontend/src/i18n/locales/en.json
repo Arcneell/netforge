@@ -355,5 +355,40 @@
     "subtitle": "Manage sites and rooms. Only administrators can edit.",
     "sitesTab": "Sites",
     "roomsTab": "Rooms"
+  },
+  "topology": {
+    "subtitle": "Inter-switch links rendered as a graph.",
+    "layout": "Layout",
+    "layouts": {
+      "dagre": "Hierarchical",
+      "cose": "Force-directed",
+      "breadthfirst": "Breadth-first",
+      "circle": "Circle",
+      "grid": "Grid"
+    },
+    "fit": "Fit to screen",
+    "relayout": "Re-run layout",
+    "exportPng": "Export PNG",
+    "selectPrompt": "Click a switch or a link in the graph to see its details here.",
+    "openSwitch": "Open switch",
+    "link": "Link",
+    "empty": {
+      "title": "No topology to display",
+      "description": "Create switches and inter-switch links to see them appear here."
+    }
+  },
+  "link": {
+    "fields": {
+      "type": "Type",
+      "speed": "Speed",
+      "portA": "Port A",
+      "portB": "Port B"
+    },
+    "types": {
+      "copper": "Copper",
+      "fiber": "Fiber",
+      "dac": "DAC",
+      "virtual": "Virtual"
+    }
   }
 }
