@@ -13,10 +13,12 @@ import TopologyCanvas, { type LayoutName } from '@/components/TopologyCanvas.vue
 import { roomsApi, sitesApi, switchesApi, topologyApi } from '@/api'
 import type { Room, Site, Switch, TopologyEdge, TopologyNode } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
 const router = useRouter()
 const { describe } = useApiErrorMessage()
+const { error: toastError } = useToast()
 
 const allNodes = ref<TopologyNode[]>([])
 const allEdges = ref<TopologyEdge[]>([])
@@ -50,7 +52,10 @@ async function load() {
     roomsById.value = new Map(rms.items.map((r) => [r.id, r]))
     sites.value = sts.items
   } catch (err) {
-    void describe(err)
+    // Don't swallow — without a toast the user sees the empty state with no
+    // hint that the load failed. console.error keeps a hard trace for devtools.
+    console.error('Failed to load topology', err)
+    toastError(describe(err))
   } finally {
     loading.value = false
   }
