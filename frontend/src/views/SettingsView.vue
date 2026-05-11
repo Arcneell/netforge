@@ -142,7 +142,7 @@ const roomColumns: DataTableColumn[] = [
         :class="[
           'px-3 h-8 rounded text-sm font-medium transition',
           tab === 'sites'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-100/30 dark:text-primary-50'
+            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
             : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
         ]"
         @click="tab = 'sites'"
@@ -156,7 +156,7 @@ const roomColumns: DataTableColumn[] = [
         :class="[
           'px-3 h-8 rounded text-sm font-medium transition',
           tab === 'rooms'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-100/30 dark:text-primary-50'
+            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
             : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
         ]"
         @click="tab = 'rooms'"

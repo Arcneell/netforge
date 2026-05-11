@@ -70,7 +70,7 @@ async function onLogout() {
         @click="toggleMenu"
       >
         <span
-          class="inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary-100 text-primary-700 text-xs font-semibold dark:bg-primary-100/30 dark:text-primary-50"
+          class="inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary-100 text-primary-700 text-xs font-semibold dark:bg-primary-900/40 dark:text-primary-300"
           aria-hidden="true"
         >
           {{ initials || '—' }}

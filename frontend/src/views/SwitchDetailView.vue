@@ -144,7 +144,7 @@ function onPortSaved(p: Port) {
             :class="[
               'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
               tab === 'rack'
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-100/30 dark:text-primary-50'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
                 : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
             ]"
             @click="tab = 'rack'"
@@ -157,7 +157,7 @@ function onPortSaved(p: Port) {
             :class="[
               'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
               tab === 'table'
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-100/30 dark:text-primary-50'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
                 : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
             ]"
             @click="tab = 'table'"
