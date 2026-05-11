@@ -46,6 +46,16 @@ current_user_id_var: ContextVar[int | None] = ContextVar(
     "current_user_id", default=None
 )
 
+# Set by the HTTP middleware in `app/main.py` at the very start of each
+# request, so they're visible from inside the SQLAlchemy event listeners
+# (which have no Request handle of their own).
+current_request_ip_var: ContextVar[str | None] = ContextVar(
+    "current_request_ip", default=None
+)
+current_request_ua_var: ContextVar[str | None] = ContextVar(
+    "current_request_ua", default=None
+)
+
 
 # (Model, entity name written into audit_log.entity)
 _AUDITED: list[tuple[type, str]] = [
@@ -123,6 +133,8 @@ def _write_audit_row(
             # via json.dumps/loads to guarantee no non-serializable nested
             # values slipped through.
             changes=json.loads(json.dumps(changes, default=str)),
+            ip_address=current_request_ip_var.get(),
+            user_agent=current_request_ua_var.get(),
         )
     )
 

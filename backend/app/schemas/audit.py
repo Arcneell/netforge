@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class AuditAction(str, Enum):
@@ -25,3 +25,9 @@ class AuditLogRead(BaseModel):
     ip_address: str | None
     user_agent: str | None
     created_at: datetime
+
+    @field_validator("ip_address", mode="before")
+    @classmethod
+    def _coerce_ip(cls, v: object) -> str | None:
+        # asyncpg returns INET columns as ipaddress.IPv4Address. Stringify.
+        return None if v is None else str(v)

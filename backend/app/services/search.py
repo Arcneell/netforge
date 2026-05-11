@@ -48,7 +48,7 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
                 type="ip",
                 id=ip.id,
                 label=str(ip.address),
-                context=" · ".join(context_bits) if context_bits else None,
+                context=" / ".join(context_bits) if context_bits else None,
             )
         )
 
@@ -73,7 +73,7 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
                 type="device",
                 id=dev.id,
                 label=dev.name,
-                context=" · ".join(context_bits) if context_bits else None,
+                context=" / ".join(context_bits) if context_bits else None,
             )
         )
 
@@ -97,7 +97,7 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
                 type="switch",
                 id=sw.id,
                 label=sw.name,
-                context=" · ".join(context_bits) if context_bits else None,
+                context=" / ".join(context_bits) if context_bits else None,
             )
         )
 
