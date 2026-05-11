@@ -25,11 +25,17 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin
-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://rsms.me; img-src 'self' data:; font-src 'self' data: https://rsms.me; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 Permissions-Policy: geolocation=(), microphone=(), camera=()
 ```
 
-**CSP**: `'unsafe-inline'` on `style-src` remains necessary with Tailwind JIT. No `'unsafe-inline'` on `script-src`. No `connect-src` to external domains (everything goes through the proxied `/api/*`).
+**CSP**: `'unsafe-inline'` on `style-src` remains necessary with Tailwind JIT. No `'unsafe-inline'` on `script-src`. No `connect-src` to external domains (everything goes through the proxied `/api/*`). The `https://rsms.me` allowance is for the Inter webfont — drop it if you self-host the font.
+
+## Rate limiting
+
+`WriteRateLimitMiddleware` (see `backend/app/middleware/rate_limit.py`) caps `POST/PUT/PATCH/DELETE` to `RATE_LIMIT_WRITES_PER_WINDOW` per `RATE_LIMIT_WINDOW_SECONDS` per client IP (defaults: 60 writes per 60 seconds). Health probes and `/api/auth/*` are exempt. Reads pass through unconditionally — the dashboard and topology views fire many GETs per page load.
+
+Storage is in-memory and per-worker. When scaling to multiple uvicorn workers, swap to a shared backend (Redis) so a script can't divide its load across workers and bypass the cap.
 
 ## XSS
 

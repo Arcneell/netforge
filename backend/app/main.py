@@ -29,6 +29,7 @@ from app.routers import (
     topology,
     vlans,
 )
+from app.middleware.rate_limit import WriteRateLimitMiddleware
 from app.services.audit import (
     current_request_ip_var,
     current_request_ua_var,
@@ -77,6 +78,14 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    # Rate-limit write methods. Reads are never throttled — dashboards and the
+    # topology view fire many GETs per page load.
+    app.add_middleware(
+        WriteRateLimitMiddleware,
+        max_per_window=settings.rate_limit_writes_per_window,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
 
     @app.middleware("http")
     async def log_requests(
