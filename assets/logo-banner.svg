@@ -2,8 +2,8 @@
   <title>NetForge — IPAM, topology, infrastructure</title>
   <defs>
     <style>
-      .wordmark { font: 700 56px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; letter-spacing: -2.2px; }
-      .tagline  { font: 600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; letter-spacing: 3.4px; }
+      .wordmark { font: 700 56px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .tagline  { font: 600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     </style>
   </defs>
 
@@ -21,10 +21,11 @@
     <circle cx="44" cy="20" r="6"   fill="#ffffff"/>
   </g>
 
-  <!-- Wordmark + tagline. x=128 leaves a 16-px breathing gap after the
-       mark (mark right edge = 112). Baselines chosen so the cap-top of
-       "NetForge" sits at y=30 and the tagline's descent reaches y=99 —
-       text block centred at y=64.5, matching the mark's center. -->
-  <text x="128" y="70" class="wordmark" fill="#0e7490">NetForge</text>
-  <text x="128" y="96" class="tagline"  fill="#64748b">IPAM · TOPOLOGY · INFRASTRUCTURE</text>
+  <!-- Wordmark + tagline. Both pinned to x=128 and forced to the same
+       316-px width via textLength + lengthAdjust=spacing, so "NetForge"
+       and "IPAM · TOPOLOGY · INFRASTRUCTURE" end at exactly the same
+       x-coordinate (444). The wordmark gains ~30% letterspacing — modern
+       and intentional, in the registry of IBM / Tesla / Tailscale wordmarks. -->
+  <text x="128" y="70" class="wordmark" textLength="316" lengthAdjust="spacing" fill="#0e7490">NetForge</text>
+  <text x="128" y="96" class="tagline"  textLength="316" lengthAdjust="spacing" fill="#64748b">IPAM · TOPOLOGY · INFRASTRUCTURE</text>
 </svg>
