@@ -1,5 +1,5 @@
 import { api } from '@/api/client'
-import type { ImportReport } from '@/api/types'
+import type { ImportErrorRow, ImportReport } from '@/api/types'
 
 /**
  * Entities supported by both the import and export CSV endpoints. Keep this
@@ -19,6 +19,35 @@ export const IMPORT_ENTITIES = [
 ] as const
 export type ImportEntity = (typeof IMPORT_ENTITIES)[number]
 
+// Hand-typed mirrors of the new `/detect` and `/bulk` schemas. Will be
+// supplanted by generated equivalents on the next `npm run gen:types`; if
+// that pass introduces a name conflict, switch to `import type { DetectReport
+// } from '@/api/types'` and delete the local declarations.
+export interface DetectReport {
+  entity: ImportEntity | null
+  confidence: number
+  headers: string[]
+  matched_required: string[]
+  missing_required: string[]
+  unknown_headers: string[]
+  candidates: Record<string, number>
+}
+
+export interface BulkImportFileReport {
+  filename: string
+  detected_entity: ImportEntity | null
+  parsed_rows: number
+  ok_rows: number
+  error_rows: ImportErrorRow[]
+}
+
+export interface BulkImportReport {
+  files: BulkImportFileReport[]
+  total_parsed_rows: number
+  total_ok_rows: number
+  applied: boolean
+}
+
 export const importsApi = {
   /**
    * Upload a CSV file. With `dry_run=true` the backend parses and validates
@@ -32,6 +61,30 @@ export const importsApi = {
     form.append('file', file)
     form.append('dry_run', dryRun ? 'true' : 'false')
     const res = await api.post<ImportReport>(`/imports/${entity}`, form)
+    return res.data
+  },
+
+  /**
+   * Ask the backend to guess which entity a CSV belongs to by inspecting its
+   * header row. Lets the UI auto-route a file without prompting the user.
+   */
+  async detect(file: File): Promise<DetectReport> {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await api.post<DetectReport>('/imports/detect', form)
+    return res.data
+  },
+
+  /**
+   * Bulk-import many CSVs (or a single .zip) in a single transaction. Each
+   * file is routed to the correct entity by header detection; on any error
+   * the whole batch is rolled back.
+   */
+  async uploadBulk(files: File[], dryRun: boolean): Promise<BulkImportReport> {
+    const form = new FormData()
+    for (const f of files) form.append('files', f)
+    form.append('dry_run', dryRun ? 'true' : 'false')
+    const res = await api.post<BulkImportReport>('/imports/bulk', form)
     return res.data
   },
 }

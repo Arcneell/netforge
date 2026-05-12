@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import zipfile
 from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv4Network
 from typing import Any, Awaitable, Callable
@@ -34,7 +35,13 @@ from app.models.port import Port, PortAdminStatus, PortMode, PortVlan
 from app.models.subnet import Subnet
 from app.models.switch import Switch
 from app.models.vlan import Vlan
-from app.schemas.imports import ImportErrorRow, ImportReport
+from app.schemas.imports import (
+    BulkImportFileReport,
+    BulkImportReport,
+    DetectReport,
+    ImportErrorRow,
+    ImportReport,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -676,6 +683,22 @@ SPECS: dict[str, _ImportSpec] = {
     "links": _ImportSpec(_LinkRow, _persist_link),
 }
 
+# Dependency order — used when multiple CSVs are imported in one shot. Mirrors
+# the recommended sequence in docs/08-import-csv.md: parents before children,
+# `ports` after `ips` so port → ip refs resolve, `links` last because it
+# resolves ports.
+IMPORT_ORDER: tuple[str, ...] = (
+    "sites",
+    "rooms",
+    "vlans",
+    "subnets",
+    "devices",
+    "switches",
+    "ips",
+    "ports",
+    "links",
+)
+
 
 # --------------------------------------------------------------------------- #
 # Driver
@@ -709,9 +732,25 @@ def _format_validation_errors(
     return out
 
 
-async def run_import(
-    db: AsyncSession, entity: str, content: bytes, dry_run: bool
-) -> ImportReport:
+@dataclass
+class _SingleResult:
+    """Outcome of importing one CSV without commit/rollback. The caller is
+    responsible for committing the surrounding transaction."""
+
+    parsed_rows: int
+    ok_rows: int
+    error_rows: list[ImportErrorRow]
+
+
+async def _import_one(
+    db: AsyncSession, entity: str, content: bytes
+) -> _SingleResult:
+    """Parse + validate + flush all rows of one CSV against `db`.
+
+    Does NOT commit or rollback — that's the caller's job. This lets the bulk
+    importer chain several CSVs in a single transaction and roll the whole
+    thing back if any file fails.
+    """
     if entity not in SPECS:
         raise HTTPException(
             status_code=400,
@@ -727,7 +766,7 @@ async def run_import(
 
     rows = _parse_csv(content)
     if not rows:
-        return ImportReport(parsed_rows=0, ok_rows=0, error_rows=[], applied=False)
+        return _SingleResult(parsed_rows=0, ok_rows=0, error_rows=[])
 
     # ---- Parse / validate phase ------------------------------------------
     parsed: list[tuple[int, BaseModel, dict[str, str]]] = []
@@ -741,18 +780,12 @@ async def run_import(
         parsed.append((i, model, raw))
 
     if parse_errors:
-        return ImportReport(
-            parsed_rows=len(rows),
-            ok_rows=0,
-            error_rows=parse_errors,
-            applied=False,
+        return _SingleResult(
+            parsed_rows=len(rows), ok_rows=0, error_rows=parse_errors
         )
 
-    # ---- Apply phase — one transaction, flush per row to localize errors -
+    # ---- Apply phase — flush per row to localize errors ------------------
     apply_errors: list[ImportErrorRow] = []
-    # Tracks rows successfully persisted before any failure aborts the loop.
-    # `len(parsed) - len(apply_errors)` would be wrong: it'd credit rows we
-    # never even attempted because we `break` on first failure.
     success_count = 0
     for line, model, _raw in parsed:
         try:
@@ -783,22 +816,394 @@ async def run_import(
             break
         success_count += 1
 
-    if apply_errors or dry_run:
+    return _SingleResult(
+        parsed_rows=len(rows), ok_rows=success_count, error_rows=apply_errors
+    )
+
+
+async def run_import(
+    db: AsyncSession, entity: str, content: bytes, dry_run: bool
+) -> ImportReport:
+    result = await _import_one(db, entity, content)
+
+    if result.error_rows or dry_run:
         await db.rollback()
         return ImportReport(
-            parsed_rows=len(rows),
-            ok_rows=success_count,
-            error_rows=apply_errors,
+            parsed_rows=result.parsed_rows,
+            ok_rows=result.ok_rows,
+            error_rows=result.error_rows,
             applied=False,
         )
 
     await db.commit()
     return ImportReport(
-        parsed_rows=len(rows),
-        ok_rows=len(parsed),
+        parsed_rows=result.parsed_rows,
+        ok_rows=result.ok_rows,
         error_rows=[],
         applied=True,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Auto-detection — match CSV headers against each entity's required columns
+# to pick the right importer without forcing the user to choose.
+# --------------------------------------------------------------------------- #
+
+
+def _required_headers(model: type[BaseModel]) -> set[str]:
+    """Columns that MUST appear in the CSV for this entity.
+
+    Pydantic fields without a default value are required at validation time —
+    they're the strongest signal that a CSV belongs to that entity. Optional
+    columns (with defaults like `None`) don't have to be present even if the
+    importer would accept them, and using them in the match would muddy the
+    score.
+    """
+    out: set[str] = set()
+    for name, field in model.model_fields.items():
+        if field.is_required():
+            out.add(name)
+    return out
+
+
+def _all_headers(model: type[BaseModel]) -> set[str]:
+    return set(model.model_fields.keys())
+
+
+REQUIRED_HEADERS: dict[str, set[str]] = {
+    e: _required_headers(spec.row_model) for e, spec in SPECS.items()
+}
+ALL_HEADERS: dict[str, set[str]] = {
+    e: _all_headers(spec.row_model) for e, spec in SPECS.items()
+}
+
+
+def _read_headers(content: bytes) -> list[str]:
+    """Return the column names from the first line of the CSV, or [] if the
+    file is empty / unreadable."""
+    text = content.decode("utf-8-sig", errors="replace")
+    reader = csv.reader(io.StringIO(text), delimiter=";")
+    try:
+        first = next(reader)
+    except StopIteration:
+        return []
+    return [(h or "").strip() for h in first if h is not None]
+
+
+@dataclass(frozen=True)
+class _DetectMatch:
+    entity: str
+    score: float
+    missing_required: list[str]
+    unknown: list[str]
+
+
+def _score_entity(headers: set[str], entity: str) -> _DetectMatch:
+    """Score how well `headers` matches the row model of `entity`.
+
+    A perfect match (score == 1.0) means every required header is present and
+    no unknown header appears. Any missing required column kills the match
+    (score < 1.0); unknown headers cost a little — enough to disambiguate
+    between entities that share a required column subset but differ in their
+    optional columns.
+    """
+    required = REQUIRED_HEADERS[entity]
+    known = ALL_HEADERS[entity]
+    missing = sorted(required - headers)
+    unknown = sorted(headers - known)
+    if missing:
+        # If any required column is missing the file simply isn't this entity.
+        return _DetectMatch(entity, 0.0, missing, unknown)
+    # All required columns present. Penalize unknown headers but only mildly,
+    # since CSVs from older exports might carry extra columns we now ignore.
+    penalty = 0.1 * len(unknown) / max(len(known), 1)
+    return _DetectMatch(entity, max(0.0, 1.0 - penalty), [], unknown)
+
+
+def detect_entity(content: bytes) -> DetectReport:
+    """Pick the most likely entity for a CSV by looking at its header row.
+
+    Returns the best match plus diagnostics so the UI can explain *why* a
+    file was assigned (or rejected). When several entities tie on required
+    columns, the one with the smallest set of unknown headers wins.
+    """
+    header_list = _read_headers(content)
+    headers = set(header_list)
+
+    if not headers:
+        return DetectReport(
+            entity=None,
+            confidence=0.0,
+            headers=[],
+            matched_required=[],
+            missing_required=[],
+            unknown_headers=[],
+            candidates={},
+        )
+
+    scores = {e: _score_entity(headers, e) for e in SPECS}
+    # Strict matches first: required columns satisfied. Tie-break by fewest
+    # unknown columns, then by entity name for determinism.
+    strict = [m for m in scores.values() if not m.missing_required]
+    if strict:
+        strict.sort(key=lambda m: (len(m.unknown), m.entity))
+        best = strict[0]
+        return DetectReport(
+            entity=best.entity,
+            confidence=best.score,
+            headers=header_list,
+            matched_required=sorted(REQUIRED_HEADERS[best.entity]),
+            missing_required=[],
+            unknown_headers=best.unknown,
+            candidates={e: scores[e].score for e in SPECS},
+        )
+
+    # No entity has all its required columns — pick the closest as the most
+    # likely intent so the UI can show "did you mean …?" with the missing
+    # columns spelled out.
+    nearest = min(scores.values(), key=lambda m: (len(m.missing_required), m.entity))
+    return DetectReport(
+        entity=None,
+        confidence=0.0,
+        headers=header_list,
+        matched_required=sorted(REQUIRED_HEADERS[nearest.entity] & headers),
+        missing_required=nearest.missing_required,
+        unknown_headers=nearest.unknown,
+        candidates={e: scores[e].score for e in SPECS},
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Bulk import — multiple CSVs (or a ZIP of CSVs) in a single transaction.
+# --------------------------------------------------------------------------- #
+
+
+# Hard caps to keep memory + transaction time bounded. Tuned so a full
+# round-trip of `/api/exports/all` always fits.
+BULK_MAX_FILES = 50
+BULK_MAX_TOTAL_BYTES = 50 * 1024 * 1024  # 50 MiB total across all CSVs
+ZIP_MAX_UNCOMPRESSED = 50 * 1024 * 1024  # guard against zip bombs
+
+
+def extract_zip(content: bytes) -> list[tuple[str, bytes]]:
+    """Pull every .csv member out of a ZIP archive.
+
+    Rejects anything that would expand beyond `ZIP_MAX_UNCOMPRESSED` — defends
+    against zip bombs without forcing us to disk-spool. Non-CSV members are
+    silently skipped (a backup ZIP may legitimately contain a README).
+    """
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "BAD_ZIP",
+                    "message": f"ZIP archive is invalid: {exc}",
+                }
+            },
+        ) from exc
+
+    total = 0
+    out: list[tuple[str, bytes]] = []
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        name = info.filename.rsplit("/", 1)[-1]
+        if not name.lower().endswith(".csv"):
+            continue
+        total += info.file_size
+        if total > ZIP_MAX_UNCOMPRESSED:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "ZIP_TOO_LARGE",
+                        "message": (
+                            f"ZIP expands to more than "
+                            f"{ZIP_MAX_UNCOMPRESSED} bytes uncompressed."
+                        ),
+                    }
+                },
+            )
+        with zf.open(info, "r") as fh:
+            out.append((name, fh.read()))
+    return out
+
+
+async def run_bulk_import(
+    db: AsyncSession,
+    files: list[tuple[str, bytes]],
+    dry_run: bool,
+) -> BulkImportReport:
+    """Detect → order → apply, all inside a single transaction.
+
+    Any file failure aborts the whole batch. `dry_run=True` always rolls back
+    even if every file would have applied cleanly. Reports are per-file so
+    the UI can pinpoint which CSV caused the rollback.
+    """
+    if not files:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "NO_FILES",
+                    "message": "No CSV file supplied.",
+                }
+            },
+        )
+    if len(files) > BULK_MAX_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "TOO_MANY_FILES",
+                    "message": (
+                        f"At most {BULK_MAX_FILES} files per bulk import "
+                        f"(got {len(files)})."
+                    ),
+                }
+            },
+        )
+    total_bytes = sum(len(c) for _, c in files)
+    if total_bytes > BULK_MAX_TOTAL_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "BULK_TOO_LARGE",
+                    "message": (
+                        f"Total upload size {total_bytes} exceeds the "
+                        f"{BULK_MAX_TOTAL_BYTES} byte bulk limit."
+                    ),
+                }
+            },
+        )
+
+    # ---- Phase 1: detect entity for every file ---------------------------
+    detections: list[tuple[str, bytes, DetectReport]] = []
+    file_reports: list[BulkImportFileReport] = []
+    any_detect_error = False
+    for filename, content in files:
+        det = detect_entity(content)
+        if det.entity is None:
+            any_detect_error = True
+            file_reports.append(
+                BulkImportFileReport(
+                    filename=filename,
+                    detected_entity=None,
+                    parsed_rows=0,
+                    ok_rows=0,
+                    error_rows=[
+                        ImportErrorRow(
+                            line=1,
+                            column=None,
+                            value=None,
+                            error=(
+                                "Could not detect the entity from the header row. "
+                                + (
+                                    f"Closest match would need columns: "
+                                    f"{', '.join(det.missing_required)}."
+                                    if det.missing_required
+                                    else "Header row is empty."
+                                )
+                            ),
+                        )
+                    ],
+                )
+            )
+        else:
+            detections.append((filename, content, det))
+
+    if any_detect_error:
+        # Don't even start the transaction — surface every file we couldn't
+        # route so the user can fix all of them at once.
+        for filename, _, det in detections:
+            file_reports.append(
+                BulkImportFileReport(
+                    filename=filename,
+                    detected_entity=det.entity,
+                    parsed_rows=0,
+                    ok_rows=0,
+                    error_rows=[],
+                )
+            )
+        return BulkImportReport(
+            files=_sort_bulk_reports(file_reports),
+            total_parsed_rows=0,
+            total_ok_rows=0,
+            applied=False,
+        )
+
+    # ---- Phase 2: apply in dependency order ------------------------------
+    detections.sort(key=lambda t: IMPORT_ORDER.index(t[2].entity))  # type: ignore[arg-type]
+
+    total_parsed = 0
+    total_ok = 0
+    had_error = False
+    for filename, content, det in detections:
+        assert det.entity is not None  # phase 1 filtered the Nones out
+        result = await _import_one(db, det.entity, content)
+        total_parsed += result.parsed_rows
+        total_ok += result.ok_rows
+        file_reports.append(
+            BulkImportFileReport(
+                filename=filename,
+                detected_entity=det.entity,
+                parsed_rows=result.parsed_rows,
+                ok_rows=result.ok_rows,
+                error_rows=result.error_rows,
+            )
+        )
+        if result.error_rows:
+            had_error = True
+            break
+
+    # Files we skipped after the first failure still get reported so the UI
+    # can show "pending" rather than silently dropping them.
+    seen = {fr.filename for fr in file_reports}
+    for filename, _, det in detections:
+        if filename in seen:
+            continue
+        file_reports.append(
+            BulkImportFileReport(
+                filename=filename,
+                detected_entity=det.entity,
+                parsed_rows=0,
+                ok_rows=0,
+                error_rows=[],
+            )
+        )
+
+    if had_error or dry_run:
+        await db.rollback()
+        return BulkImportReport(
+            files=_sort_bulk_reports(file_reports),
+            total_parsed_rows=total_parsed,
+            total_ok_rows=total_ok,
+            applied=False,
+        )
+
+    await db.commit()
+    return BulkImportReport(
+        files=_sort_bulk_reports(file_reports),
+        total_parsed_rows=total_parsed,
+        total_ok_rows=total_ok,
+        applied=True,
+    )
+
+
+def _sort_bulk_reports(reports: list[BulkImportFileReport]) -> list[BulkImportFileReport]:
+    """Stable display order: detected files in dependency order, then any
+    undetected file (kept at the end so they're visually grouped)."""
+
+    def key(r: BulkImportFileReport) -> tuple[int, str]:
+        if r.detected_entity is None:
+            return (len(IMPORT_ORDER), r.filename)
+        return (IMPORT_ORDER.index(r.detected_entity), r.filename)
+
+    return sorted(reports, key=key)
 
 
 def _friendly_integrity(msg: str) -> str:

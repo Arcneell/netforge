@@ -157,6 +157,180 @@ async def test_import_admin_dry_run_returns_report(client: AsyncClient) -> None:
     assert body["error_rows"] == []
 
 
+# --- /api/imports/detect --------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_detect_rejects_anon(client: AsyncClient) -> None:
+    _install_db(user=None)
+    r = await client.post(
+        "/api/imports/detect",
+        files={"file": ("x.csv", b"code;name\n", "text/csv")},
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_detect_rejects_viewer(client: AsyncClient) -> None:
+    _install_db(user=_viewer())
+    r = await client.post(
+        "/api/imports/detect",
+        files={"file": ("x.csv", b"code;name\n", "text/csv")},
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_detect_routes_sites_csv(client: AsyncClient) -> None:
+    _install_db(user=_admin())
+    r = await client.post(
+        "/api/imports/detect",
+        files={"file": ("sites.csv", "code;name\nHQ;Headquarters\n".encode("utf-8"), "text/csv")},
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["entity"] == "sites"
+    assert body["confidence"] >= 0.9
+    assert body["missing_required"] == []
+
+
+@pytest.mark.asyncio
+async def test_detect_returns_none_when_unknown_headers(client: AsyncClient) -> None:
+    _install_db(user=_admin())
+    r = await client.post(
+        "/api/imports/detect",
+        files={"file": ("x.csv", b"foo;bar\n1;2\n", "text/csv")},
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["entity"] is None
+    # The nearest candidate should hint at what columns the user is missing.
+    assert body["missing_required"]
+
+
+@pytest.mark.asyncio
+async def test_detect_disambiguates_switches_vs_devices(client: AsyncClient) -> None:
+    # Both `_DeviceRow` and `_SwitchRow` require `name`. `port_count` is what
+    # tells them apart — without it the row is a device, with it a switch.
+    _install_db(user=_admin())
+    r = await client.post(
+        "/api/imports/detect",
+        files={
+            "file": (
+                "x.csv",
+                "name;type\ncore-01;router\n".encode("utf-8"),
+                "text/csv",
+            )
+        },
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.json()["entity"] == "devices"
+
+    r = await client.post(
+        "/api/imports/detect",
+        files={
+            "file": (
+                "x.csv",
+                "name;port_count\ncore-01;48\n".encode("utf-8"),
+                "text/csv",
+            )
+        },
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.json()["entity"] == "switches"
+
+
+# --- /api/imports/bulk ----------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_bulk_rejects_anon(client: AsyncClient) -> None:
+    _install_db(user=None)
+    r = await client.post(
+        "/api/imports/bulk",
+        files=[("files", ("sites.csv", b"code;name\nX;Y\n", "text/csv"))],
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_bulk_dry_run_routes_two_files(client: AsyncClient) -> None:
+    # Each CSV triggers one `select(...).scalar_one_or_none()` per row to look
+    # up the existing record; returning None means "new insert".
+    new_row = MagicMock()
+    new_row.scalar_one_or_none = MagicMock(return_value=None)
+    _install_db(user=_admin(), execute_returns=[new_row, new_row])
+
+    site_csv = "code;name\nHQ;Headquarters\n".encode("utf-8")
+    vlan_csv = "vlan_id;name\n10;Office\n".encode("utf-8")
+
+    r = await client.post(
+        "/api/imports/bulk",
+        files=[
+            ("files", ("sites.csv", site_csv, "text/csv")),
+            ("files", ("vlans.csv", vlan_csv, "text/csv")),
+        ],
+        data={"dry_run": "true"},
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applied"] is False
+    assert body["total_parsed_rows"] == 2
+    assert body["total_ok_rows"] == 2
+
+    # Reports are ordered by IMPORT_ORDER — sites (0) comes before vlans (2).
+    entities = [f["detected_entity"] for f in body["files"]]
+    assert entities == ["sites", "vlans"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_reports_undetectable_file_without_starting_transaction(
+    client: AsyncClient,
+) -> None:
+    _install_db(user=_admin())
+    r = await client.post(
+        "/api/imports/bulk",
+        files=[
+            ("files", ("mystery.csv", b"foo;bar\n1;2\n", "text/csv")),
+        ],
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applied"] is False
+    assert body["files"][0]["detected_entity"] is None
+    assert body["files"][0]["error_rows"][0]["error"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_zip_explodes_csvs(client: AsyncClient) -> None:
+    """A single .zip member is unpacked transparently."""
+    import io as _io
+    import zipfile as _zf
+
+    new_row = MagicMock()
+    new_row.scalar_one_or_none = MagicMock(return_value=None)
+    _install_db(user=_admin(), execute_returns=[new_row])
+
+    buf = _io.BytesIO()
+    with _zf.ZipFile(buf, "w") as z:
+        z.writestr("sites.csv", "code;name\nHQ;Headquarters\n")
+    r = await client.post(
+        "/api/imports/bulk",
+        files=[("files", ("backup.zip", buf.getvalue(), "application/zip"))],
+        data={"dry_run": "true"},
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["files"][0]["filename"] == "sites.csv"
+    assert body["files"][0]["detected_entity"] == "sites"
+
+
 # --- /api/exports ---------------------------------------------------------- #
 
 
