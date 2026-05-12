@@ -9,3 +9,8 @@ pnpm-debug.log*
 .env
 .env.local
 .env.*.local
+
+# Playwright
+.playwright-auth.json
+playwright-report/
+test-results/
