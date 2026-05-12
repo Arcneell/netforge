@@ -414,6 +414,11 @@
   },
   "import": {
     "subtitle": "Bulk-load entities from CSV files. Run a dry-run first to preview validation errors without writing anything.",
+    "modeAria": "Import mode",
+    "tabs": {
+      "bulk": "All at once (auto)",
+      "single": "Single file (advanced)"
+    },
     "entity": "Entity",
     "entityHint": "One file per entity, in the order shown below.",
     "file": "CSV file",
@@ -428,6 +433,41 @@
     "exportTemplateHint": "Exports the entity as a CSV with the exact column names the importer expects.",
     "orderTitle": "Recommended import order",
     "orderHint": "Dependencies between entities — import in this order on a fresh install.",
+    "bulk": {
+      "title": "Import multiple files at once",
+      "subtitle": "Drop all your CSVs (or a .zip) — entity is detected from the headers and dependency order is honoured automatically.",
+      "dropPrompt": "Drop .csv files or a .zip here",
+      "dropHint": "Multiple files accepted in one shot — up to 50 files, 50 MiB total.",
+      "removeFile": "Remove this file",
+      "clearAll": "Clear all",
+      "submit": "Run bulk import",
+      "submitDryRun": "Validate batch (dry-run)",
+      "dryRunHint": "Every file is validated together in the same transaction — nothing is written.",
+      "totalSize": "{files} file(s) · {size} total",
+      "totalOverLimit": "Over the {max} limit",
+      "helpTitle": "How it works",
+      "helpDetect": "Each CSV is routed to its entity based on the header row (sites, devices, switches…).",
+      "helpOrder": "Files are applied in the right order (sites → rooms → vlans → … → links).",
+      "helpTransaction": "Everything runs in a single transaction: any error rolls the whole batch back.",
+      "helpZip": "A .zip works too — its CSVs are unpacked and imported on the fly.",
+      "detected": {
+        "detecting": "Detecting…",
+        "unknown": "Unrecognised",
+        "error": "Detection failed",
+        "zip": "ZIP archive"
+      },
+      "report": {
+        "title": "Bulk import report",
+        "files": "Files processed",
+        "successAll": "{count} row(s) imported across {files} file(s).",
+        "successDryRun": "{count} row(s) across {files} file(s) pass validation. Re-run without dry-run to apply.",
+        "partial": "{ok} of {total} rows would apply — fix the listed errors and re-run.",
+        "columns": {
+          "file": "File",
+          "entity": "Detected entity"
+        }
+      }
+    },
     "report": {
       "title": "Last import report",
       "appliedTrue": "Applied",
@@ -449,7 +489,9 @@
     },
     "errors": {
       "tooLarge": "File exceeds the 10 MiB upload limit.",
-      "notCsv": "Only .csv files are accepted."
+      "notCsv": "Only .csv files are accepted.",
+      "bulkNotCsvOrZip": "Only .csv or .zip files are accepted.",
+      "tooManyFiles": "Limit reached: at most {max} files in one batch."
     }
   }
 }

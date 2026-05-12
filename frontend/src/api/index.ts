@@ -19,6 +19,13 @@ export { linksApi, type LinkFilters } from './endpoints/links'
 export { auditApi, type AuditFilters } from './endpoints/audit'
 export { searchApi } from './endpoints/search'
 export { topologyApi } from './endpoints/topology'
-export { importsApi, IMPORT_ENTITIES, type ImportEntity } from './endpoints/imports'
+export {
+  importsApi,
+  IMPORT_ENTITIES,
+  type ImportEntity,
+  type DetectReport,
+  type BulkImportFileReport,
+  type BulkImportReport,
+} from './endpoints/imports'
 
 export type * from './types'
