@@ -113,12 +113,20 @@ Per page: list view + detail view + edit modals.
 
 ## Phase 11 — v1 go-live (2 HD)
 
-- [ ] [07-deployment.md](07-deployment.md) checklist complete.
-- [ ] TLS certificate installed.
-- [ ] Backup cron active and tested.
-- [ ] Zabbix template imported.
-- [ ] First real CSV import of the subnets + VLANs + switches of your network.
-- [ ] Short documentation (½ page) for the end users.
+Code-side prep done in this repo (Phase 11 PR):
+- [x] [07-deployment.md](07-deployment.md) checklist rewritten and grouped by area;
+      env vars aligned with what the code actually reads.
+- [x] `scripts/backup.sh` + `scripts/restore.sh` shipped and documented.
+- [x] [docs/12-user-guide.md](12-user-guide.md) — half-page end-user guide.
+- [x] Logo unified: site icon (`BrandMark.vue`), favicon and README banner
+      now share the same hexagon + 4-node mark.
+
+Host-side, done at install time (out of repo):
+- [ ] TLS certificate issued and mounted.
+- [ ] Backup cron entry installed and the first restore drill executed.
+- [ ] Zabbix template imported and alerts on `/api/health`.
+- [ ] First real CSV import of the existing subnets + VLANs + switches.
+- [ ] [docs/12-user-guide.md](12-user-guide.md) shared with the team.
 
 ## Estimated v1 total
 
