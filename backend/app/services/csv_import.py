@@ -114,6 +114,15 @@ class _SubnetRow(BaseModel):
         v = _empty_to_none(v)
         return None if v is None else str(IPv4Address(v))
 
+    @field_validator("vlan_id", mode="before")
+    @classmethod
+    def _empty_vlan_to_none(cls, v: Any) -> Any:
+        # Without this, a blank vlan_id cell (subnet without an assigned VLAN
+        # — perfectly valid since the field is Optional) would fail Pydantic's
+        # int parsing. Mirrors the same coercion applied to every other
+        # nullable cell in this model.
+        return _empty_to_none(v)
+
     @field_validator("dhcp_enabled", mode="before")
     @classmethod
     def _coerce_bool(cls, v: Any) -> bool | None:
@@ -242,6 +251,14 @@ class _PortRow(BaseModel):
     def _split(cls, v: Any) -> list[int] | None:
         return _parse_csv_list(v)
 
+    @field_validator("native_vlan", mode="before")
+    @classmethod
+    def _empty_vlan_to_none(cls, v: Any) -> Any:
+        # Same fix as _SubnetRow.vlan_id — blank cells are valid (access port
+        # with no native VLAN set yet) and must coerce to None before Pydantic
+        # tries to parse them as int.
+        return _empty_to_none(v)
+
     @field_validator("connected_ip", mode="before")
     @classmethod
     def _validate_ip(cls, v: Any) -> str | None:
@@ -259,6 +276,13 @@ class _LinkRow(BaseModel):
     link_type: LinkType = LinkType.copper
     speed_mbps: int | None = Field(default=None, gt=0)
     description: str | None = None
+
+    @field_validator("speed_mbps", mode="before")
+    @classmethod
+    def _empty_speed_to_none(cls, v: Any) -> Any:
+        # Same fix again — speed_mbps is optional and a blank cell must
+        # become None, not trigger an int-parse error.
+        return _empty_to_none(v)
 
 
 # --------------------------------------------------------------------------- #

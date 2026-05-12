@@ -199,6 +199,30 @@ def test_switch_row_rejects_partial_location() -> None:
         service._SwitchRow(name="SW-A", site_code="", room_code="SRV-01", port_count=24)
 
 
+# --- Regression: blank cells coerce to None for every optional int field --- #
+# Reported during a real customer CSV import: subnets without an assigned
+# VLAN exported as `vlan_id=""` and the importer crashed on Pydantic's int
+# parsing instead of treating the blank as "no VLAN". Same pattern applied
+# to every other Optional[int] field on the row models.
+
+
+def test_subnet_row_accepts_blank_vlan_id() -> None:
+    row = service._SubnetRow(cidr="10.0.0.0/24", site_code="HQ", vlan_id="")
+    assert row.vlan_id is None
+
+
+def test_port_row_accepts_blank_native_vlan() -> None:
+    row = service._PortRow(switch_name="SW-A", number=1, native_vlan="")
+    assert row.native_vlan is None
+
+
+def test_link_row_accepts_blank_speed_mbps() -> None:
+    row = service._LinkRow(
+        switch_a="SW-A", port_a=1, switch_b="SW-B", port_b=1, speed_mbps=""
+    )
+    assert row.speed_mbps is None
+
+
 # --- Regression: ok_rows reflects rows actually attempted ----------------- #
 
 
