@@ -1,15 +1,20 @@
 import { expect, test } from '@playwright/test'
+import { seedTopologyPair } from './seed-helpers'
 
 /**
  * Topology view smoke test.
  *
  * The Cytoscape canvas renders nodes/edges to a <canvas> element which
  * Playwright can't introspect — so we assert on the side-channel signals
- * instead: the container's accessible label, and the side panel telling us
- * how many nodes were loaded. The empty-state copy must NOT appear; if it
- * does, the API call failed silently or no switches/links are seeded.
+ * instead: the container's accessible label and the toolbar's enabled
+ * buttons. The empty-state copy must NOT appear; if it does, no graph
+ * data made it through.
+ *
+ * Seeds its own pair of linked switches via the API so the test runs on a
+ * fresh DB (Codex P2 on PR #7).
  */
-test('topology view renders the graph with at least one node', async ({ page }) => {
+test('topology view renders the graph with at least one node', async ({ page, request }) => {
+  await seedTopologyPair(request)
   await page.goto('/topology')
   await expect(page.getByRole('heading', { name: /topology|topologie/i })).toBeVisible()
 
