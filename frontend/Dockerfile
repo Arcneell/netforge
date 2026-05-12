@@ -16,11 +16,16 @@ RUN npm run build
 # ---------- Runtime stage ----------
 FROM nginx:1.27-alpine AS runtime
 
-# Drop default site, replace with our SPA + reverse-proxy config.
+# Drop the stock site, install our SPA + reverse-proxy config. The image
+# ships with the TLS-terminating prod config by default — the HTTP-only
+# nginx.conf is kept alongside for deployments behind an external proxy
+# (Traefik / Caddy / nginx-proxy-manager). Switch by overriding the file
+# at /etc/nginx/conf.d/netforge.conf via a bind mount.
 RUN rm /etc/nginx/conf.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d/netforge.conf
+COPY nginx.prod.conf /etc/nginx/conf.d/netforge.conf
+COPY nginx.conf      /etc/nginx/conf.d/netforge.http.conf.disabled
 
 COPY --from=build /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 80 443
 CMD ["nginx", "-g", "daemon off;"]
