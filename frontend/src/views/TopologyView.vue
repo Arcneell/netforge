@@ -2,7 +2,17 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, Download, Layers, Maximize, RotateCcw, X as XIcon } from 'lucide-vue-next'
+import {
+  ArrowRight,
+  Download,
+  Layers,
+  Maximize,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Trash2,
+  X as XIcon,
+} from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Select from '@/components/ui/Select.vue'
@@ -10,15 +20,18 @@ import Badge from '@/components/ui/Badge.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import TopologyCanvas, { type LayoutName } from '@/components/TopologyCanvas.vue'
-import { roomsApi, sitesApi, switchesApi, topologyApi } from '@/api'
-import type { Room, Site, Switch, TopologyEdge, TopologyNode } from '@/api'
+import LinkEditor from '@/components/editors/LinkEditor.vue'
+import { linksApi, roomsApi, sitesApi, switchesApi, topologyApi } from '@/api'
+import type { Link, Room, Site, Switch, TopologyEdge, TopologyNode } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
+import { useAuth } from '@/composables/useAuth'
 
 const { t } = useI18n()
 const router = useRouter()
 const { describe } = useApiErrorMessage()
-const { error: toastError } = useToast()
+const { error: toastError, success: toastSuccess } = useToast()
+const { isAdmin } = useAuth()
 
 const allNodes = ref<TopologyNode[]>([])
 const allEdges = ref<TopologyEdge[]>([])
@@ -154,6 +167,63 @@ const linkTypeTone = {
   dac: 'warning' as const,
   virtual: 'muted' as const,
 }
+
+// --- Link editor wiring --------------------------------------------------- #
+
+const linkEditorOpen = ref(false)
+const linkBeingEdited = ref<Link | null>(null)
+
+const switchesList = computed<Switch[]>(() => Array.from(switchesById.value.values()))
+
+function linkIdFromEdgeId(edgeId: string): number | null {
+  // Topology edges encode the link id in their cytoscape id: "link-<id>".
+  const m = edgeId.match(/^link-(\d+)$/)
+  return m ? Number(m[1]) : null
+}
+
+function openCreateLink() {
+  linkBeingEdited.value = null
+  linkEditorOpen.value = true
+}
+
+async function openEditLink() {
+  const edge = selectedEdge.value
+  if (!edge) return
+  const id = linkIdFromEdgeId(edge.data.id)
+  if (id === null) return
+  try {
+    // The topology endpoint doesn't return `description`, so we fetch the
+    // canonical Link before opening the editor — that way the description
+    // round-trips instead of being silently nulled on save.
+    linkBeingEdited.value = await linksApi.get(id)
+    linkEditorOpen.value = true
+  } catch (err) {
+    toastError(describe(err))
+  }
+}
+
+async function confirmDeleteLink() {
+  const edge = selectedEdge.value
+  if (!edge) return
+  const id = linkIdFromEdgeId(edge.data.id)
+  if (id === null) return
+  if (!window.confirm(t('link.deleteConfirm'))) return
+  try {
+    await linksApi.delete(id)
+    toastSuccess(t('link.deletedToast'))
+    onSelectClear()
+    await load()
+  } catch (err) {
+    toastError(describe(err))
+  }
+}
+
+async function onLinkSaved() {
+  // Refresh the graph so the new/updated edge shows up; the edge ids may
+  // change on create, so dropping the selection is the simplest valid state.
+  onSelectClear()
+  await load()
+}
 </script>
 
 <template>
@@ -185,6 +255,15 @@ const linkTypeTone = {
           @click="canvasRef?.relayout()"
         >
           <RotateCcw class="w-4 h-4" aria-hidden="true" />
+        </Button>
+        <Button
+          v-if="isAdmin"
+          variant="secondary"
+          :aria-label="t('link.new')"
+          @click="openCreateLink"
+        >
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('link.new') }}
         </Button>
         <Button variant="primary" @click="exportPng">
           <Download class="w-4 h-4" aria-hidden="true" />
@@ -351,8 +430,27 @@ const linkTypeTone = {
               <dd class="text-fg font-mono">#{{ selectedEdge.data.port_b }}</dd>
             </div>
           </dl>
+
+          <div v-if="isAdmin" class="flex flex-wrap gap-2 mt-2">
+            <Button variant="secondary" size="sm" @click="openEditLink">
+              <Pencil class="w-4 h-4" aria-hidden="true" />
+              {{ t('common.edit') }}
+            </Button>
+            <Button variant="danger" size="sm" @click="confirmDeleteLink">
+              <Trash2 class="w-4 h-4" aria-hidden="true" />
+              {{ t('common.delete') }}
+            </Button>
+          </div>
         </template>
       </aside>
     </div>
+
+    <LinkEditor
+      :open="linkEditorOpen"
+      :link="linkBeingEdited"
+      :switches="switchesList"
+      @close="linkEditorOpen = false"
+      @saved="onLinkSaved"
+    />
   </div>
 </template>

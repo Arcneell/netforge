@@ -94,6 +94,18 @@ _WRITE_CASES = [
     ("POST", "/api/devices", {"name": "X", "type": "server"}),
     ("POST", "/api/switches", {"name": "SW-X", "port_count": 24}),
     ("POST", "/api/links", {"port_a_id": 1, "port_b_id": 2, "link_type": "copper"}),
+    (
+        "POST",
+        "/api/links/by-name",
+        {
+            "switch_a": "SW-A",
+            "port_a": 1,
+            "switch_b": "SW-B",
+            "port_b": 2,
+            "link_type": "copper",
+        },
+    ),
+    ("PUT", "/api/links/1", {"link_type": "fiber"}),
     ("PUT", "/api/ports/1", {"label": "x"}),
     ("POST", "/api/ports/1/vlans", {"vlan_id": 100}),
     ("DELETE", "/api/sites/1", None),
