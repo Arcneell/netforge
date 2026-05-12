@@ -225,4 +225,4 @@ Full trace of writes.
 
 All schema changes go through **Alembic**. Migrations are versioned under `backend/alembic/versions/` and numbered. No manual changes in production.
 
-The initial migration `0001_initial.py` creates every table above, the GiST constraints and the triggers. It is paired with a `0002_seed.py` migration that inserts seed data (standard VLANs 1/10/20/30, a default "HQ" site).
+The initial migration `0001_initial.py` creates every table above, the GiST constraints and the triggers. A fresh install starts with an empty database — populate it via the bulk CSV import (`POST /api/imports/bulk`) or the CRUD UI.
