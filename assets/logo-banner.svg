@@ -1,22 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 140" role="img" aria-label="NetForge">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 128" role="img" aria-label="NetForge — IPAM, topology, infrastructure">
   <title>NetForge — IPAM, topology, infrastructure</title>
   <defs>
     <style>
       .wordmark { font: 700 56px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; letter-spacing: -2.2px; }
-      .tagline  { font: 500 13px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; letter-spacing: 3px; }
+      .tagline  { font: 600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; letter-spacing: 3.4px; }
     </style>
   </defs>
 
-  <!-- Mark, scaled to 96 px, geometry identical to assets/logo.svg + favicon -->
-  <g transform="translate(12, 22) scale(1.5)">
-    <rect width="64" height="64" rx="14" fill="#0e7490"/>
-    <path d="M 19 47 L 19 17 L 45 47 L 45 17"
-          stroke="#ffffff" stroke-width="5.5"
+  <!-- Mark, scaled to 96 px. Geometry identical to assets/logo.svg + favicon
+       so the banner, the browser tab and the app sidebar all read as the
+       same icon. translate(16, 16) gives a symmetric 16-px vertical pad
+       (mark center at y=64, matching the text block's center). -->
+  <g transform="translate(16, 16) scale(1.5)">
+    <rect width="64" height="64" rx="14" fill="#083344"/>
+    <path d="M 20 44 L 32 32 L 44 20"
+          stroke="#0891b2" stroke-width="4"
           stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    <circle cx="45" cy="17" r="3.6" fill="#22d3ee"/>
+    <circle cx="20" cy="44" r="5.5" fill="#0e7490"/>
+    <circle cx="32" cy="32" r="5.5" fill="#22d3ee"/>
+    <circle cx="44" cy="20" r="6"   fill="#ffffff"/>
   </g>
 
-  <!-- Wordmark + tagline -->
-  <text x="130" y="84"  class="wordmark" fill="#0e7490">NetForge</text>
-  <text x="132" y="112" class="tagline"  fill="#64748b">IPAM · TOPOLOGY · INFRASTRUCTURE</text>
+  <!-- Wordmark + tagline. x=128 leaves a 16-px breathing gap after the
+       mark (mark right edge = 112). Baselines chosen so the cap-top of
+       "NetForge" sits at y=30 and the tagline's descent reaches y=99 —
+       text block centred at y=64.5, matching the mark's center. -->
+  <text x="128" y="70" class="wordmark" fill="#0e7490">NetForge</text>
+  <text x="128" y="96" class="tagline"  fill="#64748b">IPAM · TOPOLOGY · INFRASTRUCTURE</text>
 </svg>
