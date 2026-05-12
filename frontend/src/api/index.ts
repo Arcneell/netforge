@@ -15,7 +15,12 @@ export { ipsApi, type IpFilters } from './endpoints/ips'
 export { devicesApi, type DeviceFilters } from './endpoints/devices'
 export { switchesApi, type SwitchFilters } from './endpoints/switches'
 export { portsApi } from './endpoints/ports'
-export { linksApi, type LinkFilters } from './endpoints/links'
+export {
+  linksApi,
+  type LinkFilters,
+  type LinkCreateByName,
+  type LinkUpdate,
+} from './endpoints/links'
 export { auditApi, type AuditFilters } from './endpoints/audit'
 export { searchApi } from './endpoints/search'
 export { topologyApi } from './endpoints/topology'
