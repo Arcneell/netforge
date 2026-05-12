@@ -1,30 +1,27 @@
 import { expect, test } from '@playwright/test'
+import { ensureSubnet } from './seed-helpers'
 
 /**
  * Add an IP via the "next free" flow.
  *
  * Steps a real admin takes:
  *   1. Open the Subnets list.
- *   2. Pick the first subnet row.
+ *   2. Pick our E2E sandbox subnet (seeded via API at start of test).
  *   3. Click "Next free IP" — the editor opens prefilled with the address.
  *   4. Fill a hostname and save.
- *   5. The new IP should appear in the grid as an "Assigned" status.
+ *   5. The new IP should appear in the table view of the subnet detail.
  *
  * Names are timestamp-suffixed so the test is rerunnable against a long-lived
- * dev database.
+ * dev database. The subnet is seeded idempotently via the API so the spec
+ * works on a fresh Alembic-only DB (Codex P1 on PR #7).
  */
-test('admin can add an IP via the subnet next-free flow', async ({ page }) => {
+test('admin can add an IP via the subnet next-free flow', async ({ page, request }) => {
   const hostname = `e2e-host-${Date.now()}`
+  const subnet = await ensureSubnet(request)
 
-  await page.goto('/subnets')
-  await expect(page.getByRole('heading', { name: /subnets|sous-réseaux/i })).toBeVisible()
-
-  // Click the first row of the list table. We don't rely on a specific CIDR
-  // because seed data drifts — instead we drill into whatever the dashboard
-  // shows first.
-  const firstRow = page.getByRole('row').filter({ has: page.locator('td') }).first()
-  await firstRow.click()
-  await expect(page).toHaveURL(/\/subnets\/\d+/)
+  // Drill straight into the seeded subnet — no dependency on existing rows.
+  await page.goto(`/subnets/${subnet.id}`)
+  await expect(page).toHaveURL(new RegExp(`/subnets/${subnet.id}$`))
 
   // Open the IP editor prefilled with the next free address.
   await page.getByRole('button', { name: /next free|prochaine adresse libre/i }).click()
