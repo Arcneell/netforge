@@ -157,6 +157,79 @@ For a from-scratch install, import in this order (dependencies):
 8. `ports.csv` (after IPs because `connected_ip` resolves against `ips.address`)
 9. `links.csv`
 
+## Bulk / auto-detect import
+
+For a fresh install or a full restore, you don't have to upload each CSV one
+by one. The Import view's **All at once** tab lets you drop every CSV (or a
+single `.zip` archive) in one shot — the backend routes each file to the
+right entity based on its header row, then applies them in the dependency
+order above, all inside a single transaction.
+
+### Auto-detect endpoint
+
+`POST /api/imports/detect` — multipart `file=<csv>`. Inspects the first line
+and returns the most likely entity:
+
+```json
+{
+  "entity": "switches",
+  "confidence": 0.95,
+  "headers": ["name", "port_count", "vendor"],
+  "matched_required": ["name", "port_count"],
+  "missing_required": [],
+  "unknown_headers": [],
+  "candidates": { "sites": 0.0, "devices": 0.0, "switches": 0.95, ... }
+}
+```
+
+`entity` is `null` when no entity has all its required columns; `missing_required`
+then lists the columns the closest candidate would need.
+
+### Bulk endpoint
+
+`POST /api/imports/bulk` — multipart `files=<csv>` (repeated) and/or
+`files=<zip>`. Each non-ZIP file goes through detection; ZIPs are unpacked
+in-memory and their `.csv` members detected individually. Hard caps:
+
+- ≤ 50 files per request
+- ≤ 50 MiB total across all files
+- ≤ 10 MiB per CSV
+- ≤ 50 MiB uncompressed for a ZIP
+
+Files that fail detection are reported per-file without starting the
+transaction, so you can fix everything in one pass.
+
+Response:
+
+```json
+{
+  "files": [
+    {
+      "filename": "sites.csv",
+      "detected_entity": "sites",
+      "parsed_rows": 3,
+      "ok_rows": 3,
+      "error_rows": []
+    },
+    {
+      "filename": "vlans.csv",
+      "detected_entity": "vlans",
+      "parsed_rows": 12,
+      "ok_rows": 12,
+      "error_rows": []
+    }
+  ],
+  "total_parsed_rows": 15,
+  "total_ok_rows": 15,
+  "applied": true
+}
+```
+
+`applied=true` means every file committed. Any error in any file rolls the
+whole batch back (`applied=false`), and the offending file's `error_rows`
+pinpoint the cause; files we never got to run are listed with empty results
+so the UI can show them as skipped.
+
 ## Export
 
 `GET /api/exports/{entity}?format=csv` returns a file in the same format as the import. It enables clean round-trips (export → edit in Excel → re-import as upsert).

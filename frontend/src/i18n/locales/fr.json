@@ -414,6 +414,11 @@
   },
   "import": {
     "subtitle": "Importez en masse depuis des fichiers CSV. Lancez d'abord une validation à blanc pour repérer les erreurs sans rien écrire.",
+    "modeAria": "Mode d'import",
+    "tabs": {
+      "bulk": "Tout en un (auto)",
+      "single": "Un fichier (avancé)"
+    },
     "entity": "Entité",
     "entityHint": "Un fichier par entité, dans l'ordre indiqué ci-dessous.",
     "file": "Fichier CSV",
@@ -428,6 +433,41 @@
     "exportTemplateHint": "Exporte l'entité en CSV avec exactement les colonnes attendues par l'import.",
     "orderTitle": "Ordre d'import recommandé",
     "orderHint": "Dépendances entre entités — suivez cet ordre pour une installation neuve.",
+    "bulk": {
+      "title": "Importer plusieurs fichiers à la fois",
+      "subtitle": "Déposez tous vos CSV (ou un .zip) — l'entité est détectée automatiquement à partir des en-têtes et l'ordre des dépendances est respecté.",
+      "dropPrompt": "Déposez vos fichiers .csv ou un .zip ici",
+      "dropHint": "Plusieurs fichiers acceptés en une seule fois — jusqu'à 50 fichiers, 50 Mio au total.",
+      "removeFile": "Retirer ce fichier",
+      "clearAll": "Tout effacer",
+      "submit": "Lancer l'import groupé",
+      "submitDryRun": "Valider le lot (à blanc)",
+      "dryRunHint": "Tous les fichiers sont validés ensemble dans la même transaction — rien n'est écrit en base.",
+      "totalSize": "{files} fichier(s) · {size} au total",
+      "totalOverLimit": "Dépasse la limite de {max}",
+      "helpTitle": "Comment ça marche",
+      "helpDetect": "Chaque CSV est associé à son entité d'après ses en-têtes (sites, devices, switches…).",
+      "helpOrder": "Les fichiers sont appliqués dans le bon ordre (sites → rooms → vlans → … → liens).",
+      "helpTransaction": "Tout s'exécute en une seule transaction : la moindre erreur annule l'ensemble.",
+      "helpZip": "Un .zip est accepté — ses CSV sont extraits et importés à la volée.",
+      "detected": {
+        "detecting": "Détection…",
+        "unknown": "Non reconnu",
+        "error": "Erreur de détection",
+        "zip": "Archive ZIP"
+      },
+      "report": {
+        "title": "Rapport d'import groupé",
+        "files": "Fichiers traités",
+        "successAll": "{count} ligne(s) importée(s) depuis {files} fichier(s).",
+        "successDryRun": "{count} ligne(s) sur {files} fichier(s) passent la validation. Relancez sans validation à blanc pour appliquer.",
+        "partial": "{ok} ligne(s) sur {total} seraient appliquées — corrigez les erreurs listées et relancez.",
+        "columns": {
+          "file": "Fichier",
+          "entity": "Entité détectée"
+        }
+      }
+    },
     "report": {
       "title": "Dernier rapport d'import",
       "appliedTrue": "Appliqué",
@@ -449,7 +489,9 @@
     },
     "errors": {
       "tooLarge": "Le fichier dépasse la limite d'upload de 10 Mio.",
-      "notCsv": "Seuls les fichiers .csv sont acceptés."
+      "notCsv": "Seuls les fichiers .csv sont acceptés.",
+      "bulkNotCsvOrZip": "Seuls les fichiers .csv ou .zip sont acceptés.",
+      "tooManyFiles": "Limite atteinte : pas plus de {max} fichiers à la fois."
     }
   }
 }
