@@ -9,145 +9,88 @@ Internal Linux server (typically a Debian 12 or Ubuntu 24.04 LTS VM on Proxmox).
 
 Target resources: 2 vCPU, 4 GB RAM, 20 GB disk (DB included). Largely oversized for a network of this size.
 
-## `docker-compose.yml` (production)
+## Two deploy paths
 
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: netforge
-      POSTGRES_USER: netforge
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U netforge"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+Both flow through the production stack at the repo root: `docker-compose.yml`
++ `.env.example` + `frontend/nginx.prod.conf` (already baked into the image).
 
-  backend:
-    build: ./backend
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+asyncpg://netforge:${POSTGRES_PASSWORD}@postgres:5432/netforge
-      # Pick one provider — `oidc` covers Entra ID / Keycloak / Authentik /
-      # Google Workspace; `github` covers GitHub OAuth. Never set this to
-      # `dev` in production (the factory refuses to start when SESSION_COOKIE_SECURE=true).
-      AUTH_PROVIDER: oidc
-      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
-      SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY}
-      SESSION_COOKIE_SECURE: "true"
-      PUBLIC_URL: ${PUBLIC_URL}
-      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL}
-      # Tighter than the defaults so a runaway script can't burn through DB
-      # connections. Raise if you have legitimate batch writers.
-      RATE_LIMIT_WRITES_PER_WINDOW: "60"
-      RATE_LIMIT_WINDOW_SECONDS: "60"
-      LOG_LEVEL: info
+### Path A — pull pre-built images from GHCR (recommended)
 
-  frontend:
-    build: ./frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "443:443"
-      - "80:80"
-    volumes:
-      - ./certs:/etc/nginx/certs:ro
+Use this on the production server. No source tree, no build step, no Node
+or Python on the host.
 
-volumes:
-  pgdata:
+```bash
+# 1. Get the deploy artifacts (compose file + env template + nginx config
+#    used by the image, in case you want to introspect it). A shallow clone
+#    is the simplest way; you can also download just the three files.
+git clone --depth 1 https://github.com/Arcneell/netforge.git /opt/netforge
+cd /opt/netforge
+
+# 2. Fill in your secrets and IdP credentials. Required vars are listed at
+#    the top of .env.example — the compose file refuses to start without them.
+cp .env.example .env
+$EDITOR .env
+
+# 3. Drop the TLS cert + key in ./certs/ (nginx inside the frontend image
+#    expects exactly these filenames):
+mkdir -p certs
+cp /path/to/fullchain.pem certs/fullchain.pem
+cp /path/to/privkey.pem   certs/privkey.pem
+chmod 600 certs/privkey.pem
+
+# 4. Pin a release (recommended — `latest` floats with main) and bring the
+#    stack up. The pull is ~80 MB total.
+echo "NETFORGE_VERSION=v1.0.0" >> .env
+docker compose pull
+docker compose up -d
+
+# 5. Apply the database migrations once.
+docker compose exec backend alembic upgrade head
 ```
 
-## `.env.example`
+Updates after a new release tag is published:
 
-```dotenv
-# Public URL used to build the redirect URIs
-PUBLIC_URL=https://netforge.example.local
-
-# PostgreSQL
-POSTGRES_PASSWORD=change-me-generate-a-32-char-random
-
-# OIDC — example values for Entra ID; see docs/06-auth.md for other IdPs.
-# Issuer URL is the base that exposes /.well-known/openid-configuration:
-#   Entra:    https://login.microsoftonline.com/<tenant-id>/v2.0
-#   Keycloak: https://<host>/realms/<realm>
-OIDC_ISSUER_URL=https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0
-OIDC_CLIENT_ID=00000000-0000-0000-0000-000000000000
-OIDC_CLIENT_SECRET=change-me
-
-# Cookie signing key (openssl rand -hex 32)
-SESSION_SIGNING_KEY=change-me
-
-# The first email that logs in is automatically promoted to admin
-BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+```bash
+cd /opt/netforge
+git pull
+$EDITOR .env                                   # bump NETFORGE_VERSION
+docker compose pull
+docker compose up -d
+docker compose exec backend alembic upgrade head   # only if migrations changed
 ```
 
-## Nginx reverse proxy (inside the frontend container)
+### Path B — build from source on the host
 
-`frontend/nginx.conf`:
+Same flow as A, but step 4 becomes `docker compose up -d --build`. Use
+this if you've forked the repo, patched something locally, or want to
+verify the image you're running matches the source on disk. The build
+takes ~3 minutes on a small VM.
 
-```nginx
-server {
-    listen 80;
-    server_name netforge.example.local;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name netforge.example.local;
-
-    ssl_certificate     /etc/nginx/certs/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-
-    # Security headers — kept in sync with frontend/nginx.conf and
-    # docs/11-security.md. style-src 'unsafe-inline' is Tailwind JIT;
-    # rsms.me feeds the Inter webfont (drop both lines if you self-host).
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "DENY" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://rsms.me; img-src 'self' data:; font-src 'self' data: https://rsms.me; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
-
-    root /usr/share/nginx/html;
-    index index.html;
-
-    # API proxy
-    location /api/ {
-        proxy_pass http://backend:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_read_timeout 60s;
-    }
-
-    # SPA fallback
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # cache for hashed assets
-    location /assets/ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
+```bash
+docker compose up -d --build
 ```
+
+`docker compose` resolves `image:` and `build:` together — once you've
+built locally, the image is tagged and subsequent `docker compose up`
+calls reuse it.
+
+## Nginx reverse proxy (baked into the frontend image)
+
+`frontend/nginx.prod.conf` is copied into the image at build time. It
+terminates TLS, redirects 80→443, sets the strict security headers
+documented in [11-security.md](11-security.md), and proxies `/api/*` to
+the backend container. To run behind an external reverse proxy
+(Traefik / Caddy / corporate LB), override the conf with a bind mount
+or use the bundled HTTP-only `nginx.conf` at
+`/etc/nginx/conf.d/netforge.http.conf.disabled` inside the image.
+
+Inspect the live config with:
+
+```bash
+docker compose exec frontend cat /etc/nginx/conf.d/netforge.conf
+```
+
+Single source of truth lives at [`frontend/nginx.prod.conf`](../frontend/nginx.prod.conf).
 
 ## TLS certificates
 
@@ -195,14 +138,19 @@ docker compose exec -T postgres pg_restore -U netforge -d netforge --clean --if-
 
 ## Updates
 
-Workflow:
-1. `git pull` on the server.
-2. `docker compose build backend frontend`.
-3. `docker compose up -d` (recreates the modified containers).
-4. `docker compose exec backend alembic upgrade head` if there is a new migration.
-5. `docker compose logs -f backend` to check.
+See the per-path commands at the top of this doc — TL;DR:
 
-No automated CI/CD to production for v1 — conscious manual deployment (the internal network diff is critical).
+- **Image path**: bump `NETFORGE_VERSION` in `.env`, then `docker compose pull && docker compose up -d`.
+- **Source path**: `git pull && docker compose up -d --build`.
+
+Either way, run `docker compose exec backend alembic upgrade head` if
+the release notes mention a migration, and `docker compose logs -f backend`
+to confirm the container booted clean.
+
+No automated CI/CD to production for v1 — the deploy is a conscious
+manual step (an internal-network change is critical enough to want a
+human in the loop). The `release` workflow only builds and publishes
+images; it never touches your server.
 
 ## Monitoring
 

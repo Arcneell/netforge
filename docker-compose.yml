@@ -1,0 +1,86 @@
+# NetForge — production stack.
+#
+# Two deploy paths, both supported by this file:
+#
+#   (A) Pull pre-built images from GHCR (default, fastest)
+#       git clone https://github.com/Arcneell/netforge.git && cd netforge
+#       cp .env.example .env && $EDITOR .env
+#       mkdir -p certs && cp /path/to/fullchain.pem certs/ && cp /path/to/privkey.pem certs/
+#       docker compose pull
+#       docker compose up -d
+#       docker compose exec backend alembic upgrade head
+#
+#   (B) Build from source on the host
+#       Same as (A) but: `docker compose up -d --build` (no pull).
+#
+# Pin a release by exporting NETFORGE_VERSION before bringing the stack up:
+#   NETFORGE_VERSION=v1.0.0 docker compose pull && docker compose up -d
+#
+# Full env-var reference is in .env.example. Required vars:
+#   POSTGRES_PASSWORD, PUBLIC_URL, SESSION_SIGNING_KEY, BOOTSTRAP_ADMIN_EMAIL,
+#   and the OIDC_* (or GITHUB_*) credentials for whichever AUTH_PROVIDER you pick.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: netforge
+      POSTGRES_USER: netforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?missing POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netforge -d netforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/arcneell/netforge-backend:${NETFORGE_VERSION:-latest}
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://netforge:${POSTGRES_PASSWORD}@postgres:5432/netforge
+      PUBLIC_URL: ${PUBLIC_URL:?missing PUBLIC_URL in .env}
+      # ---- Auth ----
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-oidc}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-openid email profile}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      # ---- Sessions ----
+      SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:?missing SESSION_SIGNING_KEY in .env}
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-28800}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:?missing BOOTSTRAP_ADMIN_EMAIL in .env}
+      # ---- Rate limiting ----
+      RATE_LIMIT_WRITES_PER_WINDOW: ${RATE_LIMIT_WRITES_PER_WINDOW:-60}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      # ---- Observability ----
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  frontend:
+    image: ghcr.io/arcneell/netforge-frontend:${NETFORGE_VERSION:-latest}
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # TLS material — mount your fullchain + privkey here. The image's
+      # nginx config (frontend/nginx.prod.conf) expects exactly these names.
+      - ./certs:/etc/nginx/certs:ro
+
+volumes:
+  pgdata:
+    name: netforge_pgdata
