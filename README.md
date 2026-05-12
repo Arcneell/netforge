@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-banner.svg" alt="Netforge" width="460">
+  <img src="assets/logo-banner.svg" alt="NetForge" width="460">
 </p>
 
 <p align="center">
@@ -17,14 +17,15 @@
 
 ---
 
-Most network documentation lives in Excel files, sticky notes, and the memory of whoever set it up. Netforge is a single source of truth for your IP plan, VLANs, switches, cabling and topology — with full change history and an interactive graph view.
+Most network documentation lives in Excel files, sticky notes, and the memory of whoever set it up. NetForge is a single source of truth for your IP plan, VLANs, switches, cabling and topology — with full change history and an interactive graph view.
 
 ## Features
 
 - **IPAM** — IPv4 subnets with overlap prevention enforced in the database (GiST exclusion constraint), reserved / assigned / DHCP addresses, free-IP calculation in SQL.
 - **Switches, ports, VLANs** — auto-generated ports, access / trunk / hybrid modes, native + tagged VLANs, connected-device tracking.
 - **Interactive topology** — Cytoscape.js graph with drag, zoom, auto-layout, PNG export.
-- **Global search, CSV import / export, full audit log, Entra ID SSO (OIDC).**
+- **Global search (Ctrl/Cmd K), CSV import / export, full audit log, OIDC SSO** (Entra ID, Keycloak, Google Workspace…) or GitHub OAuth.
+- **Per-IP write rate limit, strict CSP, focus-trapped modals** — hardening up front, not as an afterthought.
 - **100% self-hosted** — everything runs under Docker Compose.
 
 ## Stack
@@ -35,7 +36,7 @@ Most network documentation lives in Excel files, sticky notes, and the memory of
 | Database | PostgreSQL 16 (`INET` / `CIDR` / `MACADDR`, GiST exclusion, triggers) |
 | Frontend | Vue 3 · Vite · TypeScript · Tailwind · Pinia |
 | Topology | Cytoscape.js |
-| Auth | OIDC (Microsoft Entra ID) |
+| Auth | OIDC (any IdP) or GitHub OAuth — pluggable provider |
 | Deployment | Docker Compose |
 
 ## Quick start
@@ -74,11 +75,11 @@ For production, see [docs/07-deployment.md](docs/07-deployment.md).
 
 ## Status
 
-**Alpha.** The full specification is committed under [`docs/`](docs/) and the backend scaffold (phase 0-1) is in place. Frontend, auth and CRUD endpoints land phase by phase — see the [roadmap](docs/10-roadmap.md).
+**v1 ready.** Phases 0 through 10 are merged: backend foundations, auth, CRUD, search, topology, CSV import/export, the full SPA, hardening (rate limit, a11y, CSP), and Playwright E2E coverage of the critical flows. See the [roadmap](docs/10-roadmap.md) for what remains on the deploy side (TLS, Zabbix, real CSV import).
 
 ## Documentation
 
-The full specification lives in [`docs/`](docs/) — 11 short documents covering vision, architecture, data model, REST API, frontend, auth, deployment, CSV import, topology, roadmap and security.
+The full specification lives in [`docs/`](docs/) — 12 short documents covering vision, architecture, data model, REST API, frontend, auth, deployment, CSV import, topology, roadmap, security and the [end-user guide](docs/12-user-guide.md).
 
 ## Contributing
 
