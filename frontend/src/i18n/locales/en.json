@@ -25,6 +25,7 @@
     "comingSoon": "Coming soon",
     "all": "All",
     "none": "None",
+    "choose": "Choose…",
     "filters": "Filters",
     "reset": "Reset",
     "apply": "Apply",
@@ -56,6 +57,7 @@
       "invalidMac": "Enter a valid MAC address, e.g. aa:bb:cc:dd:ee:ff.",
       "invalidHexColor": "Enter a hex color, e.g. #2563eb.",
       "vlanIdRange": "VLAN ID must be between 1 and 4094.",
+      "positive": "Value must be strictly positive.",
       "maxLength": "Max {max} characters.",
       "minLength": "Min {min} characters.",
       "pattern": "Invalid format."
@@ -381,9 +383,20 @@
     }
   },
   "link": {
+    "new": "New link",
+    "edit": "Edit link",
+    "endpointA": "Endpoint A",
+    "endpointB": "Endpoint B",
+    "endpointsImmutableHint": "Link endpoints are not editable. To move a link, delete it and recreate it.",
+    "deleteConfirm": "Delete this link? This cannot be undone.",
+    "deletedToast": "Link deleted.",
+    "errors": {
+      "samePort": "The two endpoints must differ."
+    },
     "fields": {
       "type": "Type",
-      "speed": "Speed",
+      "speed": "Speed (Mbps)",
+      "description": "Description",
       "portA": "Port A",
       "portB": "Port B"
     },

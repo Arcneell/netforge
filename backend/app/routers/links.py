@@ -9,7 +9,7 @@ from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
 from app.models.user import UserRole
 from app.schemas.common import Page, PageParams
-from app.schemas.link import LinkCreate, LinkRead
+from app.schemas.link import LinkCreate, LinkCreateByName, LinkRead, LinkUpdate
 from app.services import links as service
 
 router = APIRouter(prefix="/links", tags=["links"])
@@ -30,6 +30,24 @@ async def list_links(
     )
 
 
+# `/by-name` must be declared before the catch-all `/{link_id}` route below,
+# otherwise FastAPI would route it to `get_link` and fail to parse "by-name"
+# as an int.
+@router.post(
+    "/by-name",
+    response_model=LinkRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def create_link_by_name(
+    payload: LinkCreateByName, db: AsyncSession = Depends(get_db)
+) -> LinkRead:
+    """Same as POST /api/links but addresses ports by (switch_name, number)
+    instead of numeric ids. Convenience path for the topology editor UI."""
+    link = await service.create_link_by_name(db, payload)
+    return LinkRead.model_validate(link)
+
+
 @router.get(
     "/{link_id}", response_model=LinkRead, dependencies=[Depends(get_current_user)]
 )
@@ -48,6 +66,20 @@ async def create_link(
     payload: LinkCreate, db: AsyncSession = Depends(get_db)
 ) -> LinkRead:
     link = await service.create_link(db, payload)
+    return LinkRead.model_validate(link)
+
+
+@router.put(
+    "/{link_id}",
+    response_model=LinkRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def update_link(
+    link_id: int, payload: LinkUpdate, db: AsyncSession = Depends(get_db)
+) -> LinkRead:
+    """Patch link metadata (type, speed, description). Endpoints are
+    immutable — to change the connected ports, delete and recreate."""
+    link = await service.update_link(db, link_id, payload)
     return LinkRead.model_validate(link)
 
 

@@ -145,6 +145,14 @@ Split layout:
 - Right 25%: side panel. Shows details of the selected switch or link. Clickable links to `/switches/:id` or `/links/:id` for editing.
 - Top bar: site selector, "show only connected switches" toggle, `{switches} switches · {links} links` counter.
 
+### Manual link management
+
+Admins can create / edit / delete links directly from the topology view, no CSV round-trip required:
+
+- A **+ New link** button in the toolbar opens a modal with two switch+port pickers; ports are fetched per-side when the user picks a switch. The modal POSTs to `/api/links/by-name`, so the user never has to know the numeric port id.
+- Selecting an edge in the canvas surfaces **Edit** / **Delete** actions in the side panel. Edit only mutates metadata (`link_type`, `speed_mbps`, `description`) — endpoints are immutable; to move a link, delete and recreate it. This mirrors the DB-level uniqueness constraint on `(port_a_id, port_b_id)`.
+- Both buttons are gated on `useAuth().isAdmin`, but the backend is the source of truth: viewers calling the same endpoints get a 403.
+
 ## Special cases
 
 ### Orphan switch

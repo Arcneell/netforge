@@ -25,6 +25,7 @@
     "comingSoon": "Bientôt disponible",
     "all": "Tous",
     "none": "Aucun",
+    "choose": "Choisir…",
     "filters": "Filtres",
     "reset": "Réinitialiser",
     "apply": "Appliquer",
@@ -58,6 +59,7 @@
       "vlanIdRange": "L'ID VLAN doit être compris entre 1 et 4094.",
       "maxLength": "{max} caractères maximum.",
       "minLength": "{min} caractères minimum.",
+      "positive": "La valeur doit être strictement positive.",
       "pattern": "Format invalide."
     }
   },
@@ -381,9 +383,20 @@
     }
   },
   "link": {
+    "new": "Nouveau lien",
+    "edit": "Modifier le lien",
+    "endpointA": "Extrémité A",
+    "endpointB": "Extrémité B",
+    "endpointsImmutableHint": "Les extrémités d'un lien ne sont pas modifiables. Pour déplacer un lien, supprimez-le et recréez-le.",
+    "deleteConfirm": "Supprimer ce lien ? Cette action est irréversible.",
+    "deletedToast": "Lien supprimé.",
+    "errors": {
+      "samePort": "Les deux extrémités doivent être différentes."
+    },
     "fields": {
       "type": "Type",
-      "speed": "Vitesse",
+      "speed": "Vitesse (Mbps)",
+      "description": "Description",
       "portA": "Port A",
       "portB": "Port B"
     },

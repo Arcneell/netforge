@@ -115,7 +115,10 @@ Example response for `/api/subnets/{id}/ips`:
 | Method | Path | Description |
 |---------|--------|-------------|
 | GET | `/api/links` | List |
-| POST | `/api/links` | Create a link between 2 ports (admin) |
+| GET | `/api/links/{id}` | Read one link |
+| POST | `/api/links` | Create a link between 2 ports, identified by numeric port ids (admin) |
+| POST | `/api/links/by-name` | Create a link by `(switch_name, port_number)` for both endpoints (admin) |
+| PUT | `/api/links/{id}` | Patch metadata only: `link_type`, `speed_mbps`, `description` (admin). Endpoints are immutable here — to change connected ports, delete and recreate. |
 | DELETE | `/api/links/{id}` | Delete (admin) |
 
 ## Topology
