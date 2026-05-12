@@ -63,7 +63,16 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ steps.meta-owner.outputs.value }}/netforge-${{ matrix.component.name }}
           tags: |
             type=ref,event=branch
+            # Publish BOTH v-prefixed and unprefixed semver tags. The
+            # deployment docs and .env.example tell operators to set
+            # NETFORGE_VERSION=v1.0.0 (matches the git tag they pushed),
+            # so the v-prefixed image MUST exist or `docker compose pull`
+            # 404s on the first pinned release. The unprefixed pair is
+            # kept for compatibility with the broader Docker convention
+            # (most registries publish plain semver).
+            type=semver,pattern=v{{version}}
             type=semver,pattern={{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=main-,enable={{is_default_branch}}
             type=raw,value=latest,enable={{is_default_branch}}
