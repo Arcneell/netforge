@@ -18,7 +18,7 @@ Estimates in half-days (HD) for a part-time developer. Adjust based on actual av
 - [ ] `app/config.py`: Pydantic settings loaded from env.
 - [ ] `app/db.py`: async SQLAlchemy engine.
 - [ ] Alembic initialized, `0001_initial` migration with all tables from [03-data-model.md](03-data-model.md).
-- [ ] `0002_seed` migration with baseline data (standard VLANs, default site).
+- [ ] Fresh installs start with an empty schema — populate via the bulk CSV import or CRUD UI (no seed migration).
 - [ ] Healthcheck `/api/health`.
 - [ ] Backend Dockerfile + minimal `docker-compose.dev.yml` (backend + postgres).
 - [ ] Smoke test: `curl /api/health` OK from the VM.

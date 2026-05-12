@@ -44,8 +44,7 @@ alembic/
 ├── env.py
 ├── script.py.mako
 └── versions/
-    ├── 0001_initial.py
-    └── 0002_seed.py
+    └── 0001_initial.py
 ```
 
 ## Migrations
