@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import io
+import zipfile
 from collections.abc import AsyncIterator
 
 from sqlalchemy import select
@@ -305,3 +306,31 @@ async def stream_export(db: AsyncSession, entity: str) -> AsyncIterator[str]:
                     _str_or_empty(link.description),
                 ],
             )
+
+
+async def build_zip(db: AsyncSession) -> bytes:
+    """Bundle every entity's CSV export into a single ZIP archive.
+
+    The archive structure mirrors what the bulk importer expects: one
+    `<entity>.csv` per entity, named exactly the way the auto-detect endpoint
+    finds them. Drop the ZIP back into the import view and it round-trips —
+    that's the whole point of this endpoint as a backup / migration tool.
+
+    We assemble in memory rather than streaming the ZIP because:
+      - the realistic v1 dataset (< 200 switches, a few thousand IPs) is well
+        under a few MB uncompressed, so RAM cost is negligible;
+      - streaming a ZIP needs each member's CRC32 + size up front (or the
+        slow "data descriptor" extension), which would mean either two
+        passes over each entity or shelling out to a streaming-zip lib.
+        Not worth the complexity for v1.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(
+        buf, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=6
+    ) as zf:
+        for entity in ENTITIES:
+            chunks: list[str] = []
+            async for chunk in stream_export(db, entity):
+                chunks.append(chunk)
+            zf.writestr(f"{entity}.csv", "".join(chunks).encode("utf-8"))
+    return buf.getvalue()
