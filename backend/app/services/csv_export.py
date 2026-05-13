@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import zipfile
 from collections.abc import AsyncIterator
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +24,7 @@ from app.models.link import Link
 from app.models.port import Port, PortVlan
 from app.models.subnet import Subnet
 from app.models.switch import Switch
+from app.models.user import AuditLog, User
 from app.models.vlan import Vlan
 
 ENTITIES = (
@@ -306,6 +309,80 @@ async def stream_export(db: AsyncSession, entity: str) -> AsyncIterator[str]:
                     _str_or_empty(link.description),
                 ],
             )
+
+
+async def stream_audit_export(
+    db: AsyncSession,
+    *,
+    entity: str | None = None,
+    entity_id: int | None = None,
+    user_id: int | None = None,
+    from_: datetime | None = None,
+    to: datetime | None = None,
+) -> AsyncIterator[str]:
+    """Stream the audit log as CSV, applying the same filters as `GET /api/audit`.
+
+    Joining `users` keeps the export self-contained — admins want to know who
+    did something without having to cross-reference user ids by hand. The
+    `changes` dict is serialised as compact JSON in one column; trying to flatten
+    it into named columns would explode the header for what's already a debug
+    field.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+
+    yield "﻿" + _line(
+        writer,
+        buf,
+        [
+            "id",
+            "created_at",
+            "user_id",
+            "user_email",
+            "action",
+            "entity",
+            "entity_id",
+            "ip_address",
+            "user_agent",
+            "changes",
+        ],
+    )
+
+    q = (
+        select(AuditLog, User.email)
+        .outerjoin(User, AuditLog.user_id == User.id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+    )
+    if entity is not None:
+        q = q.where(AuditLog.entity == entity)
+    if entity_id is not None:
+        q = q.where(AuditLog.entity_id == entity_id)
+    if user_id is not None:
+        q = q.where(AuditLog.user_id == user_id)
+    if from_ is not None:
+        q = q.where(AuditLog.created_at >= from_)
+    if to is not None:
+        q = q.where(AuditLog.created_at <= to)
+
+    for entry, user_email in (await db.execute(q)).all():
+        yield _line(
+            writer,
+            buf,
+            [
+                str(entry.id),
+                entry.created_at.isoformat(),
+                _str_or_empty(entry.user_id),
+                _str_or_empty(user_email),
+                entry.action.value if hasattr(entry.action, "value") else str(entry.action),
+                entry.entity,
+                _str_or_empty(entry.entity_id),
+                _str_or_empty(entry.ip_address),
+                _str_or_empty(entry.user_agent),
+                # Compact JSON keeps newlines/commas out of the cell — Excel
+                # then opens this column cleanly with `;` as the separator.
+                "" if entry.changes is None else json.dumps(entry.changes, ensure_ascii=False),
+            ],
+        )
 
 
 async def build_zip(db: AsyncSession) -> bytes:

@@ -167,6 +167,7 @@ Response:
 | POST | `/api/imports/bulk` | Multi-file or `.zip` upload, auto-routed and applied in dependency order inside one transaction |
 | GET | `/api/exports/{entity}` | CSV stream |
 | GET | `/api/exports/all` | ZIP archive containing every entity's CSV — round-trip-compatible with `POST /api/imports/bulk` |
+| GET | `/api/exports/audit` | Audit log as CSV (admin). Same filters as `GET /api/audit`: `entity`, `entity_id`, `user_id`, `from`, `to` |
 
 See [08-import-csv.md](08-import-csv.md) for the expected formats.
 
