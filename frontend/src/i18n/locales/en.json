@@ -329,6 +329,7 @@
   },
   "audit": {
     "subtitle": "Every create, update, and delete is recorded here.",
+    "exportCsv": "Export as CSV",
     "fields": {
       "when": "When",
       "user": "User",

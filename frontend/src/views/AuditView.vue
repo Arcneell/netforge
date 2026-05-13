@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Eye } from 'lucide-vue-next'
+import { Download, Eye } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -89,11 +89,30 @@ const columns: DataTableColumn[] = [
   { key: 'user_id', label: t('audit.fields.user'), align: 'right', cellClass: 'w-20 font-mono' },
   { key: 'actions', label: '', align: 'right', cellClass: 'w-16' },
 ]
+
+function exportCsv() {
+  // Carry the visible entity filter into the export so what the admin sees on
+  // screen matches what lands in the file. The action filter stays purely
+  // client-side (matches the `load()` comment); replicating it here would mean
+  // adding a server-side action filter and that's out of scope.
+  const params = new URLSearchParams()
+  if (entityFilter.value) params.set('entity', entityFilter.value)
+  const qs = params.toString()
+  const url = qs ? `/api/exports/audit?${qs}` : '/api/exports/audit'
+  window.open(url, '_blank', 'noopener')
+}
 </script>
 
 <template>
   <div class="p-6 max-w-7xl mx-auto">
-    <PageHeader :title="t('nav.audit')" :subtitle="t('audit.subtitle')" />
+    <PageHeader :title="t('nav.audit')" :subtitle="t('audit.subtitle')">
+      <template #actions>
+        <Button variant="secondary" @click="exportCsv">
+          <Download class="w-4 h-4" aria-hidden="true" />
+          {{ t('audit.exportCsv') }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <div class="flex flex-wrap items-center gap-2 mb-4">
       <div class="w-48">
