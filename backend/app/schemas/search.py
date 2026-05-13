@@ -8,13 +8,22 @@ from pydantic import BaseModel
 
 
 class SearchResult(BaseModel):
-    type: Literal["ip", "device", "switch", "port"]
+    type: Literal[
+        "ip",
+        "device",
+        "switch",
+        "port",
+        "site",
+        "room",
+        "vlan",
+        "subnet",
+    ]
     id: int
     label: str
     context: str | None = None
     # Owner needed to route to a useful page: IP → subnet detail,
-    # port → switch detail. Devices and switches are routed by `id`,
-    # so this stays None for those types.
+    # port → switch detail. Devices, switches, VLANs and subnets are routed
+    # directly by `id` (or by listing page), so this stays None for those.
     parent_id: int | None = None
 
 
