@@ -444,6 +444,8 @@
     "submitDryRun": "Valider (à blanc)",
     "exportTemplate": "Télécharger les données actuelles comme modèle",
     "exportTemplateHint": "Exporte l'entité en CSV avec exactement les colonnes attendues par l'import.",
+    "downloadAll": "Télécharger tout (ZIP)",
+    "downloadAllHint": "Exporte toutes les entités en CSV dans une seule archive ZIP — sauvegarde logique compatible avec l'import groupé.",
     "orderTitle": "Ordre d'import recommandé",
     "orderHint": "Dépendances entre entités — suivez cet ordre pour une installation neuve.",
     "bulk": {

@@ -232,6 +232,17 @@ so the UI can show them as skipped.
 
 ## Export
 
-`GET /api/exports/{entity}?format=csv` returns a file in the same format as the import. It enables clean round-trips (export → edit in Excel → re-import as upsert).
+`GET /api/exports/{entity}` returns a file in the same format as the import. It enables clean round-trips (export → edit in Excel → re-import as upsert).
 
-For admins, a `GET /api/exports/all` endpoint produces a zip containing every table — serves as a logical backup complementary to `pg_dump`.
+### Bulk export
+
+`GET /api/exports/all` produces a ZIP archive containing every entity as its own CSV (`sites.csv`, `rooms.csv`, …, `links.csv`). Filename: `netforge-export-YYYY-MM-DD.zip`.
+
+The archive structure is **exactly** what `POST /api/imports/bulk` accepts — drop the ZIP back into the Import view to round-trip it (a fresh restore reapplies every entity in dependency order inside one transaction). It's the canonical logical backup, complementary to `pg_dump`:
+
+- `pg_dump` is byte-perfect but binary-format and Postgres-version-coupled.
+- `/api/exports/all` is human-readable CSV, editable in Excel, and survives a schema migration as long as the column names match the importer.
+
+Available to any authenticated user; permissions are not narrowed on this route because read-only viewers can already download every entity individually.
+
+The Import view has a **Download all (ZIP)** button in its header that triggers this endpoint.

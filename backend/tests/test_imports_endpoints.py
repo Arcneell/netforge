@@ -342,3 +342,65 @@ async def test_export_unknown_entity_returns_400(client: AsyncClient) -> None:
     )
     assert r.status_code == 400
     assert r.json()["detail"]["error"]["code"] == "UNKNOWN_ENTITY"
+
+
+# --- /api/exports/all ------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_export_all_rejects_anon(client: AsyncClient) -> None:
+    _install_db(user=None)
+    r = await client.get("/api/exports/all")
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_export_all_returns_zip_for_authenticated_user(client: AsyncClient) -> None:
+    """All entities are queried in sequence. Each call to `select(...)` returns
+    an empty list — we just want to assert the route assembles a valid ZIP
+    with one member per entity, not that the CSV contents are correct (the
+    per-entity contents are covered by the streaming export tests).
+    """
+    import io as _io
+    import zipfile as _zf
+
+    # 9 entities → 9 successive db.execute() calls returning empty result sets.
+    # The `ports` entity adds one extra inner call (selectinload-style join),
+    # but in this mock setup that's still served by the same .scalars()→.all()
+    # path, so the same MagicMock works for all of them.
+    def _empty_result():
+        r = MagicMock()
+        r.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        r.all = MagicMock(return_value=[])
+        return r
+
+    _install_db(
+        user=_viewer(),
+        execute_returns=[_empty_result() for _ in range(9)],
+    )
+
+    r = await client.get("/api/exports/all", cookies={"netforge_session": "sess"})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    assert "netforge-export-" in r.headers["content-disposition"]
+
+    zf = _zf.ZipFile(_io.BytesIO(r.content))
+    members = {info.filename for info in zf.infolist()}
+    # Every entity ships as its own CSV inside the archive — the file names
+    # are the ones the bulk importer's auto-detect routes back to the right
+    # importer, so this is also the round-trip contract.
+    assert members == {
+        "sites.csv",
+        "rooms.csv",
+        "vlans.csv",
+        "subnets.csv",
+        "ips.csv",
+        "devices.csv",
+        "switches.csv",
+        "ports.csv",
+        "links.csv",
+    }
+    # Each member at minimum contains the BOM + header row.
+    for name in members:
+        body = zf.read(name).decode("utf-8-sig")
+        assert body.split("\n", 1)[0]  # non-empty header line

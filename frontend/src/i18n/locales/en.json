@@ -444,6 +444,8 @@
     "submitDryRun": "Validate (dry-run)",
     "exportTemplate": "Download current data as template",
     "exportTemplateHint": "Exports the entity as a CSV with the exact column names the importer expects.",
+    "downloadAll": "Download all (ZIP)",
+    "downloadAllHint": "Exports every entity as CSV in a single ZIP archive — logical backup compatible with the bulk import.",
     "orderTitle": "Recommended import order",
     "orderHint": "Dependencies between entities — import in this order on a fresh install.",
     "bulk": {
