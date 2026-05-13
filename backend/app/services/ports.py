@@ -47,6 +47,24 @@ async def get_port(db: AsyncSession, port_id: int) -> Port:
     return port
 
 
+async def list_tagged_vlans(db: AsyncSession, port_id: int) -> list[Vlan]:
+    """Return every VLAN tagged on the given trunk port.
+
+    The PortEditor UI needs this to populate its tagged-VLAN list on open;
+    without it the modal had to reset to empty on every reopen and silently
+    drop the user's prior view of the set. 404 on the parent port matches
+    the rest of the `/api/ports/{port_id}/...` surface.
+    """
+    await get_port(db, port_id)
+    rows = await db.execute(
+        select(Vlan)
+        .join(PortVlan, PortVlan.vlan_id == Vlan.id)
+        .where(PortVlan.port_id == port_id)
+        .order_by(Vlan.vlan_id)
+    )
+    return list(rows.scalars().all())
+
+
 async def update_port(db: AsyncSession, port_id: int, payload: PortUpdate) -> Port:
     port = await get_port(db, port_id)
     for field, value in payload.model_dump(exclude_unset=True).items():

@@ -76,6 +76,7 @@ _READ_PATHS = [
     "/api/devices",
     "/api/switches",
     "/api/switches/1/ports",
+    "/api/ports/1/vlans",
     "/api/links",
     "/api/audit",
     "/api/search?q=foo",

@@ -10,6 +10,7 @@ from app.db import get_session as get_db
 from app.models.user import UserRole
 from app.schemas.common import Page, PageParams
 from app.schemas.port import PortRead, PortUpdate, TaggedVlanAdd
+from app.schemas.vlan import VlanRead
 from app.services import ports as service
 
 # /api/switches/{switch_id}/ports — listing only
@@ -57,6 +58,21 @@ async def update_port(
 ) -> PortRead:
     port = await service.update_port(db, port_id, payload)
     return PortRead.model_validate(port)
+
+
+@router.get(
+    "/{port_id}/vlans",
+    response_model=list[VlanRead],
+    dependencies=[Depends(get_current_user)],
+)
+async def list_tagged_vlans(
+    port_id: int, db: AsyncSession = Depends(get_db)
+) -> list[VlanRead]:
+    """Return the VLANs tagged on a trunk port. Powers the PortEditor UI
+    so the modal can show the current set on open (instead of an empty
+    list that the user has to rebuild from memory)."""
+    vlans = await service.list_tagged_vlans(db, port_id)
+    return [VlanRead.model_validate(v) for v in vlans]
 
 
 @router.post(
