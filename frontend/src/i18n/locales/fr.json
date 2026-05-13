@@ -329,6 +329,7 @@
   },
   "audit": {
     "subtitle": "Toutes les créations, modifications et suppressions sont tracées ici.",
+    "exportCsv": "Exporter en CSV",
     "fields": {
       "when": "Quand",
       "user": "Utilisateur",

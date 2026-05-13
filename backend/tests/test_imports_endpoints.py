@@ -404,3 +404,45 @@ async def test_export_all_returns_zip_for_authenticated_user(client: AsyncClient
     for name in members:
         body = zf.read(name).decode("utf-8-sig")
         assert body.split("\n", 1)[0]  # non-empty header line
+
+
+# --- /api/exports/audit ---------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_export_audit_rejects_anon(client: AsyncClient) -> None:
+    _install_db(user=None)
+    r = await client.get("/api/exports/audit")
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_export_audit_rejects_viewer(client: AsyncClient) -> None:
+    """Same admin gate as GET /api/audit — viewers can't pull the log even
+    as CSV."""
+    _install_db(user=_viewer())
+    r = await client.get("/api/exports/audit", cookies={"netforge_session": "sess"})
+    assert r.status_code == 403
+    assert r.json()["detail"]["error"]["code"] == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_export_audit_admin_returns_csv_with_header(client: AsyncClient) -> None:
+    """Empty audit log — we still want a CSV file with the expected header
+    row (otherwise Excel opens an empty file and the admin thinks the export
+    failed silently)."""
+    empty = MagicMock()
+    empty.all = MagicMock(return_value=[])
+    _install_db(user=_admin(), execute_returns=[empty])
+
+    r = await client.get("/api/exports/audit", cookies={"netforge_session": "sess"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
+    assert "netforge-audit-" in r.headers["content-disposition"]
+    body = r.content.decode("utf-8-sig")
+    header = body.split("\n", 1)[0]
+    # Header must include the joined user_email column — that's the whole
+    # reason for the LEFT JOIN against users in the service.
+    assert "user_email" in header
+    assert "action" in header
+    assert "changes" in header
