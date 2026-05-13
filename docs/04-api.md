@@ -163,7 +163,10 @@ Response:
 | Method | Path | Description |
 |---------|--------|-------------|
 | POST | `/api/imports/{entity}` | Multipart CSV upload. `entity` ∈ `subnets`, `vlans`, `ips`, `switches`, `ports`, `devices`, `links` |
+| POST | `/api/imports/detect` | Header-row inspection — returns the most likely entity for a CSV |
+| POST | `/api/imports/bulk` | Multi-file or `.zip` upload, auto-routed and applied in dependency order inside one transaction |
 | GET | `/api/exports/{entity}` | CSV stream |
+| GET | `/api/exports/all` | ZIP archive containing every entity's CSV — round-trip-compatible with `POST /api/imports/bulk` |
 
 See [08-import-csv.md](08-import-csv.md) for the expected formats.
 

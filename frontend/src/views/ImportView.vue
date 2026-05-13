@@ -107,6 +107,12 @@ function downloadTemplate() {
   window.open(`/api/exports/${entity.value}`, '_blank', 'noopener')
 }
 
+function downloadAll() {
+  // Browser handles the streamed ZIP download. The endpoint accepts any
+  // authenticated user — backend is the source of truth for permissions.
+  window.open('/api/exports/all', '_blank', 'noopener')
+}
+
 const reportTone = computed<'success' | 'warning' | 'danger' | 'primary'>(() => {
   const r = report.value
   if (!r) return 'primary'
@@ -287,7 +293,14 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
 
 <template>
   <div class="p-6 max-w-5xl mx-auto">
-    <PageHeader :title="t('nav.import')" :subtitle="t('import.subtitle')" />
+    <PageHeader :title="t('nav.import')" :subtitle="t('import.subtitle')">
+      <template #actions>
+        <Button variant="secondary" @click="downloadAll">
+          <Download class="w-4 h-4" aria-hidden="true" />
+          {{ t('import.downloadAll') }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <!-- Mode tabs -->
     <div
