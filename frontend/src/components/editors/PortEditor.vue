@@ -65,17 +65,23 @@ watch(
     form.connected_device_id = p.connected_device_id ?? null
     form.notes = p.notes ?? ''
     submitError.value = null
-    // PortRead does not expose the tagged-VLAN list directly — backend exposes it
-    // separately via the port-vlan join. For v1 we keep a local list that admins
-    // mutate through dedicated add/remove endpoints; on open we reset to empty
-    // because there's no batch read endpoint. (Phase 7 follow-up: add it server-side.)
+    // Reset to empty *immediately* so a fresh open never shows stale state from
+    // a previous port if the network call is in flight. The actual server set
+    // lands a moment later via `portsApi.listTaggedVlans` below.
     taggedVlanIds.value = []
-    const [v, d] = await Promise.all([
-      vlansApi.list({ page_size: 200 }),
-      devicesApi.list({ page_size: 200 }),
-    ])
-    vlans.value = v.items
-    devices.value = d.items
+    vlanLoading.value = true
+    try {
+      const [v, d, tagged] = await Promise.all([
+        vlansApi.list({ page_size: 200 }),
+        devicesApi.list({ page_size: 200 }),
+        portsApi.listTaggedVlans(p.id),
+      ])
+      vlans.value = v.items
+      devices.value = d.items
+      taggedVlanIds.value = tagged.map((t) => t.id)
+    } finally {
+      vlanLoading.value = false
+    }
   },
 )
 
