@@ -22,7 +22,12 @@ export {
   type LinkUpdate,
 } from './endpoints/links'
 export { auditApi, type AuditFilters } from './endpoints/audit'
-export { searchApi } from './endpoints/search'
+export {
+  searchApi,
+  type SearchResult,
+  type SearchResponse,
+  type SearchResultType,
+} from './endpoints/search'
 export { topologyApi } from './endpoints/topology'
 export {
   importsApi,

@@ -131,8 +131,10 @@ export type AuditAction = S['AuditAction']
 // ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------
-export type SearchResult = S['SearchResult']
-export type SearchResponse = S['SearchResponse']
+// SearchResult / SearchResponse are exported directly from `endpoints/search`
+// with a hand-typed superset of the auto-generated schema (it lists 8 entity
+// types instead of the 4 frozen in the current openapi.json). Drop the
+// `S['SearchResult']` re-export here so we don't ship two conflicting shapes.
 
 // ---------------------------------------------------------------------------
 // Topology

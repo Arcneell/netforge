@@ -2,7 +2,18 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { Search, Network, Server, RouterIcon as RouterIco, Plug, X } from 'lucide-vue-next'
+import {
+  Search,
+  Network,
+  Server,
+  RouterIcon as RouterIco,
+  Plug,
+  X,
+  Building2,
+  DoorOpen,
+  Tag,
+  Globe,
+} from 'lucide-vue-next'
 import { searchApi } from '@/api'
 import type { SearchResult } from '@/api'
 import { useDebounce } from '@/composables/useDebounce'
@@ -26,6 +37,10 @@ const iconFor: Record<SearchResult['type'], typeof Search> = {
   device: Server,
   switch: RouterIco,
   port: Plug,
+  site: Building2,
+  room: DoorOpen,
+  vlan: Tag,
+  subnet: Globe,
 }
 
 const groupLabel: Record<SearchResult['type'], string> = {
@@ -33,6 +48,10 @@ const groupLabel: Record<SearchResult['type'], string> = {
   device: 'device.labelPlural',
   switch: 'switch.labelPlural',
   port: 'port.labelPlural',
+  site: 'site.labelPlural',
+  room: 'room.labelPlural',
+  vlan: 'vlan.labelPlural',
+  subnet: 'subnet.labelPlural',
 }
 
 watch(
@@ -66,7 +85,9 @@ watch(debounced, async (q) => {
   }
 })
 
-function routeFor(r: SearchResult): { name: string; params?: Record<string, string | number> } | null {
+function routeFor(
+  r: SearchResult,
+): { name: string; params?: Record<string, string | number> } | null {
   switch (r.type) {
     case 'switch':
       return { name: 'switch-detail', params: { id: r.id } }
@@ -85,6 +106,18 @@ function routeFor(r: SearchResult): { name: string; params?: Record<string, stri
       return r.parent_id != null
         ? { name: 'switch-detail', params: { id: r.parent_id } }
         : { name: 'switches' }
+    case 'subnet':
+      return { name: 'subnet-detail', params: { id: r.id } }
+    case 'vlan':
+      // No per-VLAN detail route — drop the user on the VLAN list. They can
+      // spot the row by the matching id/name we just surfaced in the label.
+      return { name: 'vlans' }
+    case 'site':
+    case 'room':
+      // Sites and rooms aren't owners of a dedicated detail page; they live
+      // in SettingsView, which renders both lists. Better than 404'ing or
+      // pretending the click did something.
+      return { name: 'settings' }
     default:
       return null
   }
@@ -154,9 +187,7 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
         @click.self="emit('close')"
         @keydown="onKey"
       >
-        <div
-          class="nf-card shadow-pop w-full max-w-xl flex flex-col overflow-hidden"
-        >
+        <div class="nf-card shadow-pop w-full max-w-xl flex flex-col overflow-hidden">
           <div class="flex items-center gap-2 px-3 border-b border-border">
             <Search class="w-4 h-4 text-fg-muted flex-shrink-0" aria-hidden="true" />
             <input
@@ -177,7 +208,9 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
             >
               <X class="w-4 h-4" aria-hidden="true" />
             </button>
-            <kbd class="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-fg-muted border border-border">
+            <kbd
+              class="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-fg-muted border border-border"
+            >
               Esc
             </kbd>
           </div>
@@ -189,16 +222,10 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
             >
               {{ t('common.searchHint') }}
             </p>
-            <p
-              v-else-if="loading"
-              class="px-4 py-6 text-xs text-fg-muted text-center"
-            >
+            <p v-else-if="loading" class="px-4 py-6 text-xs text-fg-muted text-center">
               {{ t('common.loading') }}
             </p>
-            <p
-              v-else-if="results.length === 0"
-              class="px-4 py-6 text-xs text-fg-muted text-center"
-            >
+            <p v-else-if="results.length === 0" class="px-4 py-6 text-xs text-fg-muted text-center">
               {{ t('common.empty.title') }}
             </p>
 
