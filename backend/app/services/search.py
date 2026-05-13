@@ -14,10 +14,13 @@ from __future__ import annotations
 from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.core import Room, Site
 from app.models.device import Device
 from app.models.ip import Ip
 from app.models.port import Port
+from app.models.subnet import Subnet
 from app.models.switch import Switch
+from app.models.vlan import Vlan
 from app.schemas.search import SearchResult
 
 _PER_TYPE_LIMIT = 10
@@ -120,6 +123,107 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
                 label=f"{sw.name} / port {port.number}",
                 context=port.label,
                 parent_id=sw.id,
+            )
+        )
+
+    # Sites — match code, name, address.
+    site_rows = (
+        await db.execute(
+            select(Site)
+            .where(
+                or_(
+                    Site.code.ilike(pattern),
+                    Site.name.ilike(pattern),
+                    Site.address.ilike(pattern),
+                )
+            )
+            .limit(_PER_TYPE_LIMIT)
+        )
+    ).scalars().all()
+    for site in site_rows:
+        results.append(
+            SearchResult(
+                type="site",
+                id=site.id,
+                label=site.code,
+                context=site.name,
+            )
+        )
+
+    # Rooms — match code or description; qualify the label with the site code
+    # so "SALLE-SRV-01" is unambiguous when several sites share room codes.
+    room_rows = (
+        await db.execute(
+            select(Room, Site.code)
+            .join(Site, Room.site_id == Site.id)
+            .where(
+                or_(
+                    Room.code.ilike(pattern),
+                    Room.description.ilike(pattern),
+                )
+            )
+            .limit(_PER_TYPE_LIMIT)
+        )
+    ).all()
+    for room, site_code in room_rows:
+        results.append(
+            SearchResult(
+                type="room",
+                id=room.id,
+                label=f"{site_code} / {room.code}",
+                context=room.description,
+            )
+        )
+
+    # VLANs — match the public numeric id (cast to text so the same `pattern`
+    # works for "10" and "VLAN-VOIP"), name, description.
+    vlan_rows = (
+        await db.execute(
+            select(Vlan)
+            .where(
+                or_(
+                    cast(Vlan.vlan_id, String).ilike(pattern),
+                    Vlan.name.ilike(pattern),
+                    Vlan.description.ilike(pattern),
+                )
+            )
+            .limit(_PER_TYPE_LIMIT)
+        )
+    ).scalars().all()
+    for vlan in vlan_rows:
+        results.append(
+            SearchResult(
+                type="vlan",
+                # NB: `id` is the DB primary key (used by the frontend router);
+                # the user-facing 802.1Q id goes in the label.
+                id=vlan.id,
+                label=f"VLAN {vlan.vlan_id} — {vlan.name}",
+                context=vlan.description,
+            )
+        )
+
+    # Subnets — match CIDR (cast to text) or description.
+    subnet_rows = (
+        await db.execute(
+            select(Subnet, Site.code)
+            .outerjoin(Site, Subnet.site_id == Site.id)
+            .where(
+                or_(
+                    cast(Subnet.cidr, String).ilike(pattern),
+                    Subnet.description.ilike(pattern),
+                )
+            )
+            .limit(_PER_TYPE_LIMIT)
+        )
+    ).all()
+    for subnet, site_code in subnet_rows:
+        context_bits = [b for b in (site_code, subnet.description) if b]
+        results.append(
+            SearchResult(
+                type="subnet",
+                id=subnet.id,
+                label=str(subnet.cidr),
+                context=" / ".join(context_bits) if context_bits else None,
             )
         )
 
