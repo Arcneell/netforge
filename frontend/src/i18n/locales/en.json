@@ -366,7 +366,8 @@
     "subtitle": "Manage sites, rooms and access tokens. Only administrators can edit.",
     "sitesTab": "Sites",
     "roomsTab": "Rooms",
-    "tokensTab": "API tokens"
+    "tokensTab": "API tokens",
+    "aiTab": "AI"
   },
   "apiTokens": {
     "subtitle": "Create personal access tokens for scripts and automations. Tokens inherit your role, so issue them sparingly.",
@@ -561,6 +562,21 @@
       "reject": "Reject"
     },
     "acceptedToast": "Link created from the AI suggestion.",
-    "scanDoneToast": "{persisted} new suggestion(s) added out of {raw} returned."
+    "scanDoneToast": "{persisted} new suggestion(s) added out of {raw} returned.",
+    "settings": {
+      "title": "AI assistant",
+      "description": "Three providers supported: Anthropic Claude, OpenAI, Google Gemini. Configuration is environment-driven — edit your .env and restart the backend to switch.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "provider": "Provider",
+      "model": "Model",
+      "testTitle": "Test connection",
+      "testDescription": "Sends a minimal ping to the provider to verify the API key and model before a real scan.",
+      "runTest": "Run test",
+      "testOk": "Connection succeeded.",
+      "testKo": "Connection failed.",
+      "howToChange": "Switch provider",
+      "envHint": "Update your .env file then restart the backend. Only the key matching AI_PROVIDER is required."
+    }
   }
 }
