@@ -10,6 +10,28 @@ export interface CurrentUser {
   provider: string
 }
 
+export interface ApiToken {
+  id: number
+  user_id: number
+  name: string
+  prefix: string
+  created_at: string
+  expires_at: string | null
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+export interface ApiTokenCreate {
+  name: string
+  expires_at?: string | null
+}
+
+/** Returned by POST /api/auth/tokens. `token` is the plaintext, surfaced
+ *  exactly once — display it and let the user copy, never persist it. */
+export interface ApiTokenCreated extends ApiToken {
+  token: string
+}
+
 export const authApi = {
   /** Returns the currently authenticated user, or throws 401 if no session. */
   me(): Promise<CurrentUser> {
@@ -27,5 +49,17 @@ export const authApi = {
    */
   loginUrl(): string {
     return '/api/auth/login'
+  },
+
+  // --- API tokens --------------------------------------------------------
+
+  listTokens(): Promise<ApiToken[]> {
+    return request<ApiToken[]>({ method: 'GET', url: '/auth/tokens' })
+  },
+  createToken(data: ApiTokenCreate): Promise<ApiTokenCreated> {
+    return request<ApiTokenCreated>({ method: 'POST', url: '/auth/tokens', data })
+  },
+  revokeToken(id: number): Promise<void> {
+    return request<void>({ method: 'DELETE', url: `/auth/tokens/${id}` })
   },
 }

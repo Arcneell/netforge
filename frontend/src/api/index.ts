@@ -2,7 +2,13 @@ export { api, request, registerApiHooks, ApiError } from './client'
 export type { ApiHooks } from './client'
 
 export { authApi } from './endpoints/auth'
-export type { CurrentUser, UserRole } from './endpoints/auth'
+export type {
+  CurrentUser,
+  UserRole,
+  ApiToken,
+  ApiTokenCreate,
+  ApiTokenCreated,
+} from './endpoints/auth'
 
 export { healthApi } from './endpoints/health'
 export type { HealthResponse } from './endpoints/health'
