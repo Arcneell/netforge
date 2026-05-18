@@ -41,9 +41,20 @@ export interface ScanReport {
   completion_tokens: number
 }
 
+export interface AITestResult {
+  ok: boolean
+  provider: string
+  model: string
+  latency_ms: number
+  error: string | null
+}
+
 export const aiApi = {
   status(): Promise<AIStatus> {
     return request<AIStatus>({ method: 'GET', url: '/ai/status' })
+  },
+  test(): Promise<AITestResult> {
+    return request<AITestResult>({ method: 'POST', url: '/ai/test' })
   },
   scanLinks(): Promise<ScanReport> {
     return request<ScanReport>({ method: 'POST', url: '/ai/suggestions/links/scan' })

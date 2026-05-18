@@ -55,3 +55,15 @@ class AIStatusRead(BaseModel):
     enabled: bool
     provider: str
     model: str
+
+
+class AITestResult(BaseModel):
+    """Result of POST /api/ai/test — a single ping call to the configured
+    provider to verify the API key and model name are valid before letting
+    the user trigger a real (more expensive) scan."""
+
+    ok: bool
+    provider: str
+    model: str
+    latency_ms: int
+    error: str | None = None

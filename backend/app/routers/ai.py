@@ -20,9 +20,9 @@ from app.auth.dependencies import get_current_user, require_role
 from app.config import get_settings
 from app.db import get_session as get_db
 from app.models.user import User, UserRole
-from app.schemas.ai import AIStatusRead, LinkSuggestionRead, ScanReportRead
+from app.schemas.ai import AIStatusRead, AITestResult, LinkSuggestionRead, ScanReportRead
 from app.schemas.link import LinkRead
-from app.services.ai import AIProviderError, AIUnsupportedFeatureError
+from app.services.ai import AIProviderError, AIUnsupportedFeatureError, get_provider
 from app.services.ai.rate_limit import AIRateLimitExceeded, check_and_consume
 from app.services.ai.suggest_links import (
     accept_suggestion,
@@ -52,6 +52,51 @@ async def get_status() -> AIStatusRead:
         enabled=settings.ai_enabled,
         provider=settings.ai_provider,
         model=settings.ai_model or "(default for provider)",
+    )
+
+
+@router.post(
+    "/test",
+    response_model=AITestResult,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def test_connection(user: User = Depends(get_current_user)) -> AITestResult:
+    """Tiny ping call to the configured provider. Used by the Settings UI
+    to verify "is my API key valid?" without burning tokens on a full scan."""
+    _require_ai_enabled()
+    try:
+        check_and_consume(user.id)
+    except AIRateLimitExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"rate limit exceeded, retry in {exc.retry_after_seconds}s",
+        ) from exc
+
+    import time
+
+    provider = get_provider()
+    t0 = time.monotonic()
+    try:
+        completion = await provider.call(
+            system="You are a connection-test assistant. Reply with the single word 'pong'.",
+            prompt="ping",
+            max_tokens=16,
+            temperature=0.0,
+        )
+    except AIProviderError as exc:
+        return AITestResult(
+            ok=False,
+            provider=provider.name,
+            model=provider.model,
+            latency_ms=int((time.monotonic() - t0) * 1000),
+            error=str(exc),
+        )
+    return AITestResult(
+        ok=bool(completion.text or completion.tool_call),
+        provider=provider.name,
+        model=provider.model,
+        latency_ms=int((time.monotonic() - t0) * 1000),
+        error=None,
     )
 
 

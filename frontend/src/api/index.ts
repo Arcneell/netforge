@@ -48,6 +48,7 @@ export {
 export {
   aiApi,
   type AIStatus,
+  type AITestResult,
   type LinkSuggestion,
   type LinkSuggestionStatus,
   type ScanReport,
