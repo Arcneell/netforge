@@ -2,8 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, Pencil, Sparkles, Download, Grid3x3, Table as TableIcon } from 'lucide-vue-next'
+import { Pencil, Sparkles, Download, Grid3x3, Table as TableIcon } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
+import Breadcrumb from '@/components/Breadcrumb.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Spinner from '@/components/ui/Spinner.vue'
@@ -12,6 +13,7 @@ import IpGrid from '@/components/IpGrid.vue'
 import IpEditor from '@/components/editors/IpEditor.vue'
 import SubnetEditor from '@/components/editors/SubnetEditor.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
+import { useStoredRef } from '@/composables/useStoredRef'
 import { ipsApi, subnetsApi, vlansApi } from '@/api'
 import type { Ip, Subnet, SubnetIpEntry, Vlan } from '@/api'
 import { useAuth } from '@/composables/useAuth'
@@ -30,7 +32,9 @@ const subnet = ref<Subnet | null>(null)
 const ips = ref<SubnetIpEntry[]>([])
 const vlan = ref<Vlan | null>(null)
 const loading = ref(true)
-const view = ref<'grid' | 'table'>('grid')
+// Persist the view mode across reloads — admins flipping between grid and
+// table once expect that choice to stick on the same machine.
+const view = useStoredRef<'grid' | 'table'>('netforge.subnet.view', 'grid')
 
 const editingSubnet = ref(false)
 const editingIpFor = ref<{ ip: Ip | null; address: string | null } | null>(null)
@@ -132,20 +136,17 @@ function statusKey(status: string): StatusKey {
 
 <template>
   <div class="p-6 max-w-7xl mx-auto">
-    <button
-      type="button"
-      class="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg mb-4 transition"
-      @click="router.push('/subnets')"
-    >
-      <ArrowLeft class="w-4 h-4" aria-hidden="true" />
-      {{ t('subnet.labelPlural') }}
-    </button>
-
     <div v-if="loading && !subnet" class="flex items-center justify-center py-12">
       <Spinner :label="t('common.loading')" />
     </div>
 
     <template v-else-if="subnet">
+      <Breadcrumb
+        :items="[
+          { label: t('subnet.labelPlural'), to: { name: 'subnets' } },
+          { label: subnet.cidr },
+        ]"
+      />
       <PageHeader :title="subnet.cidr" :subtitle="subnet.description ?? undefined">
         <template #actions>
           <Button variant="secondary" @click="exportCsv">

@@ -87,7 +87,11 @@
     "topology": "Topologie",
     "import": "Importer",
     "audit": "Journal d'audit",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "sections": {
+      "network": "Réseau",
+      "administration": "Administration"
+    }
   },
   "theme": {
     "label": "Thème",
