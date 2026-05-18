@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button.vue'
 import SiteEditor from '@/components/editors/SiteEditor.vue'
 import RoomEditor from '@/components/editors/RoomEditor.vue'
 import ApiTokensSection from '@/components/settings/ApiTokensSection.vue'
+import AiSection from '@/components/settings/AiSection.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { roomsApi, sitesApi } from '@/api'
 import type { Room, Site } from '@/api'
@@ -18,7 +19,7 @@ const { t } = useI18n()
 const { success } = useToast()
 const { describe } = useApiErrorMessage()
 
-const tab = ref<'sites' | 'rooms' | 'tokens'>('sites')
+const tab = ref<'sites' | 'rooms' | 'tokens' | 'ai'>('sites')
 
 // --- Sites ---
 const sites = ref<Site[]>([])
@@ -178,6 +179,20 @@ const roomColumns: DataTableColumn[] = [
       >
         {{ t('settings.tokensTab') }}
       </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'ai'"
+        :class="[
+          'px-3 h-8 rounded text-sm font-medium transition',
+          tab === 'ai'
+            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+        ]"
+        @click="tab = 'ai'"
+      >
+        {{ t('settings.aiTab') }}
+      </button>
     </div>
 
     <!-- Sites tab -->
@@ -223,6 +238,9 @@ const roomColumns: DataTableColumn[] = [
 
     <!-- Tokens tab -->
     <ApiTokensSection v-else-if="tab === 'tokens'" />
+
+    <!-- AI tab -->
+    <AiSection v-else-if="tab === 'ai'" />
 
     <!-- Rooms tab -->
     <section v-else>

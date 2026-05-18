@@ -366,7 +366,8 @@
     "subtitle": "Gérez les sites, les salles et les jetons d'accès. Seuls les administrateurs peuvent modifier.",
     "sitesTab": "Sites",
     "roomsTab": "Salles",
-    "tokensTab": "Jetons API"
+    "tokensTab": "Jetons API",
+    "aiTab": "Intelligence artificielle"
   },
   "apiTokens": {
     "subtitle": "Créez des jetons d'accès personnels pour les scripts et les automatisations. Les jetons héritent de votre rôle, donc à utiliser avec parcimonie.",
@@ -561,6 +562,21 @@
       "reject": "Rejeter"
     },
     "acceptedToast": "Lien créé à partir de la suggestion IA.",
-    "scanDoneToast": "{persisted} suggestion(s) ajoutée(s) sur {raw} renvoyée(s)."
+    "scanDoneToast": "{persisted} suggestion(s) ajoutée(s) sur {raw} renvoyée(s).",
+    "settings": {
+      "title": "Assistant IA",
+      "description": "Trois providers supportés : Anthropic Claude, OpenAI, Google Gemini. La configuration se fait via les variables d'environnement — modifiez votre .env et redémarrez le backend pour basculer.",
+      "enabled": "Activé",
+      "disabled": "Désactivé",
+      "provider": "Provider",
+      "model": "Modèle",
+      "testTitle": "Tester la connexion",
+      "testDescription": "Envoie un ping minimal au provider pour vérifier la clé API et le modèle avant un vrai scan.",
+      "runTest": "Tester maintenant",
+      "testOk": "Connexion réussie.",
+      "testKo": "Échec de la connexion.",
+      "howToChange": "Changer de provider",
+      "envHint": "Mettez à jour votre fichier .env puis relancez le backend. Une seule clé suffit — celle qui correspond à AI_PROVIDER."
+    }
   }
 }

@@ -62,14 +62,20 @@ def get_provider(name: str | None = None) -> AIProvider:
         )
 
     if chosen == "openai":
-        from app.services.ai.providers.openai_stub import OpenAIStubProvider
+        from app.services.ai.providers.openai import OpenAIProvider
 
-        return OpenAIStubProvider(model=settings.ai_model or "gpt-4o")
+        return OpenAIProvider(
+            api_key=settings.ai_openai_api_key,
+            model=settings.ai_model or "gpt-4o",
+        )
 
     if chosen == "gemini":
-        from app.services.ai.providers.gemini_stub import GeminiStubProvider
+        from app.services.ai.providers.gemini import GeminiProvider
 
-        return GeminiStubProvider(model=settings.ai_model or "gemini-2.5-pro")
+        return GeminiProvider(
+            api_key=settings.ai_gemini_api_key,
+            model=settings.ai_model or "gemini-2.5-pro",
+        )
 
     raise AIProviderError(f"unknown AI provider: {chosen!r}")
 
