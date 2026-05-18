@@ -216,7 +216,7 @@ function exportCsv() {
           <p class="text-xs font-medium text-fg-muted uppercase tracking-wide mb-2">
             {{ t('audit.fields.changes') }}
           </p>
-          <AuditDiff :changes="selected.changes" />
+          <AuditDiff :changes="selected.changes" :action="selected.action" />
         </div>
       </div>
     </Modal>
