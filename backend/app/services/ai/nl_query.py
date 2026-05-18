@@ -1,0 +1,163 @@
+"""Natural-language Q&A over the network inventory.
+
+Stateless: one POST = one question = one answer. The frontend keeps the
+conversation history locally; we don't store it server-side because:
+- The answers reference live entity state, so replaying old answers is
+  misleading once the topology changes.
+- Stored chat history is a privacy footgun (user-typed text + entity data
+  preserved indefinitely) and there's no operator workflow that needs it.
+
+The model gets the same compact topology snapshot used by suggest_links
+and the advisor, plus a stricter system prompt scoped to "answer or say
+you don't know" — no creative recommendations here.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import get_settings
+from app.models.ai import AIRunKind, AIRunLog
+from app.services.ai.context import build_topology_context
+from app.services.ai.providers import get_provider
+from app.services.ai.types import AIProviderError, ToolDef
+
+SYSTEM_PROMPT = """You are NetForge's answer-the-network-question assistant.
+
+You receive a compact JSON snapshot of the operator's network (sites, rooms,
+switches, ports, vlans, subnets, devices, existing links). You also receive
+ONE question from the operator.
+
+How to answer:
+- Stick strictly to information present in the snapshot. If the answer
+  isn't derivable, say so explicitly ("the snapshot doesn't contain X").
+  Never make up port counts, IPs, vendors, etc.
+- Be concise. Two paragraphs max. Bullet lists for enumerations.
+- When you reference an entity, also include it in `referenced_entities`
+  so the UI can render a clickable chip. Use the entity's real `id` and
+  `name` from the snapshot.
+- Format the answer in Markdown — bold for emphasis, backticks for IDs /
+  ports / CIDRs, lists when appropriate.
+- Do not invent recommendations. The advisor exists for that — if the
+  operator is asking "should I…?", say "the advisor on /insights surfaces
+  these recommendations" and stop.
+
+Return your output via the `answer_question` tool.
+"""
+
+QUERY_TOOL = ToolDef(
+    name="answer_question",
+    description=(
+        "Return a Markdown answer to the operator's question, plus the list "
+        "of entities you referenced so the UI can render chips."
+    ),
+    input_schema={
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["answer"],
+        "properties": {
+            "answer": {"type": "string", "maxLength": 4000},
+            "referenced_entities": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["type", "id"],
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": [
+                                "site",
+                                "room",
+                                "switch",
+                                "port",
+                                "vlan",
+                                "subnet",
+                                "device",
+                            ],
+                        },
+                        "id": {"type": "integer", "minimum": 1},
+                        "name": {"type": "string", "maxLength": 200},
+                    },
+                },
+            },
+        },
+    },
+)
+
+
+@dataclass
+class QueryAnswer:
+    answer: str
+    referenced_entities: list[dict]
+    provider: str
+    model: str
+    latency_ms: int
+    prompt_tokens: int
+    completion_tokens: int
+
+
+async def run_query(
+    db: AsyncSession, *, user_id: int | None, question: str
+) -> QueryAnswer:
+    settings = get_settings()
+    provider = get_provider()
+    context = await build_topology_context(db)
+    payload = json.dumps(context, separators=(",", ":"), default=str)
+
+    t0 = time.monotonic()
+    error: str | None = None
+    try:
+        completion = await provider.call(
+            system=SYSTEM_PROMPT,
+            prompt=(
+                f"Network snapshot:\n```json\n{payload}\n```\n\n"
+                f"Question: {question}"
+            ),
+            tools=[QUERY_TOOL],
+            max_tokens=settings.ai_max_output_tokens,
+            temperature=0.2,
+        )
+    except AIProviderError as exc:
+        error = str(exc)
+        completion = None
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+    run = AIRunLog(
+        user_id=user_id,
+        kind=AIRunKind.nl_query,
+        provider=provider.name,
+        model=provider.model,
+        prompt_tokens=completion.usage.prompt_tokens if completion else 0,
+        completion_tokens=completion.usage.completion_tokens if completion else 0,
+        latency_ms=elapsed_ms,
+        success=error is None,
+        error=error,
+    )
+    db.add(run)
+    await db.commit()
+
+    if not completion or not completion.tool_call:
+        if error:
+            raise AIProviderError(error)
+        raise AIProviderError("provider returned no tool call")
+
+    answer = str(completion.tool_call.input.get("answer", "")).strip()
+    entities = completion.tool_call.input.get("referenced_entities") or []
+    if not isinstance(entities, list):
+        entities = []
+
+    return QueryAnswer(
+        answer=answer,
+        referenced_entities=entities,
+        provider=provider.name,
+        model=provider.model,
+        latency_ms=elapsed_ms,
+        prompt_tokens=run.prompt_tokens,
+        completion_tokens=run.completion_tokens,
+    )

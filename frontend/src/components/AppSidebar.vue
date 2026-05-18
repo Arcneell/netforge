@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import {
   LayoutDashboard,
   Lightbulb,
+  MessageCircle,
   Network,
   Tags,
   Router as RouterIcon,
@@ -61,6 +62,7 @@ const sections: NavSection[] = [
     adminOnly: true,
     items: [
       { to: '/insights', icon: Lightbulb, labelKey: 'nav.insights' },
+      { to: '/ask', icon: MessageCircle, labelKey: 'nav.ask' },
       { to: '/import', icon: Upload, labelKey: 'nav.import' },
       { to: '/audit', icon: History, labelKey: 'nav.audit' },
       { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
