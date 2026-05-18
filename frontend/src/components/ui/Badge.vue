@@ -15,18 +15,24 @@ const props = withDefaults(
 )
 
 const tonePresets: Record<Tone, string> = {
-  neutral: 'bg-muted text-fg-muted border-border',
+  // Neutrals: zinc-100 fill, fg-muted text — reads as "metadata", recedes.
+  neutral: 'bg-muted text-fg dark:text-fg-muted border-border',
+  // Primary tone is intentionally subtle in dark mode (indigo-400/20 vs the
+  // saturated indigo-600 a button would use). Badges shouldn't compete with
+  // CTAs even when they share the accent hue.
   primary:
-    'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-700/50',
-  success: 'bg-success/10 text-success border-success/30',
-  warning: 'bg-warning/10 text-warning border-warning/30',
-  danger: 'bg-danger/10 text-danger border-danger/30',
-  muted: 'bg-transparent text-fg-muted border-border',
+    'bg-primary-50 text-primary-700 border-primary-200/80 dark:bg-primary-400/10 dark:text-primary-300 dark:border-primary-400/30',
+  success: 'bg-success/10 text-success border-success/30 dark:bg-success/15 dark:border-success/40',
+  warning: 'bg-warning/10 text-warning border-warning/30 dark:bg-warning/15 dark:border-warning/40',
+  danger: 'bg-danger/10 text-danger border-danger/30 dark:bg-danger/15 dark:border-danger/40',
+  // Muted is bare-bones, used as a "ghost" badge to align with table rows.
+  muted: 'bg-transparent text-fg-muted border-border/80',
 }
 
 const sizeClass = {
-  sm: 'px-1.5 h-5 text-[11px]',
-  md: 'px-2 h-6 text-xs',
+  // Pixel-perfect heights to line up with table rows and form controls.
+  sm: 'px-1.5 h-5 text-[11px] leading-none',
+  md: 'px-2 h-6 text-xs leading-none',
 }
 
 // Custom color wins. Border is the same hex with reduced opacity; we apply both
@@ -41,10 +47,10 @@ const inlineStyle = computed(() => {
 })
 
 const classes = computed(() => [
-  'inline-flex items-center gap-1 rounded border font-medium align-middle whitespace-nowrap',
+  'inline-flex items-center gap-1 rounded-md border font-medium align-middle whitespace-nowrap',
   sizeClass[props.size],
   props.color ? '' : tonePresets[props.tone],
-  props.monospace ? 'font-mono tabular-nums' : '',
+  props.monospace ? 'font-mono tabular-nums tracking-tight' : '',
 ])
 </script>
 
