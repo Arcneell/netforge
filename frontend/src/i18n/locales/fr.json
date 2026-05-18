@@ -546,5 +546,21 @@
       "bulkNotCsvOrZip": "Seuls les fichiers .csv ou .zip sont acceptés.",
       "tooManyFiles": "Limite atteinte : pas plus de {max} fichiers à la fois."
     }
+  },
+  "ai": {
+    "suggestLinks": {
+      "cta": "Suggestions IA",
+      "title": "Suggestions de liens IA",
+      "heading": "Trouver les liens manquants",
+      "description": "L'IA analyse les noms de switches, les labels de ports et les notes pour proposer des liens topologiques absents. Vous gardez la main : validez ou rejetez chaque suggestion.",
+      "scan": "Lancer l'analyse",
+      "lastRun": "Dernière analyse : {persisted} suggestion(s) retenue(s) sur {raw} renvoyée(s) · {latency} ms",
+      "emptyTitle": "Aucune suggestion en attente",
+      "emptyDescription": "Lancez une analyse pour que l'IA propose des liens à partir de votre inventaire actuel.",
+      "accept": "Accepter",
+      "reject": "Rejeter"
+    },
+    "acceptedToast": "Lien créé à partir de la suggestion IA.",
+    "scanDoneToast": "{persisted} suggestion(s) ajoutée(s) sur {raw} renvoyée(s)."
   }
 }

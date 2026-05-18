@@ -45,5 +45,12 @@ export {
   type BulkImportFileReport,
   type BulkImportReport,
 } from './endpoints/imports'
+export {
+  aiApi,
+  type AIStatus,
+  type LinkSuggestion,
+  type LinkSuggestionStatus,
+  type ScanReport,
+} from './endpoints/ai'
 
 export type * from './types'

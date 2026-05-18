@@ -546,5 +546,21 @@
       "bulkNotCsvOrZip": "Only .csv or .zip files are accepted.",
       "tooManyFiles": "Limit reached: at most {max} files in one batch."
     }
+  },
+  "ai": {
+    "suggestLinks": {
+      "cta": "AI suggestions",
+      "title": "AI link suggestions",
+      "heading": "Find missing links",
+      "description": "The AI looks at switch names, port labels and notes to propose topology links that aren't recorded yet. You stay in control: accept or reject each suggestion.",
+      "scan": "Run scan",
+      "lastRun": "Last scan: {persisted} suggestion(s) kept out of {raw} returned · {latency} ms",
+      "emptyTitle": "No pending suggestions",
+      "emptyDescription": "Run a scan and the AI will propose links based on your current inventory.",
+      "accept": "Accept",
+      "reject": "Reject"
+    },
+    "acceptedToast": "Link created from the AI suggestion.",
+    "scanDoneToast": "{persisted} new suggestion(s) added out of {raw} returned."
   }
 }
