@@ -67,3 +67,51 @@ class AITestResult(BaseModel):
     model: str
     latency_ms: int
     error: str | None = None
+
+
+class InsightEntityRef(BaseModel):
+    """Free-shape reference to one of the indexed entities. `name` is the
+    LLM's best guess at the time of the run — kept on the row so a deleted
+    entity still renders a readable chip."""
+
+    type: str
+    id: int
+    name: str | None = None
+
+
+class InsightRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    run_id: int
+    severity: str
+    category: str
+    title: str
+    description: str
+    recommendation: str
+    affected_entities: list[InsightEntityRef] | None = None
+    created_at: datetime
+
+
+class AdvisorReportRead(BaseModel):
+    """Summary returned by POST /api/ai/insights/refresh."""
+
+    run_id: int
+    provider: str
+    model: str
+    raw_count: int
+    persisted_count: int
+    latency_ms: int
+    prompt_tokens: int
+    completion_tokens: int
+
+
+class InsightsResponse(BaseModel):
+    """Latest insights with the run metadata that produced them.
+
+    `run_id` is None when no advisor has ever been run successfully — the
+    UI uses that to show the empty state ("Run the advisor to get started").
+    """
+
+    run_id: int | None
+    insights: list[InsightRead]

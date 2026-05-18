@@ -49,6 +49,50 @@ export interface AITestResult {
   error: string | null
 }
 
+export type InsightSeverity = 'info' | 'warning' | 'critical'
+export type InsightCategory =
+  | 'spof'
+  | 'capacity'
+  | 'security'
+  | 'segmentation'
+  | 'naming'
+  | 'redundancy'
+  | 'other'
+
+export interface InsightEntityRef {
+  type: 'site' | 'room' | 'switch' | 'port' | 'vlan' | 'subnet' | 'device' | string
+  id: number
+  name: string | null
+}
+
+export interface Insight {
+  id: number
+  run_id: number
+  severity: InsightSeverity
+  category: InsightCategory
+  title: string
+  description: string
+  recommendation: string
+  affected_entities: InsightEntityRef[] | null
+  created_at: string
+}
+
+export interface InsightsResponse {
+  run_id: number | null
+  insights: Insight[]
+}
+
+export interface AdvisorReport {
+  run_id: number
+  provider: string
+  model: string
+  raw_count: number
+  persisted_count: number
+  latency_ms: number
+  prompt_tokens: number
+  completion_tokens: number
+}
+
 export const aiApi = {
   status(): Promise<AIStatus> {
     return request<AIStatus>({ method: 'GET', url: '/ai/status' })
@@ -67,5 +111,11 @@ export const aiApi = {
   },
   rejectSuggestion(id: number): Promise<LinkSuggestion> {
     return request<LinkSuggestion>({ method: 'POST', url: `/ai/suggestions/${id}/reject` })
+  },
+  getInsights(): Promise<InsightsResponse> {
+    return request<InsightsResponse>({ method: 'GET', url: '/ai/insights' })
+  },
+  refreshInsights(): Promise<AdvisorReport> {
+    return request<AdvisorReport>({ method: 'POST', url: '/ai/insights/refresh' })
   },
 }

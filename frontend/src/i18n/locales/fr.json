@@ -86,6 +86,7 @@
     "switches": "Commutateurs",
     "devices": "Équipements",
     "topology": "Topologie",
+    "insights": "Conseils IA",
     "import": "Importer",
     "audit": "Journal d'audit",
     "settings": "Paramètres",
@@ -563,6 +564,32 @@
     },
     "acceptedToast": "Lien créé à partir de la suggestion IA.",
     "scanDoneToast": "{persisted} suggestion(s) ajoutée(s) sur {raw} renvoyée(s).",
+    "advisor": {
+      "subtitle": "L'IA scanne votre inventaire pour repérer SPOFs, problèmes de capacité, failles de segmentation et autres points faibles.",
+      "refresh": "Relancer l'analyse",
+      "runFirst": "Lancer l'analyse",
+      "refreshedToast": "{count} insight(s) générés · {latency} ms",
+      "emptyTitle": "Aucun rapport pour le moment",
+      "emptyDescription": "Lancez une analyse pour que l'IA passe en revue votre infrastructure et liste les recommandations.",
+      "cleanTitle": "Aucun point faible repéré",
+      "cleanDescription": "L'IA n'a rien remonté lors de la dernière analyse. Relancez-la régulièrement pour rester à jour.",
+      "recommendation": "Recommandation",
+      "total": "Total",
+      "severity": {
+        "info": "Info",
+        "warning": "Avertissement",
+        "critical": "Critique"
+      },
+      "categories": {
+        "spof": "Point unique de défaillance",
+        "capacity": "Capacité",
+        "security": "Sécurité",
+        "segmentation": "Segmentation",
+        "naming": "Nommage",
+        "redundancy": "Redondance",
+        "other": "Autre"
+      }
+    },
     "settings": {
       "title": "Assistant IA",
       "description": "Trois providers supportés : Anthropic Claude, OpenAI, Google Gemini. La configuration se fait via les variables d'environnement — modifiez votre .env et redémarrez le backend pour basculer.",

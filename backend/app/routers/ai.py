@@ -20,9 +20,18 @@ from app.auth.dependencies import get_current_user, require_role
 from app.config import get_settings
 from app.db import get_session as get_db
 from app.models.user import User, UserRole
-from app.schemas.ai import AIStatusRead, AITestResult, LinkSuggestionRead, ScanReportRead
+from app.schemas.ai import (
+    AdvisorReportRead,
+    AIStatusRead,
+    AITestResult,
+    InsightRead,
+    InsightsResponse,
+    LinkSuggestionRead,
+    ScanReportRead,
+)
 from app.schemas.link import LinkRead
 from app.services.ai import AIProviderError, AIUnsupportedFeatureError, get_provider
+from app.services.ai.advisor import list_latest_insights, run_advisor
 from app.services.ai.rate_limit import AIRateLimitExceeded, check_and_consume
 from app.services.ai.suggest_links import (
     accept_suggestion,
@@ -181,3 +190,50 @@ async def reject(
     except ValueError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return LinkSuggestionRead.model_validate(suggestion)
+
+
+# --- Infrastructure advisor --------------------------------------------------
+
+@router.get(
+    "/insights",
+    response_model=InsightsResponse,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def get_insights(db: AsyncSession = Depends(get_db)) -> InsightsResponse:
+    """Latest cached advisor report. Empty when no run has ever succeeded."""
+    _require_ai_enabled()
+    run_id, items = await list_latest_insights(db)
+    return InsightsResponse(
+        run_id=run_id,
+        insights=[InsightRead.model_validate(i) for i in items],
+    )
+
+
+@router.post(
+    "/insights/refresh",
+    response_model=AdvisorReportRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def refresh_insights(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AdvisorReportRead:
+    """Run a fresh advisor scan. Replaces the "latest" set in one transaction."""
+    _require_ai_enabled()
+    try:
+        check_and_consume(user.id)
+    except AIRateLimitExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"rate limit exceeded, retry in {exc.retry_after_seconds}s",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+    try:
+        report = await run_advisor(db, user_id=user.id)
+    except AIUnsupportedFeatureError as exc:
+        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    return AdvisorReportRead(**report.__dict__)
