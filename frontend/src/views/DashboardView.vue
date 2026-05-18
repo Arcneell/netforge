@@ -81,7 +81,7 @@ const actionTone = {
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
+  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <PageHeader :title="t('nav.dashboard')" :subtitle="t('dashboard.subtitle')" />
 
     <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
