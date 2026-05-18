@@ -120,7 +120,7 @@ watch(
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/50 backdrop-blur-[2px]"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="title ? titleId : undefined"
@@ -128,7 +128,7 @@ watch(
         @click.self="closable && $emit('close')"
       >
         <Transition
-          enter-active-class="transition duration-150 ease-out"
+          enter-active-class="transition duration-150 ease-out-quad"
           enter-from-class="opacity-0 translate-y-1 scale-[0.98]"
           enter-to-class="opacity-100 translate-y-0 scale-100"
           leave-active-class="transition duration-100 ease-in"
@@ -139,17 +139,22 @@ watch(
             v-if="open"
             ref="dialogRef"
             tabindex="-1"
-            :class="['nf-card shadow-pop w-full focus:outline-none', sizeClass[size]]"
+            :class="[
+              'bg-surface border border-border rounded-lg shadow-pop w-full focus:outline-none',
+              sizeClass[size],
+            ]"
           >
             <header
               v-if="title || closable"
-              class="flex items-center justify-between px-5 py-3 border-b border-border"
+              class="flex items-center justify-between px-5 py-3.5 border-b border-border"
             >
-              <h2 :id="titleId" class="text-sm font-semibold text-fg">{{ title }}</h2>
+              <h2 :id="titleId" class="text-sm font-semibold text-fg tracking-tight">
+                {{ title }}
+              </h2>
               <button
                 v-if="closable"
                 type="button"
-                class="p-1 rounded hover:bg-surface-hover text-fg-muted"
+                class="p-1 rounded-md hover:bg-surface-hover text-fg-muted hover:text-fg transition-colors"
                 :aria-label="$t('common.close')"
                 @click="$emit('close')"
               >
@@ -159,7 +164,7 @@ watch(
             <div class="p-5">
               <slot />
             </div>
-            <footer v-if="$slots.footer" class="px-5 py-3 border-t border-border bg-muted/40">
+            <footer v-if="$slots.footer" class="px-5 py-3 border-t border-border bg-muted/30">
               <slot name="footer" />
             </footer>
           </div>
