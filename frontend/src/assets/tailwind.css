@@ -142,11 +142,19 @@ body {
   .nf-card {
     @apply bg-surface border border-border rounded-lg shadow-card;
   }
+  /* Base styling shared by Input, Select and Textarea. Intentionally NO
+     fixed height here — Textarea expands via `rows`. Single-line controls
+     pin their height via `.nf-input-control` below. */
   .nf-input {
-    @apply w-full px-3 h-9 text-sm bg-surface border border-border rounded-md
+    @apply w-full px-3 py-2 text-sm bg-surface border border-border rounded-md
            text-fg placeholder:text-fg-muted
            focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  /* Add to Input / Select to lock them to the standard 36 px (h-9) line so
+     they align with Button md and Badge md in toolbars and form rows. */
+  .nf-input-control {
+    @apply h-9 py-0;
   }
   .nf-link {
     @apply text-primary-600 dark:text-primary-400
