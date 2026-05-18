@@ -87,7 +87,11 @@
     "topology": "Topology",
     "import": "Import",
     "audit": "Audit log",
-    "settings": "Settings"
+    "settings": "Settings",
+    "sections": {
+      "network": "Network",
+      "administration": "Administration"
+    }
   },
   "theme": {
     "label": "Theme",

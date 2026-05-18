@@ -2,8 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, Pencil } from 'lucide-vue-next'
+import { Pencil } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
+import Breadcrumb from '@/components/Breadcrumb.vue'
 import Button from '@/components/ui/Button.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import SwitchRackView from '@/components/SwitchRackView.vue'
@@ -14,6 +15,7 @@ import { portsApi, switchesApi, vlansApi } from '@/api'
 import type { Port, Switch, Vlan } from '@/api'
 import { useAuth } from '@/composables/useAuth'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
+import { useStoredRef } from '@/composables/useStoredRef'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,7 +29,10 @@ const vlansById = ref<Map<number, Vlan>>(new Map())
 const loading = ref(true)
 const editingSwitch = ref(false)
 const editingPort = ref<Port | null>(null)
-const tab = ref<'rack' | 'table'>('rack')
+// Persist tab choice so flipping between switches keeps the view the user
+// was on. Stored once per app — admins typically pick rack OR table as
+// their preferred lens and stay there.
+const tab = useStoredRef<'rack' | 'table'>('netforge.switch.tab', 'rack')
 
 const id = computed(() => Number(route.params.id))
 
@@ -77,20 +82,14 @@ function onPortSaved(p: Port) {
 
 <template>
   <div class="p-6 max-w-7xl mx-auto">
-    <button
-      type="button"
-      class="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg mb-4 transition"
-      @click="router.push('/switches')"
-    >
-      <ArrowLeft class="w-4 h-4" aria-hidden="true" />
-      {{ t('switch.labelPlural') }}
-    </button>
-
     <div v-if="loading && !sw" class="flex items-center justify-center py-12">
       <Spinner :label="t('common.loading')" />
     </div>
 
     <template v-else-if="sw">
+      <Breadcrumb
+        :items="[{ label: t('switch.labelPlural'), to: { name: 'switches' } }, { label: sw.name }]"
+      />
       <PageHeader :title="sw.name" :subtitle="sw.description ?? undefined">
         <template #actions>
           <Button v-if="isAdmin" variant="primary" @click="editingSwitch = true">
@@ -150,6 +149,7 @@ function onPortSaved(p: Port) {
             @click="tab = 'rack'"
           >
             {{ t('switch.rackView') }}
+            <span class="font-mono tabular-nums opacity-60">{{ portStats.total }}</span>
           </button>
           <button
             type="button"
@@ -163,6 +163,7 @@ function onPortSaved(p: Port) {
             @click="tab = 'table'"
           >
             {{ t('subnet.viewTable') }}
+            <span class="font-mono tabular-nums opacity-60">{{ portStats.total }}</span>
           </button>
         </div>
       </div>
