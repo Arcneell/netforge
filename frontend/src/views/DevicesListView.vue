@@ -152,6 +152,12 @@ const columns: DataTableColumn[] = [
       :empty-title="t('device.labelPlural')"
       :empty-description="t('device.empty')"
     >
+      <template v-if="isAdmin" #empty-action>
+        <Button variant="primary" @click="onNew">
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('device.new') }}
+        </Button>
+      </template>
       <template #cell-type="{ row }">
         <Badge tone="neutral">{{ t(`device.types.${row.type}`) }}</Badge>
       </template>

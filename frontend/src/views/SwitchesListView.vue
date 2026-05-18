@@ -101,6 +101,12 @@ const columns: DataTableColumn[] = [
       clickable
       @row-click="onRowClick"
     >
+      <template v-if="isAdmin" #empty-action>
+        <Button variant="primary" @click="onNew">
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('switch.new') }}
+        </Button>
+      </template>
       <template #cell-vendor="{ row }">
         <span class="text-fg-muted">{{ row.vendor || '—' }}</span>
       </template>
