@@ -166,4 +166,35 @@ body {
   .nf-surface-elevated {
     @apply bg-surface border border-border rounded-lg shadow-card;
   }
+  /* Shimmer placeholder used by Skeleton primitives. Translates a faint
+     highlight band across a muted base — quieter than a pulsing opacity,
+     reads more like "loading content" and less like a broken toggle. */
+  .nf-skeleton {
+    position: relative;
+    overflow: hidden;
+    background: rgb(var(--color-muted));
+  }
+  .nf-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0,
+      rgb(var(--color-surface-hover) / 0.6) 50%,
+      transparent 100%
+    );
+    animation: nf-skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes nf-skeleton-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nf-skeleton::after {
+      animation: none;
+    }
+  }
 }

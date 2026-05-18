@@ -104,6 +104,12 @@ const columns: DataTableColumn[] = [
       :empty-title="t('vlan.labelPlural')"
       :empty-description="t('vlan.empty')"
     >
+      <template v-if="isAdmin" #empty-action>
+        <Button variant="primary" @click="onNew">
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('vlan.new') }}
+        </Button>
+      </template>
       <template #cell-vlan_id="{ row }">
         <VlanBadge :vlan="row" compact />
       </template>
