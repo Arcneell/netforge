@@ -57,6 +57,8 @@ export {
   type InsightsResponse,
   type LinkSuggestion,
   type LinkSuggestionStatus,
+  type QueryAnswer,
+  type QueryEntityRef,
   type ScanReport,
 } from './endpoints/ai'
 

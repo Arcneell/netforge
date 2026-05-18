@@ -115,3 +115,31 @@ class InsightsResponse(BaseModel):
 
     run_id: int | None
     insights: list[InsightRead]
+
+
+class QueryRequest(BaseModel):
+    """Body of POST /api/ai/query."""
+
+    question: str = Field(min_length=2, max_length=1000)
+
+
+class QueryEntityRef(BaseModel):
+    """Same shape as InsightEntityRef — kept as a separate class so future
+    NL-query-specific fields (e.g. confidence per chip) can be added without
+    co-evolving the advisor schema."""
+
+    type: str
+    id: int
+    name: str | None = None
+
+
+class QueryAnswerRead(BaseModel):
+    """One-shot answer to a natural-language question."""
+
+    answer: str
+    referenced_entities: list[QueryEntityRef]
+    provider: str
+    model: str
+    latency_ms: int
+    prompt_tokens: int
+    completion_tokens: int

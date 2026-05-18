@@ -93,6 +93,22 @@ export interface AdvisorReport {
   completion_tokens: number
 }
 
+export interface QueryEntityRef {
+  type: 'site' | 'room' | 'switch' | 'port' | 'vlan' | 'subnet' | 'device' | string
+  id: number
+  name: string | null
+}
+
+export interface QueryAnswer {
+  answer: string
+  referenced_entities: QueryEntityRef[]
+  provider: string
+  model: string
+  latency_ms: number
+  prompt_tokens: number
+  completion_tokens: number
+}
+
 export const aiApi = {
   status(): Promise<AIStatus> {
     return request<AIStatus>({ method: 'GET', url: '/ai/status' })
@@ -117,5 +133,8 @@ export const aiApi = {
   },
   refreshInsights(): Promise<AdvisorReport> {
     return request<AdvisorReport>({ method: 'POST', url: '/ai/insights/refresh' })
+  },
+  ask(question: string): Promise<QueryAnswer> {
+    return request<QueryAnswer>({ method: 'POST', url: '/ai/query', data: { question } })
   },
 }
