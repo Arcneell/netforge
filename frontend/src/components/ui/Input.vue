@@ -22,7 +22,7 @@ defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 const attrs = useAttrs()
 
 const classes = computed(() => [
-  'nf-input',
+  'nf-input nf-input-control',
   props.invalid ? 'border-danger focus:ring-danger/40 focus:border-danger' : '',
 ])
 </script>
