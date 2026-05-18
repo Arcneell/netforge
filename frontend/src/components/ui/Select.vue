@@ -24,7 +24,7 @@ defineEmits<{ (e: 'update:modelValue', v: T): void }>()
       :value="modelValue"
       :disabled="disabled"
       :aria-label="ariaLabel"
-      class="nf-input appearance-none pr-9 cursor-pointer hover:border-fg-muted/40 transition-colors"
+      class="nf-input nf-input-control appearance-none pr-9 cursor-pointer hover:border-fg-muted/40 transition-colors"
       @change="$emit('update:modelValue', ($event.target as HTMLSelectElement).value as T)"
     >
       <option v-for="opt in options" :key="String(opt.value)" :value="opt.value">
