@@ -28,35 +28,66 @@ interface FieldDiff {
   after: unknown
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
 /**
- * Normalize the loosely-typed `changes` payload. The backend writes one of:
- *   - `{ field: { before, after } }`  (an update)
- *   - `{ field: value }`              (single-sided: create or delete row)
+ * Normalize the loosely-typed `changes` payload. The backend (see
+ * `backend/app/services/audit.py`) writes one of:
+ *   - create: `{ "after":  { col_a: val, col_b: val, ... } }`
+ *   - update: `{ "before": { col_a: old, ... }, "after": { col_a: new, ... } }`
+ *   - delete: `{ "before": { col_a: val, ... } }`
  *
- * Each row exposes `hasBefore` / `hasAfter` so the template can hide a side
- * cleanly instead of rendering "—" placeholders.
+ * The top-level keys are `before` / `after`, NOT field names — we pivot the
+ * payload so each row is keyed by the changed column with its before / after
+ * pulled from the matching map.
+ *
+ * For backwards compatibility we still accept the legacy per-field shape
+ * (`{ field: { before, after } }`) and a flat single-sided shape
+ * (`{ field: value }`).
  */
 const diffs = computed<FieldDiff[]>(() => {
-  if (!props.changes || typeof props.changes !== 'object') return []
+  if (!isPlainObject(props.changes)) return []
+
+  const payload = props.changes
+  const topLevelBefore = isPlainObject(payload.before) ? payload.before : null
+  const topLevelAfter = isPlainObject(payload.after) ? payload.after : null
+
+  // Real backend shape: top-level `before` / `after` maps. Pivot column-wise.
+  if (topLevelBefore || topLevelAfter) {
+    const keys = new Set<string>()
+    if (topLevelBefore) for (const k of Object.keys(topLevelBefore)) keys.add(k)
+    if (topLevelAfter) for (const k of Object.keys(topLevelAfter)) keys.add(k)
+    const out: FieldDiff[] = []
+    for (const field of keys) {
+      const hasBefore = !!topLevelBefore && field in topLevelBefore
+      const hasAfter = !!topLevelAfter && field in topLevelAfter
+      const before = hasBefore ? topLevelBefore![field] : undefined
+      const after = hasAfter ? topLevelAfter![field] : undefined
+      // Suppress rows where both sides were recorded but the value did not
+      // actually change — the backend already filters these for `_on_update`,
+      // but full snapshots from create / delete legacy rows may still include
+      // unchanged scalar columns; nothing useful to display in that case.
+      if (hasBefore && hasAfter && JSON.stringify(before) === JSON.stringify(after)) continue
+      out.push({ field, hasBefore, hasAfter, before, after })
+    }
+    return out
+  }
+
+  // Legacy fallbacks. Each top-level entry is either a per-field { before,
+  // after } envelope or a flat single-sided value.
   const out: FieldDiff[] = []
-  for (const [field, value] of Object.entries(props.changes)) {
-    if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      ('before' in value || 'after' in value)
-    ) {
-      const v = value as { before?: unknown; after?: unknown }
+  for (const [field, value] of Object.entries(payload)) {
+    if (isPlainObject(value) && ('before' in value || 'after' in value)) {
       out.push({
         field,
-        hasBefore: 'before' in v,
-        hasAfter: 'after' in v,
-        before: v.before,
-        after: v.after,
+        hasBefore: 'before' in value,
+        hasAfter: 'after' in value,
+        before: value.before,
+        after: value.after,
       })
     } else {
-      // Single-sided: assume "after" for create, "before" for delete; fall back
-      // to "after" when action is unknown — that matches the previous behaviour.
       const side: 'before' | 'after' = props.action === 'delete' ? 'before' : 'after'
       out.push({
         field,
