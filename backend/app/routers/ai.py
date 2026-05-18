@@ -27,11 +27,14 @@ from app.schemas.ai import (
     InsightRead,
     InsightsResponse,
     LinkSuggestionRead,
+    QueryAnswerRead,
+    QueryRequest,
     ScanReportRead,
 )
 from app.schemas.link import LinkRead
 from app.services.ai import AIProviderError, AIUnsupportedFeatureError, get_provider
 from app.services.ai.advisor import list_latest_insights, run_advisor
+from app.services.ai.nl_query import run_query
 from app.services.ai.rate_limit import AIRateLimitExceeded, check_and_consume
 from app.services.ai.suggest_links import (
     accept_suggestion,
@@ -237,3 +240,36 @@ async def refresh_insights(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     return AdvisorReportRead(**report.__dict__)
+
+
+# --- Natural-language query --------------------------------------------------
+
+@router.post(
+    "/query",
+    response_model=QueryAnswerRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def ask_ai(
+    payload: QueryRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> QueryAnswerRead:
+    """Ask one free-text question grounded in the live inventory."""
+    _require_ai_enabled()
+    try:
+        check_and_consume(user.id)
+    except AIRateLimitExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"rate limit exceeded, retry in {exc.retry_after_seconds}s",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+    try:
+        result = await run_query(db, user_id=user.id, question=payload.question)
+    except AIUnsupportedFeatureError as exc:
+        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    return QueryAnswerRead(**result.__dict__)
