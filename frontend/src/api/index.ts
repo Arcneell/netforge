@@ -1,6 +1,8 @@
 export { api, request, registerApiHooks, ApiError } from './client'
 export type { ApiHooks } from './client'
 
+export { fetchAllPages } from './pagination'
+
 export { authApi } from './endpoints/auth'
 export type {
   CurrentUser,
