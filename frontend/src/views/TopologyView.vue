@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Sparkles,
   Trash2,
   X as XIcon,
 } from 'lucide-vue-next'
@@ -21,8 +22,9 @@ import Spinner from '@/components/ui/Spinner.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import TopologyCanvas, { type LayoutName } from '@/components/TopologyCanvas.vue'
 import LinkEditor from '@/components/editors/LinkEditor.vue'
-import { fetchAllPages, linksApi, roomsApi, sitesApi, switchesApi, topologyApi } from '@/api'
-import type { Link, Room, Site, Switch, TopologyEdge, TopologyNode } from '@/api'
+import LinkSuggestionsModal from '@/components/ai/LinkSuggestionsModal.vue'
+import { aiApi, fetchAllPages, linksApi, roomsApi, sitesApi, switchesApi, topologyApi } from '@/api'
+import type { AIStatus, Link, Room, Site, Switch, TopologyEdge, TopologyNode } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
@@ -39,6 +41,12 @@ const switchesById = ref<Map<number, Switch>>(new Map())
 const roomsById = ref<Map<number, Room>>(new Map())
 const sites = ref<Site[]>([])
 const loading = ref(true)
+
+// AI surface state. Loaded once on mount; we only show the "Suggest" button
+// when the backend reports `enabled=true`, so self-hosters without an API
+// key see no broken UI.
+const aiStatus = ref<AIStatus | null>(null)
+const aiModalOpen = ref(false)
 
 const layout = ref<LayoutName>('dagre')
 const siteFilter = ref<number | 0>(0) // 0 = all sites
@@ -79,7 +87,19 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  // Pull AI status independently — a 403 / 404 here shouldn't block the
+  // topology from loading, so we swallow errors and just hide the button.
+  aiApi
+    .status()
+    .then((s) => {
+      aiStatus.value = s
+    })
+    .catch(() => {
+      aiStatus.value = null
+    })
+  await load()
+})
 
 // Filter the graph by site. Node ids look like "switch-<id>"; we resolve the
 // switch -> room -> site chain. Edges are kept only when both endpoints survive.
@@ -267,6 +287,10 @@ async function onLinkSaved() {
           <Plus class="w-4 h-4" aria-hidden="true" />
           {{ t('link.new') }}
         </Button>
+        <Button v-if="isAdmin && aiStatus?.enabled" variant="secondary" @click="aiModalOpen = true">
+          <Sparkles class="w-4 h-4" aria-hidden="true" />
+          {{ t('ai.suggestLinks.cta') }}
+        </Button>
         <Button variant="primary" @click="exportPng">
           <Download class="w-4 h-4" aria-hidden="true" />
           {{ t('topology.exportPng') }}
@@ -453,6 +477,12 @@ async function onLinkSaved() {
       :switches="switchesList"
       @close="linkEditorOpen = false"
       @saved="onLinkSaved"
+    />
+
+    <LinkSuggestionsModal
+      :open="aiModalOpen"
+      @close="aiModalOpen = false"
+      @accepted="onLinkSaved"
     />
   </div>
 </template>

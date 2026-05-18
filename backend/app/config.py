@@ -75,6 +75,33 @@ class Settings(BaseSettings):
     rate_limit_writes_per_window: int = 60
     rate_limit_window_seconds: int = 60
 
+    # ------------------------------------------------------------------
+    # AI integration (provider-agnostic; see app/services/ai)
+    # ------------------------------------------------------------------
+    # Master switch — when false, AI routes return 404 and the UI hides
+    # every "AI" affordance. Lets self-hosters opt out cleanly.
+    ai_enabled: bool = False
+    # Which provider implementation to use. One of: "anthropic", "openai",
+    # "gemini". Defaults to anthropic — only one with a concrete impl in
+    # Phase 1; the others raise a clear "not implemented yet" error.
+    ai_provider: str = "anthropic"
+    # Optional model override (else each provider picks a sensible default).
+    # Anthropic: claude-sonnet-4-6, OpenAI: gpt-4o, Gemini: gemini-2.5-pro.
+    ai_model: str = ""
+    # API keys — only the one matching `ai_provider` is read. Leaving the
+    # others empty is fine.
+    ai_anthropic_api_key: str = ""
+    ai_openai_api_key: str = ""
+    ai_gemini_api_key: str = ""
+    # Per-user cap on AI calls in `ai_rate_window_seconds` — defaults to 20
+    # calls/hour, which is generous for interactive use and tight enough to
+    # stop a runaway script from burning credits.
+    ai_rate_limit_calls: int = 20
+    ai_rate_window_seconds: int = 3600
+    # Soft cap on output tokens per call. Keeps a "give me the full audit
+    # log please" prompt from running away to 100k tokens of output.
+    ai_max_output_tokens: int = 2048
+
     # Observability
     log_level: str = "info"
 

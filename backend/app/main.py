@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app import __version__
 from app.config import get_settings
 from app.routers import (
+    ai,
     audit,
     auth,
     devices,
@@ -148,6 +149,7 @@ def create_app() -> FastAPI:
     app.include_router(topology.router, prefix="/api")
     app.include_router(imports.router, prefix="/api")
     app.include_router(exports.router, prefix="/api")
+    app.include_router(ai.router, prefix="/api")
 
     return app
 
