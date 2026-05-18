@@ -3,6 +3,7 @@ import { computed, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
   LayoutDashboard,
+  Lightbulb,
   Network,
   Tags,
   Router as RouterIcon,
@@ -59,6 +60,7 @@ const sections: NavSection[] = [
     titleKey: 'nav.sections.administration',
     adminOnly: true,
     items: [
+      { to: '/insights', icon: Lightbulb, labelKey: 'nav.insights' },
       { to: '/import', icon: Upload, labelKey: 'nav.import' },
       { to: '/audit', icon: History, labelKey: 'nav.audit' },
       { to: '/settings', icon: Settings, labelKey: 'nav.settings' },

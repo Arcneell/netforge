@@ -1,6 +1,14 @@
 """SQLAlchemy models — imported here so Alembic picks them all up."""
 
-from app.models.ai import AIRunKind, AIRunLog, LinkSuggestion, LinkSuggestionStatus
+from app.models.ai import (
+    AIRunKind,
+    AIRunLog,
+    InfraInsight,
+    InsightCategory,
+    InsightSeverity,
+    LinkSuggestion,
+    LinkSuggestionStatus,
+)
 from app.models.base import Base
 from app.models.core import Room, Site
 from app.models.device import Device
@@ -19,6 +27,9 @@ __all__ = [
     "AuditLog",
     "Base",
     "Device",
+    "InfraInsight",
+    "InsightCategory",
+    "InsightSeverity",
     "Ip",
     "Link",
     "LinkSuggestion",

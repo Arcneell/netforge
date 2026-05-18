@@ -86,6 +86,7 @@
     "switches": "Switches",
     "devices": "Devices",
     "topology": "Topology",
+    "insights": "AI insights",
     "import": "Import",
     "audit": "Audit log",
     "settings": "Settings",
@@ -563,6 +564,32 @@
     },
     "acceptedToast": "Link created from the AI suggestion.",
     "scanDoneToast": "{persisted} new suggestion(s) added out of {raw} returned.",
+    "advisor": {
+      "subtitle": "The AI scans your inventory for SPOFs, capacity pressure, segmentation gaps and other weak points.",
+      "refresh": "Re-run analysis",
+      "runFirst": "Run analysis",
+      "refreshedToast": "{count} insight(s) generated · {latency} ms",
+      "emptyTitle": "No report yet",
+      "emptyDescription": "Run the advisor and the AI will review your infrastructure and list its recommendations.",
+      "cleanTitle": "No weak points detected",
+      "cleanDescription": "The advisor returned nothing on its last run. Re-run periodically to stay up to date.",
+      "recommendation": "Recommendation",
+      "total": "Total",
+      "severity": {
+        "info": "Info",
+        "warning": "Warning",
+        "critical": "Critical"
+      },
+      "categories": {
+        "spof": "Single point of failure",
+        "capacity": "Capacity",
+        "security": "Security",
+        "segmentation": "Segmentation",
+        "naming": "Naming",
+        "redundancy": "Redundancy",
+        "other": "Other"
+      }
+    },
     "settings": {
       "title": "AI assistant",
       "description": "Three providers supported: Anthropic Claude, OpenAI, Google Gemini. Configuration is environment-driven — edit your .env and restart the backend to switch.",
