@@ -87,6 +87,12 @@ const routes: RouteRecordRaw[] = [
         meta: { minRole: 'admin', titleKey: 'nav.audit' },
       },
       {
+        path: 'insights',
+        name: 'insights',
+        component: () => import('@/views/InsightsView.vue'),
+        meta: { minRole: 'admin', titleKey: 'nav.insights' },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/SettingsView.vue'),

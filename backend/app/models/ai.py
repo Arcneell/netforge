@@ -18,6 +18,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -125,6 +126,66 @@ class LinkSuggestion(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class InsightSeverity(str, Enum):
+    info = "info"
+    warning = "warning"
+    critical = "critical"
+
+
+class InsightCategory(str, Enum):
+    spof = "spof"
+    capacity = "capacity"
+    security = "security"
+    segmentation = "segmentation"
+    naming = "naming"
+    redundancy = "redundancy"
+    other = "other"
+
+
+class InfraInsight(Base):
+    """One AI-generated infrastructure recommendation.
+
+    Stored persistently because:
+    - The advisor is comparatively expensive (full context + creative output).
+    - Operators want to compare last week's report to today's, not re-run on
+      every page view.
+    - Each refresh replaces the previous "active" set in one transaction —
+      stale insights aren't deleted, they're marked superseded by the new run
+      via the `run_id` FK (queries filter on the latest run_id).
+    """
+
+    __tablename__ = "infra_insights"
+    __table_args__ = (
+        Index("infra_insights_run_idx", "run_id", "severity"),
+        Index("infra_insights_category_idx", "category"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_run_logs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    severity: Mapped[InsightSeverity] = mapped_column(
+        SAEnum(InsightSeverity, name="insight_severity", native_enum=True),
+        nullable=False,
+    )
+    category: Mapped[InsightCategory] = mapped_column(
+        SAEnum(InsightCategory, name="insight_category", native_enum=True),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    recommendation: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # JSONB list of {type: "switch"|"port"|..., id: int, name: str} so the UI
+    # can render entity chips that link straight to the relevant detail page.
+    affected_entities: Mapped[list[dict] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

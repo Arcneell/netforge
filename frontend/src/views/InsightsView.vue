@@ -1,0 +1,314 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import {
+  AlertOctagon,
+  AlertTriangle,
+  Info,
+  Lightbulb,
+  Network,
+  RefreshCw,
+  Server,
+  Sparkles,
+  Tags,
+  Router as RouterIcon,
+} from 'lucide-vue-next'
+import PageHeader from '@/components/PageHeader.vue'
+import Button from '@/components/ui/Button.vue'
+import Badge from '@/components/ui/Badge.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import {
+  aiApi,
+  type AIStatus,
+  type AdvisorReport,
+  type Insight,
+  type InsightCategory,
+  type InsightEntityRef,
+  type InsightSeverity,
+} from '@/api'
+import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
+import { useToast } from '@/composables/useToast'
+
+const { t } = useI18n()
+const { describe } = useApiErrorMessage()
+const { error: toastError, success: toastSuccess } = useToast()
+
+const status = ref<AIStatus | null>(null)
+const insights = ref<Insight[]>([])
+const runId = ref<number | null>(null)
+const loading = ref(true)
+const refreshing = ref(false)
+const lastReport = ref<AdvisorReport | null>(null)
+
+async function loadAll() {
+  loading.value = true
+  try {
+    const [st, list] = await Promise.all([aiApi.status(), aiApi.getInsights()])
+    status.value = st
+    insights.value = list.insights
+    runId.value = list.run_id
+  } catch (err) {
+    toastError(describe(err))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function refresh() {
+  refreshing.value = true
+  try {
+    const report = await aiApi.refreshInsights()
+    lastReport.value = report
+    toastSuccess(
+      t('ai.advisor.refreshedToast', {
+        count: report.persisted_count,
+        latency: report.latency_ms,
+      }),
+    )
+    const list = await aiApi.getInsights()
+    insights.value = list.insights
+    runId.value = list.run_id
+  } catch (err) {
+    toastError(describe(err))
+  } finally {
+    refreshing.value = false
+  }
+}
+
+onMounted(loadAll)
+
+const grouped = computed(() => {
+  const buckets: Record<InsightSeverity, Insight[]> = {
+    critical: [],
+    warning: [],
+    info: [],
+  }
+  for (const i of insights.value) {
+    buckets[i.severity]?.push(i)
+  }
+  return buckets
+})
+
+const counts = computed(() => ({
+  critical: grouped.value.critical.length,
+  warning: grouped.value.warning.length,
+  info: grouped.value.info.length,
+  total: insights.value.length,
+}))
+
+const severityIcon = {
+  critical: AlertOctagon,
+  warning: AlertTriangle,
+  info: Info,
+} as const
+
+const severityTone: Record<InsightSeverity, 'danger' | 'warning' | 'primary'> = {
+  critical: 'danger',
+  warning: 'warning',
+  info: 'primary',
+}
+
+const categoryLabelKey: Record<InsightCategory, string> = {
+  spof: 'ai.advisor.categories.spof',
+  capacity: 'ai.advisor.categories.capacity',
+  security: 'ai.advisor.categories.security',
+  segmentation: 'ai.advisor.categories.segmentation',
+  naming: 'ai.advisor.categories.naming',
+  redundancy: 'ai.advisor.categories.redundancy',
+  other: 'ai.advisor.categories.other',
+}
+
+function severityLabel(s: InsightSeverity): string {
+  return t(`ai.advisor.severity.${s}`)
+}
+
+const entityIcon: Record<string, typeof Server> = {
+  switch: RouterIcon,
+  port: RouterIcon,
+  device: Server,
+  vlan: Tags,
+  subnet: Network,
+}
+
+function entityRoute(e: InsightEntityRef): string | null {
+  switch (e.type) {
+    case 'switch':
+      return `/switches/${e.id}`
+    case 'subnet':
+      return `/subnets/${e.id}`
+    case 'vlan':
+      return '/vlans'
+    case 'device':
+      return '/devices'
+    default:
+      return null
+  }
+}
+
+function entityLabel(e: InsightEntityRef): string {
+  return e.name || `${e.type} #${e.id}`
+}
+</script>
+
+<template>
+  <div class="p-4 sm:p-8 max-w-7xl mx-auto">
+    <PageHeader :title="t('nav.insights')" :subtitle="t('ai.advisor.subtitle')">
+      <template #actions>
+        <Button
+          v-if="status?.enabled"
+          variant="primary"
+          shape="pill"
+          :loading="refreshing"
+          @click="refresh"
+        >
+          <RefreshCw class="w-4 h-4" aria-hidden="true" />
+          {{ runId === null ? t('ai.advisor.runFirst') : t('ai.advisor.refresh') }}
+        </Button>
+      </template>
+    </PageHeader>
+
+    <!-- Stat strip — same iOS Today-widget feel as Dashboard -->
+    <section v-if="!loading && runId !== null" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+      <div class="nf-card p-4">
+        <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+          {{ t('ai.advisor.severity.critical') }}
+        </p>
+        <p class="text-3xl font-semibold tabular-nums text-danger mt-1">{{ counts.critical }}</p>
+      </div>
+      <div class="nf-card p-4">
+        <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+          {{ t('ai.advisor.severity.warning') }}
+        </p>
+        <p class="text-3xl font-semibold tabular-nums text-warning mt-1">{{ counts.warning }}</p>
+      </div>
+      <div class="nf-card p-4">
+        <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+          {{ t('ai.advisor.severity.info') }}
+        </p>
+        <p class="text-3xl font-semibold tabular-nums text-primary-600 mt-1">{{ counts.info }}</p>
+      </div>
+      <div class="nf-card p-4">
+        <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+          {{ t('ai.advisor.total') }}
+        </p>
+        <p class="text-3xl font-semibold tabular-nums text-fg mt-1">{{ counts.total }}</p>
+      </div>
+    </section>
+
+    <!-- Loading -->
+    <div v-if="loading" class="space-y-3" aria-busy="true">
+      <div v-for="i in 3" :key="i" class="nf-card p-5 space-y-2">
+        <Skeleton width="40%" height="1rem" />
+        <Skeleton width="80%" height="0.75rem" />
+        <Skeleton width="60%" height="0.75rem" />
+      </div>
+    </div>
+
+    <!-- Empty: never run -->
+    <EmptyState
+      v-else-if="runId === null"
+      :icon="Sparkles"
+      :title="t('ai.advisor.emptyTitle')"
+      :description="t('ai.advisor.emptyDescription')"
+    >
+      <template v-if="status?.enabled" #action>
+        <Button variant="primary" shape="pill" :loading="refreshing" @click="refresh">
+          <RefreshCw class="w-4 h-4" aria-hidden="true" />
+          {{ t('ai.advisor.runFirst') }}
+        </Button>
+      </template>
+    </EmptyState>
+
+    <!-- Empty: clean infra (no insights returned) -->
+    <EmptyState
+      v-else-if="counts.total === 0"
+      :icon="Lightbulb"
+      :title="t('ai.advisor.cleanTitle')"
+      :description="t('ai.advisor.cleanDescription')"
+    />
+
+    <!-- Insight list grouped by severity -->
+    <template v-else>
+      <section
+        v-for="severity in ['critical', 'warning', 'info'] as InsightSeverity[]"
+        :key="severity"
+      >
+        <div v-if="grouped[severity].length" class="mb-8">
+          <h2 class="text-xl font-semibold tracking-tight mb-3 flex items-center gap-2">
+            <component
+              :is="severityIcon[severity]"
+              class="w-5 h-5"
+              :class="{
+                'text-danger': severity === 'critical',
+                'text-warning': severity === 'warning',
+                'text-primary-600': severity === 'info',
+              }"
+              aria-hidden="true"
+            />
+            {{ severityLabel(severity) }}
+            <span class="text-sm font-normal text-fg-muted tabular-nums">
+              · {{ grouped[severity].length }}
+            </span>
+          </h2>
+          <ul class="space-y-3">
+            <li v-for="ins in grouped[severity]" :key="ins.id" class="nf-card p-5">
+              <div class="flex items-start justify-between gap-3 flex-wrap mb-2">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <Badge :tone="severityTone[ins.severity]">
+                      {{ severityLabel(ins.severity) }}
+                    </Badge>
+                    <Badge tone="muted">{{ t(categoryLabelKey[ins.category] ?? '') }}</Badge>
+                  </div>
+                  <h3 class="text-base font-semibold tracking-tight mt-2">{{ ins.title }}</h3>
+                </div>
+              </div>
+              <p class="text-sm text-fg-muted leading-relaxed mt-1">{{ ins.description }}</p>
+              <p
+                v-if="ins.recommendation"
+                class="text-sm text-fg mt-3 p-3 rounded-lg bg-muted/60 border-l-2 border-primary-500"
+              >
+                <span class="font-medium text-primary-700 dark:text-primary-300 mr-1">
+                  {{ t('ai.advisor.recommendation') }}:
+                </span>
+                {{ ins.recommendation }}
+              </p>
+              <div
+                v-if="ins.affected_entities && ins.affected_entities.length"
+                class="mt-3 flex flex-wrap gap-1.5"
+              >
+                <RouterLink
+                  v-for="(e, idx) in ins.affected_entities"
+                  :key="`${e.type}-${e.id}-${idx}`"
+                  v-slot="{ href, navigate }"
+                  :to="entityRoute(e) ?? ''"
+                  custom
+                >
+                  <a
+                    :href="entityRoute(e) ? href : undefined"
+                    :class="[
+                      'nf-pill bg-muted/70',
+                      entityRoute(e)
+                        ? 'hover:bg-primary-50 hover:text-primary-700 cursor-pointer'
+                        : 'cursor-default text-fg-muted',
+                    ]"
+                    @click="entityRoute(e) ? navigate($event) : null"
+                  >
+                    <component
+                      :is="entityIcon[e.type] ?? Server"
+                      class="w-3 h-3"
+                      aria-hidden="true"
+                    />
+                    {{ entityLabel(e) }}
+                  </a>
+                </RouterLink>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
+    </template>
+  </div>
+</template>
