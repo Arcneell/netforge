@@ -104,18 +104,18 @@ watch(
 
   <aside
     :class="[
-      'flex flex-col bg-surface border-r border-border transition-transform duration-200 md:transition-[width]',
-      // Desktop: width-driven. Mobile: width is fixed at 16rem and we slide it
-      // in/out via translate-x so the layout below doesn't reflow.
+      'flex flex-col bg-bg border-r border-border/60 dark:border-border/30 transition-transform duration-200 md:transition-[width]',
+      // Mobile drawer uses the elevated surface for the iOS sheet feel.
+      'md:bg-bg bg-surface',
       'fixed md:static inset-y-0 left-0 z-40 w-64 md:w-auto',
-      sidebarCollapsed ? 'md:w-16' : 'md:w-60',
+      sidebarCollapsed ? 'md:w-16' : 'md:w-64',
       mobileNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
     ]"
     aria-label="Primary"
   >
     <div
       :class="[
-        'h-14 flex items-center border-b border-border',
+        'h-14 flex items-center',
         sidebarCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4',
       ]"
     >
@@ -131,8 +131,8 @@ watch(
       </button>
     </div>
 
-    <nav class="flex-1 overflow-y-auto py-3 px-2">
-      <div v-for="(section, sIdx) in visibleSections" :key="sIdx" :class="[sIdx > 0 ? 'mt-4' : '']">
+    <nav class="flex-1 overflow-y-auto py-4 px-3">
+      <div v-for="(section, sIdx) in visibleSections" :key="sIdx" :class="[sIdx > 0 ? 'mt-6' : '']">
         <!--
           Section captions live on the left margin in expanded mode. Collapsed
           mode hides them (the user only sees icons, captions would just be
@@ -159,13 +159,11 @@ watch(
               <a
                 :href="href"
                 :class="[
-                  'group flex items-center gap-3 rounded-md text-sm font-medium transition',
-                  // Desktop-collapsed: icon-only, centered. Otherwise (mobile
-                  // drawer OR desktop expanded): icon + label.
-                  sidebarCollapsed ? 'px-3 py-2 md:justify-center md:px-2' : 'px-3 py-2',
+                  'group flex items-center gap-3 rounded-lg text-sm font-medium transition-colors',
+                  sidebarCollapsed ? 'px-3 py-2.5 md:justify-center md:px-2' : 'px-3 py-2.5',
                   (item.to === '/' ? isExactActive : isActive)
-                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                    : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+                    ? 'bg-surface text-fg shadow-card'
+                    : 'text-fg-muted hover:bg-surface/60 hover:text-fg',
                 ]"
                 :title="sidebarCollapsed ? $t(item.labelKey) : undefined"
                 :aria-label="$t(item.labelKey)"
@@ -174,7 +172,12 @@ watch(
               >
                 <component
                   :is="item.icon"
-                  class="w-[18px] h-[18px] flex-shrink-0"
+                  :class="[
+                    'w-[18px] h-[18px] flex-shrink-0 transition-colors',
+                    (item.to === '/' ? isExactActive : isActive)
+                      ? 'text-primary-600 dark:text-primary-400'
+                      : '',
+                  ]"
                   aria-hidden="true"
                 />
                 <span class="truncate" :class="sidebarCollapsed ? 'md:hidden' : ''">
@@ -189,9 +192,7 @@ watch(
 
     <!-- Desktop only: collapse / expand toggle. On mobile the user closes the
          drawer via the X in the header or the backdrop tap. -->
-    <div
-      :class="['hidden md:block border-t border-border py-2', sidebarCollapsed ? 'px-2' : 'px-3']"
-    >
+    <div :class="['hidden md:block py-2', sidebarCollapsed ? 'px-2' : 'px-3']">
       <button
         type="button"
         class="w-full inline-flex items-center justify-center h-8 rounded text-fg-muted hover:bg-surface-hover hover:text-fg transition"

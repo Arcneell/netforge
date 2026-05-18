@@ -6,15 +6,17 @@ defineProps<{
 </script>
 
 <template>
-  <header class="flex items-start justify-between gap-4 mb-6 flex-wrap">
+  <header class="flex items-start justify-between gap-4 mb-8 flex-wrap">
     <div class="min-w-0">
-      <!-- text-[1.625rem] = 26px : sits between Tailwind's xl (24) and 2xl (30),
-           tighter than 2xl with -0.02em tracking. Reads as a proper page title
-           without dwarfing the dense tables that usually follow. -->
-      <h1 class="text-[1.625rem] font-semibold tracking-[-0.02em] text-fg leading-tight">
+      <!-- iOS-style oversized title with tight tracking. The bigger size gives
+           pages a clear visual anchor and matches what feels right next to the
+           generous card radii in the rest of the UI. -->
+      <h1 class="text-3xl sm:text-[2rem] font-semibold tracking-[-0.025em] text-fg leading-[1.15]">
         {{ title }}
       </h1>
-      <p v-if="subtitle" class="text-sm text-fg-muted mt-1.5 max-w-2xl">{{ subtitle }}</p>
+      <p v-if="subtitle" class="text-[15px] text-fg-muted mt-2 max-w-2xl leading-relaxed">
+        {{ subtitle }}
+      </p>
     </div>
     <div v-if="$slots.actions" class="flex items-center gap-2 flex-shrink-0">
       <slot name="actions" />
