@@ -43,42 +43,41 @@ async function onLogout() {
 
 <template>
   <header
-    class="h-14 flex items-center gap-2 px-3 sm:gap-3 sm:px-4 border-b border-border bg-surface/80 backdrop-blur sticky top-0 z-10"
+    class="h-14 flex items-center gap-2 px-3 sm:gap-3 sm:px-5 border-b border-border/60 dark:border-border/30 nf-glass sticky top-0 z-10"
   >
-    <!-- Mobile-only hamburger that opens the sidebar drawer. Hidden on md+
-         where the sidebar is permanently visible. -->
+    <!-- Mobile-only hamburger -->
     <button
       type="button"
-      class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-md border border-border bg-surface text-fg-muted hover:bg-surface-hover transition"
+      class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-full text-fg-muted hover:bg-surface-hover hover:text-fg transition"
       :aria-label="t('common.menu')"
       @click="ui.toggleMobileNav()"
     >
-      <Menu class="w-4 h-4" aria-hidden="true" />
+      <Menu class="w-[18px] h-[18px]" aria-hidden="true" />
     </button>
 
-    <!-- Desktop search bar (wide). -->
+    <!-- Desktop search field (iOS-style soft pill). -->
     <button
       type="button"
-      class="hidden md:inline-flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-bg/60 text-sm text-fg-muted hover:bg-surface-hover transition w-full max-w-sm"
+      class="hidden md:inline-flex items-center gap-2 h-9 px-3.5 rounded-full bg-muted/70 hover:bg-muted text-sm text-fg-muted hover:text-fg transition-colors w-full max-w-sm"
       :aria-label="$t('common.search')"
       @click="$emit('open-search')"
     >
-      <Search class="w-4 h-4" aria-hidden="true" />
+      <Search class="w-[18px] h-[18px]" aria-hidden="true" />
       <span class="flex-1 text-left">{{ $t('common.search') }}…</span>
       <kbd
-        class="hidden lg:inline-flex items-center gap-1 px-1.5 h-5 rounded text-[10px] font-mono border border-border bg-muted/60"
+        class="hidden lg:inline-flex items-center gap-1 px-1.5 h-5 rounded-full text-[10px] font-mono bg-surface/80 text-fg-muted"
       >
         Ctrl K
       </kbd>
     </button>
-    <!-- Mobile search trigger (icon-only). -->
+    <!-- Mobile search icon-only -->
     <button
       type="button"
-      class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-md border border-border bg-surface text-fg-muted hover:bg-surface-hover transition"
+      class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-full text-fg-muted hover:bg-surface-hover hover:text-fg transition"
       :aria-label="$t('common.search')"
       @click="$emit('open-search')"
     >
-      <Search class="w-4 h-4" aria-hidden="true" />
+      <Search class="w-[18px] h-[18px]" aria-hidden="true" />
     </button>
     <div class="flex-1" />
 
@@ -88,13 +87,15 @@ async function onLogout() {
     <div class="relative">
       <button
         type="button"
-        class="inline-flex items-center gap-2 h-9 pl-1 pr-2 rounded-md border border-border bg-surface hover:bg-surface-hover transition"
+        class="inline-flex items-center gap-2 h-9 pl-1 pr-2.5 rounded-full hover:bg-surface-hover transition-colors"
         :aria-haspopup="true"
         :aria-expanded="menuOpen"
         @click="toggleMenu"
       >
+        <!-- iOS-style avatar disc with a subtle gradient. Indigo brand tone
+             keeps it visible against either bg. -->
         <span
-          class="inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary-100 text-primary-700 text-xs font-semibold dark:bg-primary-900/40 dark:text-primary-300"
+          class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white text-xs font-semibold"
           aria-hidden="true"
         >
           {{ initials || '—' }}
@@ -103,7 +104,7 @@ async function onLogout() {
           <span class="text-xs font-medium text-fg max-w-[10rem] truncate">
             {{ user?.display_name || user?.email || '—' }}
           </span>
-          <span class="text-[10px] text-fg-muted uppercase tracking-wide">{{ roleLabel }}</span>
+          <span class="text-[10px] text-fg-muted">{{ roleLabel }}</span>
         </span>
         <ChevronDown class="w-4 h-4 text-fg-muted" aria-hidden="true" />
       </button>

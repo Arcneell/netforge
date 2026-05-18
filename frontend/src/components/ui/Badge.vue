@@ -47,7 +47,9 @@ const inlineStyle = computed(() => {
 })
 
 const classes = computed(() => [
-  'inline-flex items-center gap-1 rounded-md border font-medium align-middle whitespace-nowrap',
+  // iOS pill — fully rounded, no harsh border in most cases. Borders only
+  // surface in dark mode where the tinted fills need a thin edge to read.
+  'inline-flex items-center gap-1 rounded-full border font-medium align-middle whitespace-nowrap',
   sizeClass[props.size],
   props.color ? '' : tonePresets[props.tone],
   props.monospace ? 'font-mono tabular-nums tracking-tight' : '',
