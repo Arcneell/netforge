@@ -358,9 +358,41 @@
     "noChanges": "Aucune modification de champ enregistrée."
   },
   "settings": {
-    "subtitle": "Gérez les sites et les salles. Seuls les administrateurs peuvent modifier.",
+    "subtitle": "Gérez les sites, les salles et les jetons d'accès. Seuls les administrateurs peuvent modifier.",
     "sitesTab": "Sites",
-    "roomsTab": "Salles"
+    "roomsTab": "Salles",
+    "tokensTab": "Jetons API"
+  },
+  "apiTokens": {
+    "subtitle": "Créez des jetons d'accès personnels pour les scripts et les automatisations. Les jetons héritent de votre rôle, donc à utiliser avec parcimonie.",
+    "new": "Nouveau jeton",
+    "generate": "Générer",
+    "revoke": "Révoquer",
+    "namePlaceholder": "ex. ansible-prod",
+    "nameHint": "Un libellé court pour vous aider à reconnaître le jeton plus tard.",
+    "copied": "Jeton copié dans le presse-papiers.",
+    "copyFailed": "Impossible d'accéder au presse-papiers — copiez le jeton manuellement.",
+    "revokedToast": "Jeton révoqué.",
+    "plaintextTitle": "Copiez votre jeton maintenant — il ne sera plus jamais affiché.",
+    "plaintextHint": "Conservez-le dans un gestionnaire de secrets. Si vous le perdez, vous devrez en générer un nouveau.",
+    "confirmRevokeTitle": "Révoquer le jeton « {name} » ?",
+    "confirmRevokeMessage": "Tous les scripts qui utilisent ce jeton perdront l'accès immédiatement. Cette action est irréversible.",
+    "fields": {
+      "name": "Nom",
+      "prefix": "Préfixe",
+      "created": "Créé le",
+      "lastUsed": "Dernière utilisation",
+      "status": "Statut"
+    },
+    "status": {
+      "active": "Actif",
+      "revoked": "Révoqué",
+      "expired": "Expiré"
+    },
+    "empty": {
+      "title": "Aucun jeton",
+      "description": "Vos jetons d'accès personnels apparaîtront ici."
+    }
   },
   "topology": {
     "subtitle": "Liens inter-commutateurs sous forme de graphe interactif.",
