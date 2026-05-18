@@ -81,7 +81,7 @@ function onPortSaved(p: Port) {
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
+  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <div v-if="loading && !sw" aria-busy="true">
       <div class="mb-3">
         <Skeleton width="14rem" height="0.75rem" />

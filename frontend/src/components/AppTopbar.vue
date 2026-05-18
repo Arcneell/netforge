@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Search, LogOut, ChevronDown } from 'lucide-vue-next'
+import { Search, LogOut, ChevronDown, Menu } from 'lucide-vue-next'
 import { useAuth } from '@/composables/useAuth'
+import { useUiStore } from '@/stores/ui'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import LocaleSwitcher from '@/components/LocaleSwitcher.vue'
 
 const { t } = useI18n()
 const { user, role, logout } = useAuth()
+const ui = useUiStore()
 const menuOpen = ref(false)
 
 defineEmits<{ (e: 'open-search'): void }>()
@@ -41,8 +43,20 @@ async function onLogout() {
 
 <template>
   <header
-    class="h-14 flex items-center gap-3 px-4 border-b border-border bg-surface/80 backdrop-blur sticky top-0 z-10"
+    class="h-14 flex items-center gap-2 px-3 sm:gap-3 sm:px-4 border-b border-border bg-surface/80 backdrop-blur sticky top-0 z-10"
   >
+    <!-- Mobile-only hamburger that opens the sidebar drawer. Hidden on md+
+         where the sidebar is permanently visible. -->
+    <button
+      type="button"
+      class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-md border border-border bg-surface text-fg-muted hover:bg-surface-hover transition"
+      :aria-label="t('common.menu')"
+      @click="ui.toggleMobileNav()"
+    >
+      <Menu class="w-4 h-4" aria-hidden="true" />
+    </button>
+
+    <!-- Desktop search bar (wide). -->
     <button
       type="button"
       class="hidden md:inline-flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-bg/60 text-sm text-fg-muted hover:bg-surface-hover transition w-full max-w-sm"
@@ -56,6 +70,15 @@ async function onLogout() {
       >
         Ctrl K
       </kbd>
+    </button>
+    <!-- Mobile search trigger (icon-only). -->
+    <button
+      type="button"
+      class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-md border border-border bg-surface text-fg-muted hover:bg-surface-hover transition"
+      :aria-label="$t('common.search')"
+      @click="$emit('open-search')"
+    >
+      <Search class="w-4 h-4" aria-hidden="true" />
     </button>
     <div class="flex-1" />
 

@@ -38,6 +38,10 @@ function applyTheme(theme: Theme): void {
 export const useUiStore = defineStore('ui', () => {
   const theme = ref<Theme>(readStoredTheme())
   const sidebarCollapsed = ref<boolean>(false)
+  // Slide-in mobile drawer state. Separate from `sidebarCollapsed` because on
+  // desktop a collapsed sidebar still shows icons, whereas on mobile the
+  // sidebar is fully hidden until the hamburger button opens the drawer.
+  const mobileNavOpen = ref<boolean>(false)
   const toasts = ref<Toast[]>([])
   let nextToastId = 1
 
@@ -106,6 +110,14 @@ export const useUiStore = defineStore('ui', () => {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
+  function setMobileNavOpen(v: boolean): void {
+    mobileNavOpen.value = v
+  }
+
+  function toggleMobileNav(): void {
+    mobileNavOpen.value = !mobileNavOpen.value
+  }
+
   // Run once at store creation so the SSR-applied class stays in sync with state.
   applyTheme(theme.value)
 
@@ -113,6 +125,7 @@ export const useUiStore = defineStore('ui', () => {
     theme,
     isDark,
     sidebarCollapsed,
+    mobileNavOpen,
     toasts,
     setTheme,
     toggleTheme,
@@ -121,5 +134,7 @@ export const useUiStore = defineStore('ui', () => {
     dismissToast,
     setSidebarCollapsed,
     toggleSidebar,
+    setMobileNavOpen,
+    toggleMobileNav,
   }
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import {
   LayoutDashboard,
   Network,
@@ -11,6 +11,7 @@ import {
   Upload,
   History,
   Settings,
+  X,
 } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
@@ -66,27 +67,68 @@ const sections: NavSection[] = [
 ]
 
 const ui = useUiStore()
-const { sidebarCollapsed } = storeToRefs(ui)
+const { sidebarCollapsed, mobileNavOpen } = storeToRefs(ui)
 const { isAdmin } = useAuth()
+const route = useRoute()
 
 const visibleSections = computed(() => sections.filter((s) => !s.adminOnly || isAdmin.value))
+
+// Close the mobile drawer whenever the user navigates — otherwise tapping a
+// nav item just toggles the route under a still-open overlay.
+watch(
+  () => route.path,
+  () => {
+    if (mobileNavOpen.value) ui.setMobileNavOpen(false)
+  },
+)
 </script>
 
 <template>
+  <!-- Mobile-only backdrop. Clicking it dismisses the drawer; the sidebar
+       itself is `position: fixed` on mobile so it floats over the content. -->
+  <Transition
+    enter-active-class="transition-opacity duration-150"
+    enter-from-class="opacity-0"
+    enter-to-class="opacity-100"
+    leave-active-class="transition-opacity duration-100"
+    leave-from-class="opacity-100"
+    leave-to-class="opacity-0"
+  >
+    <div
+      v-if="mobileNavOpen"
+      class="md:hidden fixed inset-0 bg-zinc-950/40 z-30"
+      aria-hidden="true"
+      @click="ui.setMobileNavOpen(false)"
+    />
+  </Transition>
+
   <aside
     :class="[
-      'flex flex-col bg-surface border-r border-border transition-[width] duration-200',
-      sidebarCollapsed ? 'w-16' : 'w-60',
+      'flex flex-col bg-surface border-r border-border transition-transform duration-200 md:transition-[width]',
+      // Desktop: width-driven. Mobile: width is fixed at 16rem and we slide it
+      // in/out via translate-x so the layout below doesn't reflow.
+      'fixed md:static inset-y-0 left-0 z-40 w-64 md:w-auto',
+      sidebarCollapsed ? 'md:w-16' : 'md:w-60',
+      mobileNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
     ]"
     aria-label="Primary"
   >
     <div
       :class="[
         'h-14 flex items-center border-b border-border',
-        sidebarCollapsed ? 'justify-center px-2' : 'px-4',
+        sidebarCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4',
       ]"
     >
-      <BrandMark :show-wordmark="!sidebarCollapsed" :size="26" />
+      <BrandMark :show-wordmark="!sidebarCollapsed || mobileNavOpen" :size="26" />
+      <!-- Close button only on mobile -->
+      <button
+        type="button"
+        class="md:hidden ml-auto inline-flex items-center justify-center w-8 h-8 rounded text-fg-muted hover:bg-surface-hover hover:text-fg transition"
+        aria-label="Close navigation"
+        @click="ui.setMobileNavOpen(false)"
+      >
+        <X class="w-4 h-4" aria-hidden="true" />
+      </button>
     </div>
 
     <nav class="flex-1 overflow-y-auto py-3 px-2">
@@ -97,13 +139,20 @@ const visibleSections = computed(() => sections.filter((s) => !s.adminOnly || is
           tooltips with no anchor), but we keep a thin divider line so the
           three groups stay visually distinct even at 64 px wide.
         -->
+        <!-- Caption: always rendered. On desktop-collapsed it hides and the
+             <hr> below it shows instead so the three sections stay visually
+             distinct at 64 px wide. -->
         <p
-          v-if="section.titleKey && !sidebarCollapsed"
+          v-if="section.titleKey"
           class="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-fg-muted"
+          :class="sidebarCollapsed ? 'md:hidden' : ''"
         >
           {{ $t(section.titleKey) }}
         </p>
-        <hr v-else-if="section.titleKey && sidebarCollapsed" class="mx-3 mb-1.5 border-border" />
+        <hr
+          v-if="section.titleKey && sidebarCollapsed"
+          class="hidden md:block mx-3 mb-1.5 border-border"
+        />
         <ul class="space-y-0.5">
           <li v-for="item in section.items" :key="item.to">
             <RouterLink v-slot="{ href, navigate, isActive, isExactActive }" :to="item.to" custom>
@@ -111,7 +160,9 @@ const visibleSections = computed(() => sections.filter((s) => !s.adminOnly || is
                 :href="href"
                 :class="[
                   'group flex items-center gap-3 rounded-md text-sm font-medium transition',
-                  sidebarCollapsed ? 'justify-center px-2 py-2' : 'px-3 py-2',
+                  // Desktop-collapsed: icon-only, centered. Otherwise (mobile
+                  // drawer OR desktop expanded): icon + label.
+                  sidebarCollapsed ? 'px-3 py-2 md:justify-center md:px-2' : 'px-3 py-2',
                   (item.to === '/' ? isExactActive : isActive)
                     ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
                     : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
@@ -126,7 +177,9 @@ const visibleSections = computed(() => sections.filter((s) => !s.adminOnly || is
                   class="w-[18px] h-[18px] flex-shrink-0"
                   aria-hidden="true"
                 />
-                <span v-if="!sidebarCollapsed" class="truncate">{{ $t(item.labelKey) }}</span>
+                <span class="truncate" :class="sidebarCollapsed ? 'md:hidden' : ''">
+                  {{ $t(item.labelKey) }}
+                </span>
               </a>
             </RouterLink>
           </li>
@@ -134,7 +187,11 @@ const visibleSections = computed(() => sections.filter((s) => !s.adminOnly || is
       </div>
     </nav>
 
-    <div :class="['border-t border-border py-2', sidebarCollapsed ? 'px-2' : 'px-3']">
+    <!-- Desktop only: collapse / expand toggle. On mobile the user closes the
+         drawer via the X in the header or the backdrop tap. -->
+    <div
+      :class="['hidden md:block border-t border-border py-2', sidebarCollapsed ? 'px-2' : 'px-3']"
+    >
       <button
         type="button"
         class="w-full inline-flex items-center justify-center h-8 rounded text-fg-muted hover:bg-surface-hover hover:text-fg transition"
