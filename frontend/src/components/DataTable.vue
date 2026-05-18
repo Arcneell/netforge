@@ -1,7 +1,7 @@
 <script setup lang="ts" generic="T extends { id: number | string }">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Inbox } from 'lucide-vue-next'
+import { Inbox, ChevronRight } from 'lucide-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 
@@ -77,12 +77,12 @@ const detailCols = computed<DataTableColumn[]>(() =>
     <div class="relative overflow-x-auto hidden md:block">
       <table class="w-full text-sm">
         <thead>
-          <tr class="bg-muted/60 border-b border-border">
+          <tr class="border-b border-border/70 dark:border-border/40">
             <th
               v-for="col in columns"
               :key="col.key"
               :class="[
-                'px-4 py-2 text-xs font-medium text-fg-muted uppercase tracking-wide',
+                'px-5 py-3 text-[11px] font-semibold text-fg-muted uppercase tracking-wider',
                 alignClass(col.align),
                 col.hideOnSm ? 'hidden md:table-cell' : '',
               ]"
@@ -97,14 +97,14 @@ const detailCols = computed<DataTableColumn[]>(() =>
             <tr
               v-for="i in skeletonRows"
               :key="`sk-${i}`"
-              class="border-b border-border last:border-0"
+              class="border-b border-border/50 dark:border-border/30 last:border-0"
               :aria-busy="true"
             >
               <td
                 v-for="col in columns"
                 :key="col.key"
                 :class="[
-                  'px-4 py-3 align-middle',
+                  'px-5 py-4 align-middle',
                   alignClass(col.align),
                   col.cellClass ?? '',
                   col.hideOnSm ? 'hidden md:table-cell' : '',
@@ -136,9 +136,9 @@ const detailCols = computed<DataTableColumn[]>(() =>
             v-else
             :key="row.id"
             :class="[
-              'border-b border-border last:border-0',
+              'border-b border-border/50 dark:border-border/30 last:border-0 transition-colors',
               clickable
-                ? 'hover:bg-surface-hover cursor-pointer focus-within:bg-surface-hover'
+                ? 'group/row hover:bg-surface-hover/60 cursor-pointer focus-within:bg-surface-hover/60'
                 : '',
             ]"
             @click="clickable && $emit('row-click', row)"
@@ -147,7 +147,7 @@ const detailCols = computed<DataTableColumn[]>(() =>
               v-for="col in columns"
               :key="col.key"
               :class="[
-                'px-4 py-2 text-fg align-middle',
+                'px-5 py-3.5 text-fg align-middle',
                 alignClass(col.align),
                 col.cellClass ?? '',
                 col.hideOnSm ? 'hidden md:table-cell' : '',
@@ -195,19 +195,19 @@ const detailCols = computed<DataTableColumn[]>(() =>
           </template>
         </EmptyState>
       </div>
-      <ul v-else class="divide-y divide-border">
+      <ul v-else class="divide-y divide-border/50 dark:divide-border/30">
         <li
           v-for="row in rows"
           :key="row.id"
           :class="[
-            'p-3 flex flex-col gap-2',
+            'px-4 py-4 flex flex-col gap-2.5',
             clickable ? 'active:bg-surface-hover cursor-pointer' : '',
           ]"
           @click="clickable && $emit('row-click', row)"
         >
-          <!-- Title row: primary column + actions on the right -->
-          <div class="flex items-start justify-between gap-2">
-            <div v-if="primaryCol" class="min-w-0 flex-1 text-sm font-medium text-fg">
+          <!-- Title row: primary column + chevron / actions on the right -->
+          <div class="flex items-start justify-between gap-3">
+            <div v-if="primaryCol" class="min-w-0 flex-1 text-[15px] font-semibold text-fg">
               <slot
                 :name="`cell-${primaryCol.key}`"
                 :row="row"
@@ -223,15 +223,21 @@ const detailCols = computed<DataTableColumn[]>(() =>
                 :value="(row as any)[actionsCol.key]"
               />
             </div>
+            <ChevronRight
+              v-else-if="clickable"
+              class="w-4 h-4 text-fg-muted flex-shrink-0 mt-1"
+              aria-hidden="true"
+            />
           </div>
 
           <!-- Label/value rows for every other column -->
-          <dl v-if="detailCols.length" class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+          <dl
+            v-if="detailCols.length"
+            class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]"
+          >
             <template v-for="col in detailCols" :key="col.key">
-              <dt class="text-fg-muted uppercase tracking-wide whitespace-nowrap">
-                {{ col.label }}
-              </dt>
-              <dd class="text-fg min-w-0 break-words">
+              <dt class="text-fg-muted whitespace-nowrap">{{ col.label }}</dt>
+              <dd class="text-fg min-w-0 break-words text-right">
                 <slot :name="`cell-${col.key}`" :row="row" :value="(row as any)[col.key]">
                   {{ (row as any)[col.key] ?? '—' }}
                 </slot>
