@@ -184,3 +184,50 @@ Because users are keyed on `(provider, subject)`, swapping `AUTH_PROVIDER` mid-l
 2. **Hard migration** — a script maps old subjects to new ones (provider-specific; e.g. GitHub `id` ↔ OIDC `sub` via email).
 
 Plan ahead: pick the provider you intend to run with in production before onboarding users at scale.
+
+## Personal access tokens (API)
+
+The interactive cookie session is great for the SPA but useless for scripts, CI jobs, and `curl` from the terminal. Each authenticated user can mint **personal access tokens** that authenticate via the `Authorization: Bearer …` header.
+
+### Format
+
+```
+nfp_<43 url-safe base64 chars>
+```
+
+The `nfp_` prefix lets log scrubbers grep for accidental leaks. The body is 32 bytes of CSPRNG.
+
+### Storage
+
+The plaintext is shown **once** at creation (the POST response) and never persisted. Only the SHA-256 digest lives in the DB, plus the first ~8 characters in clear so admins can recognise a token in the management list (`nfp_abcd…`). A leak of the database therefore can't be replayed against the API — same trick as GitHub PATs.
+
+### Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/auth/tokens` | List the caller's tokens (active + revoked, history-inclusive). |
+| `POST` | `/api/auth/tokens` | Mint a new token. Body: `{ "name": "ansible-prod", "expires_at": null }`. The response carries the plaintext — copy it now. |
+| `DELETE` | `/api/auth/tokens/{id}` | Revoke. Idempotent on already-revoked tokens; 404 only if the id is unknown or owned by someone else. |
+
+### Authentication path
+
+`get_current_user` accepts **either** a session cookie **or** a Bearer header. The Bearer path is checked first so a script that sends both doesn't accidentally pick up a UI session. An invalid Bearer is an explicit 401 — we don't fall back to the cookie, because the caller clearly intended to use a token.
+
+### Inheritance & revocation
+
+A token inherits its owner's role: demoting the user to viewer immediately limits what their tokens can do, and disabling the user (or deleting them — `CASCADE` removes their tokens too) cuts off API access. Revocation is instant — every API call re-checks `revoked_at` and `expires_at`.
+
+```bash
+# Issue a token
+curl -X POST https://netforge.example/api/auth/tokens \
+  -b "netforge_session=…" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ansible-prod"}'
+# → { "id": 12, "token": "nfp_…", "prefix": "nfp_abcd", ... }
+
+# Use it
+curl https://netforge.example/api/switches \
+  -H "Authorization: Bearer nfp_…"
+```
+
+The UI for managing tokens lives in **Settings → API tokens**.

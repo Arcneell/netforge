@@ -86,6 +86,48 @@ class Session(Base):
     user_agent: Mapped[str | None] = mapped_column(Text)
 
 
+class ApiToken(Base):
+    """Personal access tokens for programmatic API access (scripts, CI).
+
+    Storage rules:
+      - The plaintext token is shown **once** at creation and never persisted.
+      - We store only its SHA-256 digest (`token_hash`) — same trick as GitHub
+        PATs. Lookup is O(1) since we index on the hash.
+      - `prefix` keeps the first ~8 chars of the plaintext in clear so admins
+        can identify a token in the list without revealing it.
+      - `revoked_at` is the soft-delete: an active token has `revoked_at = NULL`
+        AND (`expires_at` IS NULL OR `expires_at > now()`).
+
+    The token inherits its owner's role: revoking the user's access (or
+    demoting them to viewer) instantly limits what the token can do.
+    """
+
+    __tablename__ = "api_tokens"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="api_tokens_hash_uniq"),
+        Index("api_tokens_user_idx", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # First few chars of the plaintext, kept so admins can recognise a token
+    # in the list ("nfp_abcd…") without re-displaying the secret.
+    prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
     __table_args__ = (

@@ -358,9 +358,41 @@
     "noChanges": "No field changes recorded."
   },
   "settings": {
-    "subtitle": "Manage sites and rooms. Only administrators can edit.",
+    "subtitle": "Manage sites, rooms and access tokens. Only administrators can edit.",
     "sitesTab": "Sites",
-    "roomsTab": "Rooms"
+    "roomsTab": "Rooms",
+    "tokensTab": "API tokens"
+  },
+  "apiTokens": {
+    "subtitle": "Create personal access tokens for scripts and automations. Tokens inherit your role, so issue them sparingly.",
+    "new": "New token",
+    "generate": "Generate",
+    "revoke": "Revoke",
+    "namePlaceholder": "e.g. ansible-prod",
+    "nameHint": "A short label to help you recognise the token later.",
+    "copied": "Token copied to clipboard.",
+    "copyFailed": "Could not access the clipboard — copy the token manually.",
+    "revokedToast": "Token revoked.",
+    "plaintextTitle": "Copy your token now — it will never be shown again.",
+    "plaintextHint": "Store it in a secret manager. If you lose it, you'll have to generate a new one.",
+    "confirmRevokeTitle": "Revoke token \"{name}\"?",
+    "confirmRevokeMessage": "Any script using this token loses access immediately. This action cannot be undone.",
+    "fields": {
+      "name": "Name",
+      "prefix": "Prefix",
+      "created": "Created",
+      "lastUsed": "Last used",
+      "status": "Status"
+    },
+    "status": {
+      "active": "Active",
+      "revoked": "Revoked",
+      "expired": "Expired"
+    },
+    "empty": {
+      "title": "No tokens",
+      "description": "Your personal access tokens will appear here."
+    }
   },
   "topology": {
     "subtitle": "Inter-switch links rendered as a graph.",

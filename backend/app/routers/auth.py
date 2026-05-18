@@ -28,6 +28,8 @@ from app.auth.sessions import (
 from app.config import Settings, get_settings
 from app.db import get_session as get_db_session
 from app.models.user import User
+from app.schemas.api_token import ApiTokenCreate, ApiTokenCreated, ApiTokenRead
+from app.services import api_tokens as token_service
 from app.services.users import upsert_user_from_provider
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -83,3 +85,51 @@ async def me(user: User = Depends(get_current_user)) -> dict:
         "role": user.role.value,
         "provider": user.provider,
     }
+
+
+# --- API tokens ---------------------------------------------------------- #
+
+
+@router.get("/tokens", response_model=list[ApiTokenRead])
+async def list_my_tokens(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> list[ApiTokenRead]:
+    """Tokens owned by the calling user, most recent first. Includes revoked
+    rows so the user can audit what was issued historically."""
+    tokens = await token_service.list_tokens(db, user)
+    return [ApiTokenRead.model_validate(t) for t in tokens]
+
+
+@router.post(
+    "/tokens",
+    response_model=ApiTokenCreated,
+    status_code=201,
+)
+async def create_my_token(
+    payload: ApiTokenCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> ApiTokenCreated:
+    """Mint a new API token for the calling user. The plaintext is returned
+    **once** in the response body — never again. The token inherits the
+    caller's role, so demoting / disabling the user immediately limits what
+    the token can do."""
+    row, plaintext = await token_service.create_token(
+        db, user, name=payload.name, expires_at=payload.expires_at
+    )
+    return ApiTokenCreated(
+        **ApiTokenRead.model_validate(row).model_dump(),
+        token=plaintext,
+    )
+
+
+@router.delete("/tokens/{token_id}", status_code=204)
+async def revoke_my_token(
+    token_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> None:
+    """Revoke a token. Idempotent on already-revoked tokens — only returns
+    404 if the id is unknown or owned by someone else."""
+    await token_service.revoke_token(db, user, token_id)

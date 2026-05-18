@@ -44,26 +44,52 @@ def _auth_required() -> HTTPException:
     )
 
 
+def _bearer_token_from_header(request: Request) -> str | None:
+    """Extract the token from an ``Authorization: Bearer <token>`` header,
+    case-insensitive on the scheme so curl's default lowercase still works."""
+    header = request.headers.get("authorization")
+    if not header:
+        return None
+    parts = header.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    return parts[1].strip() or None
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
 ) -> User:
-    """Resolve the current user from the session cookie. 401 otherwise."""
-    session_id = get_session_id_from_cookie(request, settings)
-    if not session_id:
-        raise _auth_required()
+    """Resolve the current user from a session cookie or an API token.
 
-    session = await get_active_session(db, session_id)
-    if session is None:
-        raise _auth_required()
+    Order: Bearer header first (so a script doesn't accidentally land in the
+    UI's session if it sets both), then the session cookie. 401 otherwise.
+    """
+    user: User | None = None
 
-    user = await db.get(User, session.user_id)
-    if user is None:
-        # Session points at a deleted user — treat as logged out.
-        raise _auth_required()
+    bearer = _bearer_token_from_header(request)
+    if bearer:
+        from app.services import api_tokens as token_service
 
-    await touch_session(db, session, settings)
+        user = await token_service.verify_token(db, bearer)
+        if user is None:
+            raise _auth_required()
+    else:
+        session_id = get_session_id_from_cookie(request, settings)
+        if not session_id:
+            raise _auth_required()
+
+        session = await get_active_session(db, session_id)
+        if session is None:
+            raise _auth_required()
+
+        user = await db.get(User, session.user_id)
+        if user is None:
+            # Session points at a deleted user — treat as logged out.
+            raise _auth_required()
+
+        await touch_session(db, session, settings)
 
     # Make the user id visible to the audit-log SQLAlchemy listeners.
     from app.services.audit import current_user_id_var
