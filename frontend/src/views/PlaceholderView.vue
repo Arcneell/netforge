@@ -7,7 +7,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
+  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <header class="mb-6">
       <h1 class="text-2xl font-semibold tracking-tight">{{ $t(titleKey) }}</h1>
     </header>

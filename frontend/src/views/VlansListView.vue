@@ -87,7 +87,7 @@ const columns: DataTableColumn[] = [
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
+  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <PageHeader :title="t('vlan.labelPlural')" :subtitle="t('vlan.subtitle')">
       <template #actions>
         <Button v-if="isAdmin" variant="primary" @click="onNew">

@@ -104,7 +104,7 @@ function exportCsv() {
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
+  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <PageHeader :title="t('nav.audit')" :subtitle="t('audit.subtitle')">
       <template #actions>
         <Button variant="secondary" @click="exportCsv">

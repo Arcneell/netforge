@@ -111,7 +111,7 @@ const columns: DataTableColumn[] = [
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
+  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <PageHeader :title="t('device.labelPlural')" :subtitle="t('device.subtitle')">
       <template #actions>
         <Button v-if="isAdmin" variant="primary" @click="onNew">

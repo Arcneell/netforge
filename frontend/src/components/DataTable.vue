@@ -1,4 +1,5 @@
 <script setup lang="ts" generic="T extends { id: number | string }">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Inbox } from 'lucide-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
@@ -8,6 +9,11 @@ import Skeleton from '@/components/ui/Skeleton.vue'
  * Minimal accessible table with explicit column slots and one row-click event.
  * No client-side sorting, filtering, or virtualization on purpose — those
  * concerns belong to the parent page so it can push them down to the API.
+ *
+ * Responsive: on screens narrower than `md` the table is replaced by a stack
+ * of cards. The first non-actions column is used as the card title, the
+ * `actions` column is rendered as the footer button row, and every other
+ * column becomes a label/value pair inside the card.
  */
 export interface DataTableColumn {
   key: string
@@ -16,11 +22,13 @@ export interface DataTableColumn {
   cellClass?: string
   /** Right-align numeric columns. */
   align?: 'left' | 'right' | 'center'
-  /** Hide on narrow screens. */
+  /** Hide on narrow screens (desktop table only — the mobile cards ignore this). */
   hideOnSm?: boolean
+  /** Hide on mobile cards (useful for redundant columns like a separate name field). */
+  hideOnMobile?: boolean
 }
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     columns: DataTableColumn[]
     rows: T[]
@@ -47,11 +55,26 @@ function alignClass(a: DataTableColumn['align']): string {
   if (a === 'center') return 'text-center'
   return 'text-left'
 }
+
+// Card layout: split columns into title / actions / details. The "primary"
+// column is the first non-actions column (typically `name`, `cidr`, etc.).
+const primaryCol = computed<DataTableColumn | null>(
+  () => props.columns.find((c) => c.key !== 'actions') ?? null,
+)
+const actionsCol = computed<DataTableColumn | null>(
+  () => props.columns.find((c) => c.key === 'actions') ?? null,
+)
+const detailCols = computed<DataTableColumn[]>(() =>
+  props.columns.filter(
+    (c) => c.key !== 'actions' && c.key !== primaryCol.value?.key && !c.hideOnMobile,
+  ),
+)
 </script>
 
 <template>
   <div class="nf-card overflow-hidden">
-    <div class="relative overflow-x-auto">
+    <!-- Desktop / tablet: classic table -->
+    <div class="relative overflow-x-auto hidden md:block">
       <table class="w-full text-sm">
         <thead>
           <tr class="bg-muted/60 border-b border-border">
@@ -145,6 +168,87 @@ function alignClass(a: DataTableColumn['align']): string {
         <div class="h-full w-1/3 bg-primary-500 animate-pulse" />
       </div>
     </div>
+
+    <!-- Mobile: stacked cards. Tables don't survive narrow viewports cleanly,
+         so we flip to a vertical key/value layout that stays touch-friendly. -->
+    <div class="md:hidden relative">
+      <template v-if="loading && rows.length === 0">
+        <div
+          v-for="i in skeletonRows"
+          :key="`sk-card-${i}`"
+          class="border-b border-border last:border-0 p-3 space-y-2"
+          :aria-busy="true"
+        >
+          <Skeleton width="50%" height="1rem" rounded="sm" />
+          <Skeleton width="80%" height="0.75rem" rounded="sm" />
+          <Skeleton width="60%" height="0.75rem" rounded="sm" />
+        </div>
+      </template>
+      <div v-else-if="rows.length === 0">
+        <EmptyState
+          :icon="Inbox"
+          :title="emptyTitle ?? t('common.empty.title')"
+          :description="emptyDescription ?? t('common.empty.description')"
+        >
+          <template v-if="$slots['empty-action']" #action>
+            <slot name="empty-action" />
+          </template>
+        </EmptyState>
+      </div>
+      <ul v-else class="divide-y divide-border">
+        <li
+          v-for="row in rows"
+          :key="row.id"
+          :class="[
+            'p-3 flex flex-col gap-2',
+            clickable ? 'active:bg-surface-hover cursor-pointer' : '',
+          ]"
+          @click="clickable && $emit('row-click', row)"
+        >
+          <!-- Title row: primary column + actions on the right -->
+          <div class="flex items-start justify-between gap-2">
+            <div v-if="primaryCol" class="min-w-0 flex-1 text-sm font-medium text-fg">
+              <slot
+                :name="`cell-${primaryCol.key}`"
+                :row="row"
+                :value="(row as any)[primaryCol.key]"
+              >
+                {{ (row as any)[primaryCol.key] ?? '—' }}
+              </slot>
+            </div>
+            <div v-if="actionsCol" class="flex-shrink-0" @click.stop>
+              <slot
+                :name="`cell-${actionsCol.key}`"
+                :row="row"
+                :value="(row as any)[actionsCol.key]"
+              />
+            </div>
+          </div>
+
+          <!-- Label/value rows for every other column -->
+          <dl v-if="detailCols.length" class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+            <template v-for="col in detailCols" :key="col.key">
+              <dt class="text-fg-muted uppercase tracking-wide whitespace-nowrap">
+                {{ col.label }}
+              </dt>
+              <dd class="text-fg min-w-0 break-words">
+                <slot :name="`cell-${col.key}`" :row="row" :value="(row as any)[col.key]">
+                  {{ (row as any)[col.key] ?? '—' }}
+                </slot>
+              </dd>
+            </template>
+          </dl>
+        </li>
+      </ul>
+      <!-- Loading bar mirror -->
+      <div
+        v-if="loading && rows.length > 0"
+        class="absolute inset-x-0 top-0 h-0.5 bg-primary-500/40 overflow-hidden"
+      >
+        <div class="h-full w-1/3 bg-primary-500 animate-pulse" />
+      </div>
+    </div>
+
     <slot name="footer" />
   </div>
 </template>
