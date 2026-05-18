@@ -18,6 +18,9 @@ dependencies = [
     "python-multipart>=0.0.18",
     "itsdangerous>=2.2",
     "slowapi>=0.1.9",
+    # Optional AI integration — only Anthropic ships in Phase 1; openai /
+    # google-generativeai land in Phase 2 alongside the concrete providers.
+    "anthropic>=0.40",
 ]
 
 [project.optional-dependencies]
