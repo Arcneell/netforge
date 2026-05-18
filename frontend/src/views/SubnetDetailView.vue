@@ -7,7 +7,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
-import Spinner from '@/components/ui/Spinner.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 import VlanBadge from '@/components/VlanBadge.vue'
 import IpGrid from '@/components/IpGrid.vue'
 import IpEditor from '@/components/editors/IpEditor.vue'
@@ -136,8 +136,27 @@ function statusKey(status: string): StatusKey {
 
 <template>
   <div class="p-6 max-w-7xl mx-auto">
-    <div v-if="loading && !subnet" class="flex items-center justify-center py-12">
-      <Spinner :label="t('common.loading')" />
+    <div v-if="loading && !subnet" aria-busy="true">
+      <div class="mb-3">
+        <Skeleton width="14rem" height="0.75rem" />
+      </div>
+      <div class="mb-6">
+        <Skeleton width="14rem" height="1.75rem" rounded="md" />
+        <div class="mt-2">
+          <Skeleton width="24rem" height="0.875rem" />
+        </div>
+      </div>
+      <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div v-for="i in 4" :key="`sk-meta-${i}`" class="nf-card p-4">
+          <Skeleton width="6rem" height="0.625rem" />
+          <div class="mt-2">
+            <Skeleton width="80%" height="0.875rem" />
+          </div>
+        </div>
+      </section>
+      <div class="nf-card p-6">
+        <Skeleton width="100%" height="14rem" rounded="md" />
+      </div>
     </div>
 
     <template v-else-if="subnet">

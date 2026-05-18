@@ -125,6 +125,12 @@ const columns: DataTableColumn[] = [
       clickable
       @row-click="onRowClick"
     >
+      <template v-if="isAdmin" #empty-action>
+        <Button variant="primary" @click="onNew">
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('subnet.new') }}
+        </Button>
+      </template>
       <template #cell-vlan_id="{ row }">
         <VlanBadge
           v-if="row.vlan_id && vlansById.get(row.vlan_id)"

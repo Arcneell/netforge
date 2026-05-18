@@ -1,7 +1,8 @@
 <script setup lang="ts" generic="T extends { id: number | string }">
 import { useI18n } from 'vue-i18n'
-import { Loader2, Inbox } from 'lucide-vue-next'
+import { Inbox } from 'lucide-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 
 /**
  * Minimal accessible table with explicit column slots and one row-click event.
@@ -29,8 +30,10 @@ withDefaults(
     emptyDescription?: string
     /** Adds a hover style + cursor on rows when truthy. */
     clickable?: boolean
+    /** Skeleton rows rendered during the first load (no rows yet). */
+    skeletonRows?: number
   }>(),
-  { loading: false, clickable: false },
+  { loading: false, clickable: false, skeletonRows: 6 },
 )
 
 defineEmits<{
@@ -67,21 +70,42 @@ function alignClass(a: DataTableColumn['align']): string {
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading && rows.length === 0">
-            <td :colspan="columns.length" class="p-10">
-              <div class="flex items-center justify-center gap-2 text-fg-muted text-sm">
-                <Loader2 class="w-4 h-4 animate-spin" aria-hidden="true" />
-                {{ t('common.loading') }}
-              </div>
-            </td>
-          </tr>
+          <template v-if="loading && rows.length === 0">
+            <tr
+              v-for="i in skeletonRows"
+              :key="`sk-${i}`"
+              class="border-b border-border last:border-0"
+              :aria-busy="true"
+            >
+              <td
+                v-for="col in columns"
+                :key="col.key"
+                :class="[
+                  'px-4 py-3 align-middle',
+                  alignClass(col.align),
+                  col.cellClass ?? '',
+                  col.hideOnSm ? 'hidden md:table-cell' : '',
+                ]"
+              >
+                <Skeleton
+                  :width="col.align === 'right' ? '3rem' : '70%'"
+                  height="0.75rem"
+                  rounded="sm"
+                />
+              </td>
+            </tr>
+          </template>
           <tr v-else-if="rows.length === 0">
             <td :colspan="columns.length">
               <EmptyState
                 :icon="Inbox"
                 :title="emptyTitle ?? t('common.empty.title')"
                 :description="emptyDescription ?? t('common.empty.description')"
-              />
+              >
+                <template v-if="$slots['empty-action']" #action>
+                  <slot name="empty-action" />
+                </template>
+              </EmptyState>
             </td>
           </tr>
           <tr

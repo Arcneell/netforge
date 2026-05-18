@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Network, Tags, Router as RouterIcon, Server, History, ArrowRight } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
-import Spinner from '@/components/ui/Spinner.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 import Badge from '@/components/ui/Badge.vue'
 import { auditApi, devicesApi, subnetsApi, switchesApi, vlansApi } from '@/api'
 import type { AuditLog } from '@/api'
@@ -103,7 +103,8 @@ const actionTone = {
           />
         </div>
         <p class="text-3xl font-semibold tabular-nums text-fg">
-          {{ loading ? '—' : formatNumber(c.value) }}
+          <Skeleton v-if="loading" width="3rem" height="1.75rem" rounded="md" />
+          <template v-else>{{ formatNumber(c.value) }}</template>
         </p>
         <p class="text-xs text-fg-muted mt-0.5">{{ t(c.labelKey) }}</p>
       </RouterLink>
@@ -120,9 +121,14 @@ const actionTone = {
         </RouterLink>
       </div>
       <div class="nf-card">
-        <div v-if="loading" class="p-10 flex justify-center">
-          <Spinner :label="t('common.loading')" />
-        </div>
+        <ul v-if="loading" class="divide-y divide-border" aria-busy="true">
+          <li v-for="i in 5" :key="`sk-recent-${i}`" class="px-4 py-2.5 flex items-center gap-3">
+            <Skeleton width="3.5rem" height="1.25rem" rounded="md" />
+            <Skeleton width="40%" height="0.75rem" />
+            <span class="flex-1" />
+            <Skeleton width="4rem" height="0.75rem" />
+          </li>
+        </ul>
         <ul v-else-if="recent.length === 0" class="p-10 text-center text-sm text-fg-muted">
           {{
             t('dashboard.recent.empty')
