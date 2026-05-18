@@ -21,7 +21,7 @@ import Spinner from '@/components/ui/Spinner.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import TopologyCanvas, { type LayoutName } from '@/components/TopologyCanvas.vue'
 import LinkEditor from '@/components/editors/LinkEditor.vue'
-import { linksApi, roomsApi, sitesApi, switchesApi, topologyApi } from '@/api'
+import { fetchAllPages, linksApi, roomsApi, sitesApi, switchesApi, topologyApi } from '@/api'
 import type { Link, Room, Site, Switch, TopologyEdge, TopologyNode } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
@@ -53,20 +53,22 @@ async function load() {
     // Parallel: graph + switch metadata for the side panel + sites/rooms for filtering.
     // The /api/topology payload alone doesn't include the site_id (only room_id),
     // so we resolve the site via rooms[room_id].site_id.
-    // Backend caps `page_size` at 200 (rejects >200 with 422). For v1 that's
-    // larger than any realistic switch/room inventory; if a single site ever
-    // outgrows 200 we'll add pagination here.
+    // Backend caps page_size at 200 per request — `fetchAllPages` loops until
+    // the whole list is in memory so a site with > 200 switches isn't
+    // silently truncated. Sites are typically small so a single 200-row page
+    // is fine, but using the same helper everywhere keeps the failure mode
+    // consistent (always complete, never partial).
     const [topo, sw, rms, sts] = await Promise.all([
       topologyApi.get(),
-      switchesApi.list({ page_size: 200 }),
-      roomsApi.list({ page_size: 200 }),
-      sitesApi.list({ page_size: 200 }),
+      fetchAllPages((p) => switchesApi.list(p)),
+      fetchAllPages((p) => roomsApi.list(p)),
+      fetchAllPages((p) => sitesApi.list(p)),
     ])
     allNodes.value = topo.nodes
     allEdges.value = topo.edges
-    switchesById.value = new Map(sw.items.map((s) => [s.id, s]))
-    roomsById.value = new Map(rms.items.map((r) => [r.id, r]))
-    sites.value = sts.items
+    switchesById.value = new Map(sw.map((s) => [s.id, s]))
+    roomsById.value = new Map(rms.map((r) => [r.id, r]))
+    sites.value = sts
   } catch (err) {
     // Don't swallow — without a toast the user sees the empty state with no
     // hint that the load failed. console.error keeps a hard trace for devtools.

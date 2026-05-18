@@ -176,6 +176,10 @@ For SVG, we use `cytoscape-svg` (community plugin) — to be evaluated, otherwis
 - 100 switches, ~500 links: Cytoscape handles it easily (< 200 ms layout).
 - Beyond that, consider clustering (group by site) or lazy rendering.
 
+### Pagination
+
+The view loads the switch / room / site lists via `fetchAllPages`, which loops over the standard paginated endpoints until everything is in memory. This means deployments with > 200 switches in a single site are no longer silently truncated (the previous fixed `page_size=200` request was a hard ceiling). Cost is one extra round-trip per 200-row block — invisible up to a few thousand items.
+
 ## v2 evolutions
 
 - Link colors based on saturation (requires SNMP polling).
