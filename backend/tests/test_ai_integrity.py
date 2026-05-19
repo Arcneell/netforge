@@ -41,7 +41,7 @@ def _all_rows(rows: list) -> MagicMock:
 async def test_duplicate_macs_empty_when_no_dups() -> None:
     db = AsyncMock()
     db.execute = AsyncMock(return_value=_all_rows([]))
-    assert await _check_duplicate_macs(db) == []
+    assert await _check_duplicate_macs(db, "en") == []
 
 
 @pytest.mark.asyncio
@@ -60,7 +60,7 @@ async def test_duplicate_macs_flags_each_repeated_value() -> None:
             _scalars([ip3, ip4]),
         ]
     )
-    issues = await _check_duplicate_macs(db)
+    issues = await _check_duplicate_macs(db, "en")
     assert len(issues) == 2
     assert all(i.severity == "warning" for i in issues)
     assert {i.title for i in issues} == {
@@ -76,7 +76,7 @@ async def test_orphan_assigned_ips() -> None:
     db = AsyncMock()
     ip = SimpleNamespace(id=42, address="192.168.0.5")
     db.execute = AsyncMock(return_value=_scalars([ip]))
-    issues = await _check_orphan_assigned_ips(db)
+    issues = await _check_orphan_assigned_ips(db, "en")
     assert len(issues) == 1
     assert issues[0].severity == "info"
     assert issues[0].affected_entities == [
@@ -90,7 +90,7 @@ async def test_subnets_without_gateway_flags_each() -> None:
     s1 = SimpleNamespace(id=1, cidr="10.0.0.0/24")
     s2 = SimpleNamespace(id=2, cidr="172.16.0.0/16")
     db.execute = AsyncMock(return_value=_scalars([s1, s2]))
-    issues = await _check_subnets_without_gateway(db)
+    issues = await _check_subnets_without_gateway(db, "en")
     assert len(issues) == 1  # one card aggregating both
     assert issues[0].severity == "info"
     assert len(issues[0].affected_entities) == 2
@@ -101,7 +101,7 @@ async def test_switches_without_ports() -> None:
     db = AsyncMock()
     sw = SimpleNamespace(id=10, name="SW-EMPTY-01")
     db.execute = AsyncMock(return_value=_all_rows([(sw, 0)]))
-    issues = await _check_switches_without_ports(db)
+    issues = await _check_switches_without_ports(db, "en")
     assert len(issues) == 1
     assert issues[0].severity == "warning"
     assert issues[0].affected_entities == [{"type": "switch", "id": 10, "name": "SW-EMPTY-01"}]
@@ -120,7 +120,7 @@ async def test_vlans_without_subnet() -> None:
             _scalars([v1, v2]),  # all vlans
         ]
     )
-    issues = await _check_vlans_without_subnet(db)
+    issues = await _check_vlans_without_subnet(db, "en")
     assert len(issues) == 1
     assert issues[0].severity == "info"
     assert issues[0].affected_entities[0]["id"] == 2
@@ -142,11 +142,25 @@ async def test_port_label_collisions_groups_by_switch() -> None:
             _scalars([p1, p2]),
         ]
     )
-    issues = await _check_port_label_collisions(db)
+    issues = await _check_port_label_collisions(db, "en")
     assert len(issues) == 1
     assert "SW-CORE-01" in issues[0].title
     # 1 switch chip + 2 port chips
     assert len(issues[0].affected_entities) == 3
+
+
+@pytest.mark.asyncio
+async def test_orphan_assigned_ips_localized_french() -> None:
+    """The FR locale flips title/description to French strings so the UI
+    doesn't show English text when the operator is on the FR locale."""
+    db = AsyncMock()
+    ip = SimpleNamespace(id=1, address="10.0.0.1")
+    db.execute = AsyncMock(return_value=_scalars([ip]))
+    issues = await _check_orphan_assigned_ips(db, "fr")
+    assert len(issues) == 1
+    assert "assignée" in issues[0].title.lower() or "ip" in issues[0].title.lower()
+    # The recommendation must definitely be French.
+    assert "réservée" in issues[0].recommendation or "groupée" in issues[0].recommendation
 
 
 @pytest.mark.asyncio
@@ -175,7 +189,7 @@ async def test_run_all_checks_orders_by_severity() -> None:
             _all_rows([]),  # port label collisions: none
         ]
     )
-    issues = await run_all_checks(db)
+    issues = await run_all_checks(db, accept_language="en")
     severities = [i.severity for i in issues]
     # Warning comes before info.
     assert severities == sorted(severities, key=lambda s: {"critical": 0, "warning": 1, "info": 2}[s])

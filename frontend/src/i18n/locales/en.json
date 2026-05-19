@@ -569,7 +569,7 @@
     "scanDoneToast": "{persisted} new suggestion(s) added out of {raw} returned.",
     "askView": {
       "title": "Ask AI",
-      "subtitle": "Ask a natural-language question about your inventory — the AI answers from the current data.",
+      "subtitle": "Natural-language questions about your inventory.",
       "you": "You",
       "assistant": "Assistant",
       "placeholder": "Ask a question (e.g. how many free ports does SW-CORE-01 have?)",
@@ -587,7 +587,7 @@
     },
     "advisor": {
       "tab": "AI advisor",
-      "subtitle": "The AI scans your inventory for SPOFs, capacity pressure, segmentation gaps and other weak points.",
+      "subtitle": "Infrastructure review: SPOF, capacity, security, segmentation.",
       "refresh": "Re-run analysis",
       "runFirst": "Run analysis",
       "refreshedToast": "{count} insight(s) generated · {latency} ms",
@@ -621,13 +621,13 @@
     },
     "integrity": {
       "tab": "Data integrity",
-      "description": "Deterministic checks against your inventory — no AI call, no cost. Surfaces duplicate MACs, orphan IPs, switches with no ports, and similar data-entry issues.",
+      "description": "Inventory consistency checks.",
       "cleanTitle": "Everything is clean",
-      "cleanDescription": "No integrity issues detected in your inventory."
+      "cleanDescription": "No integrity issues detected."
     },
     "drafts": {
       "title": "Drafted actions",
-      "subtitle": "Describe what you want to do in plain English. The AI prepares a draft action — YOU explicitly apply it. Nothing runs automatically.",
+      "subtitle": "Describe what you want — the AI prepares a draft for you to apply.",
       "composerLabel": "Request",
       "composerPlaceholder": "Create a VLAN 50 named IoT on site PAR…",
       "safetyHint": "Drafts are only prepared — nothing runs without an explicit click.",
@@ -654,7 +654,7 @@
     },
     "schedules": {
       "title": "Scheduled runs",
-      "description": "Periodically run the advisor or the link-suggestion scan. For the advisor, optionally configure a webhook (Slack, Mattermost, Teams, …) that fires when a brand-new finding above the threshold appears.",
+      "description": "Periodic advisor / link scan, with optional webhook on new findings.",
       "kinds": {
         "advisor": "Infra advisor",
         "suggestLinks": "Link suggestions"
@@ -663,7 +663,7 @@
       "fieldInterval": "Interval",
       "fieldThreshold": "Webhook threshold",
       "fieldWebhook": "Webhook URL",
-      "webhookHint": "Optional. POSTed with a JSON envelope {source, event, run_id, findings[]} whenever a new threshold-passing finding appears.",
+      "webhookHint": "Optional — Slack / Mattermost / Teams supported.",
       "intervalMinutes": "{n} min",
       "intervalHours": "{n} h",
       "intervalDays": "{n} d",
@@ -674,7 +674,7 @@
     "csvMapping": {
       "openButton": "Mapping helper",
       "title": "CSV mapping assistant",
-      "description": "Paste the first lines of your CSV (header + 1–3 sample rows). The AI suggests which canonical NetForge field each column maps to. Rename your columns accordingly before running the import.",
+      "description": "Paste the first lines of your CSV — the AI proposes a column mapping.",
       "entity": "Entity type",
       "delimiter": "Delimiter",
       "pasteLabel": "CSV lines",
@@ -691,11 +691,11 @@
       "unmapped": "unmapped",
       "missingFields": "Required fields missing: {fields}",
       "applyButton": "Use this mapping for import",
-      "pendingNotice": "An AI mapping is queued — it will be applied automatically on the next import (CSV headers rewritten server-side)."
+      "pendingNotice": "AI mapping queued — applied on the next import."
     },
     "settings": {
       "title": "AI assistant",
-      "description": "Three providers supported: Anthropic Claude, OpenAI, Google Gemini. Configuration is environment-driven — edit your .env and restart the backend to switch.",
+      "description": "Three providers: Anthropic, OpenAI, Gemini. Configured via the .env file.",
       "enabled": "Enabled",
       "disabled": "Disabled",
       "provider": "Provider",
@@ -710,7 +710,7 @@
     },
     "usage": {
       "title": "AI usage",
-      "description": "Overview of AI calls over the selected window — count, tokens, estimated cost and average latency.",
+      "description": "Calls, tokens, estimated cost and latency over the window.",
       "windowLabel": "Window",
       "daysOption": "{n} d",
       "emptyTitle": "No AI calls in this window",
