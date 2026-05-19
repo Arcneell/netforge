@@ -117,19 +117,25 @@ async def run_suggest_links(
     *,
     user_id: int | None,
     confidence_threshold: float = 0.5,
+    language_instruction: str | None = None,
 ) -> ScanReport:
-    """Drive one suggest-links scan end-to-end."""
+    """Drive one suggest-links scan end-to-end.
+
+    `language_instruction` lets the route forward the user's UI locale so
+    the `reasoning` text in each suggestion is written in that language.
+    """
     settings = get_settings()
     provider = get_provider()
 
     context = await build_topology_context(db)
     payload = json.dumps(context, separators=(",", ":"), default=str)
+    system = SYSTEM_PROMPT + (f"\n\n{language_instruction}" if language_instruction else "")
 
     t0 = time.monotonic()
     error: str | None = None
     try:
         completion = await provider.call(
-            system=SYSTEM_PROMPT,
+            system=system,
             prompt=f"Network snapshot:\n```json\n{payload}\n```",
             tools=[SUGGEST_TOOL],
             max_tokens=settings.ai_max_output_tokens,

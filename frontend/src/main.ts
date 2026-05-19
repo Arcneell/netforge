@@ -4,6 +4,7 @@ import App from '@/App.vue'
 import { router } from '@/router'
 import { i18n, setLocale } from '@/i18n'
 import { registerApiHooks } from '@/api'
+import { registerLocaleProvider } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 
@@ -59,5 +60,10 @@ registerApiHooks({
 
 // Apply the stored locale to <html lang> on boot.
 setLocale(i18n.global.locale.value)
+
+// Feed the api/client interceptor the current i18n locale so every outgoing
+// request carries Accept-Language. Reads the live ref each call — picks up
+// language switches without needing a re-register.
+registerLocaleProvider(() => i18n.global.locale.value)
 
 app.mount('#app')
