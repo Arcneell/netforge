@@ -23,6 +23,7 @@
     "error": "Erreur",
     "success": "Succès",
     "back": "Retour",
+    "refresh": "Rafraîchir",
     "comingSoon": "Bientôt disponible",
     "all": "Tous",
     "none": "Aucun",
@@ -583,6 +584,7 @@
       "newChat": "Nouvelle conversation"
     },
     "advisor": {
+      "tab": "Conseiller IA",
       "subtitle": "L'IA scanne votre inventaire pour repérer SPOFs, problèmes de capacité, failles de segmentation et autres points faibles.",
       "refresh": "Relancer l'analyse",
       "runFirst": "Lancer l'analyse",
@@ -613,6 +615,12 @@
         "redundancy": "Redondance",
         "other": "Autre"
       }
+    },
+    "integrity": {
+      "tab": "Cohérence des données",
+      "description": "Vérifications déterministes sur votre inventaire — pas d'appel IA, pas de coût. Détecte MAC dupliquées, IPs orphelines, switches sans port, etc.",
+      "cleanTitle": "Tout est en ordre",
+      "cleanDescription": "Aucune incohérence détectée dans votre inventaire."
     },
     "settings": {
       "title": "Assistant IA",

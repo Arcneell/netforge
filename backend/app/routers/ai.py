@@ -30,6 +30,8 @@ from app.schemas.ai import (
     AITestResult,
     InsightRead,
     InsightsResponse,
+    IntegrityIssueRead,
+    IntegrityReportRead,
     LinkSuggestionRead,
     QueryAnswerRead,
     QueryRequest,
@@ -41,6 +43,7 @@ from app.schemas.ai import (
 from app.schemas.link import LinkRead
 from app.services.ai import AIProviderError, AIUnsupportedFeatureError, get_provider
 from app.services.ai.advisor import list_latest_insights, run_advisor
+from app.services.ai.integrity import run_all_checks
 from app.services.ai.locale import language_instruction as _lang_for
 from app.services.ai.nl_query import run_query
 from app.services.ai.rate_limit import AIRateLimitExceeded, check_and_consume
@@ -318,6 +321,35 @@ async def ask_ai(
         ) from exc
 
     return QueryAnswerRead(**result.__dict__)
+
+
+# --- Integrity checks --------------------------------------------------------
+
+
+@router.get(
+    "/integrity-checks",
+    response_model=IntegrityReportRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def get_integrity_checks(db: AsyncSession = Depends(get_db)) -> IntegrityReportRead:
+    """Run the deterministic integrity checks (no LLM round-trip).
+
+    Always returns a 200 — even when AI is disabled this endpoint stays up
+    because it does not call any external provider."""
+    issues = await run_all_checks(db)
+    return IntegrityReportRead(
+        issues=[
+            IntegrityIssueRead(
+                severity=i.severity,
+                category=i.category,
+                title=i.title,
+                description=i.description,
+                recommendation=i.recommendation,
+                affected_entities=i.affected_entities,
+            )
+            for i in issues
+        ]
+    )
 
 
 # --- AI Usage dashboard ------------------------------------------------------
