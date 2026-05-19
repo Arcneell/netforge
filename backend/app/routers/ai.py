@@ -13,8 +13,12 @@ All write paths are admin-only and rate-limited.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger("netforge.ai")
 
 from app.auth.dependencies import get_current_user, require_role
 from app.config import get_settings
@@ -137,6 +141,12 @@ async def scan_links(
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - last-line defence
+        logger.exception("suggest-links scan crashed")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=f"{type(exc).__name__}: {exc}",
+        ) from exc
 
     return ScanReportRead(**report.__dict__)
 
@@ -238,6 +248,12 @@ async def refresh_insights(
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - last-line defence
+        logger.exception("advisor run crashed")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=f"{type(exc).__name__}: {exc}",
+        ) from exc
 
     return AdvisorReportRead(**report.__dict__)
 
@@ -271,5 +287,11 @@ async def ask_ai(
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - last-line defence
+        logger.exception("nl-query crashed")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=f"{type(exc).__name__}: {exc}",
+        ) from exc
 
     return QueryAnswerRead(**result.__dict__)
