@@ -212,22 +212,69 @@ class GeminiProvider:
         temperature: float = 0.2,
         cache_prefix: str = "",
     ) -> AsyncIterator[StreamChunk]:
-        """Fallback streaming for Gemini.
+        """Real streaming for Gemini via `aio.models.generate_content_stream`.
 
-        `google-genai` exposes `aio.models.generate_content_stream(...)` but
-        its semantics for usage aggregation are still in flux at the time
-        of writing — keep the fallback path simple: do a non-streaming call
-        and yield the whole text as a single delta. The UX is the same as
-        the non-streaming endpoint, only the protocol envelope changes."""
-        completion = await self.call(
-            system=system,
-            prompt=prompt,
-            tools=None,
-            max_tokens=max_tokens,
+        Each yielded chunk from the SDK carries either a text fragment, a
+        `usage_metadata` block (cumulative — only the last chunk has the
+        final totals), or both. We forward text fragments as `StreamDelta`
+        and reserve the final `StreamDone` for the loop's tail so the
+        usage totals reflect the whole call. The `asyncio.sleep(0)` after
+        each text delta is the same cooperative-yield trick used in the
+        Anthropic provider: lets the StreamingResponse writer drain the
+        chunk to the socket before we await the next one.
+
+        Tools aren't passed in the streaming path — the only call site
+        (`/api/ai/query/stream`) renders Markdown progressively, which is
+        incompatible with the all-or-nothing tool_use validation we do on
+        the non-streaming endpoint.
+        """
+        import asyncio
+
+        prompt = (cache_prefix + ("\n\n" if cache_prefix and prompt else "") + prompt) or prompt
+        client, gtypes = self._get_client()
+        config = gtypes.GenerateContentConfig(
+            system_instruction=system,
+            max_output_tokens=max_tokens,
             temperature=temperature,
-            cache_prefix=cache_prefix,
         )
-        text = completion.text or ""
-        if text:
-            yield StreamDelta(text=text)
-        yield StreamDone(text=text, usage=completion.usage)
+
+        full_text: list[str] = []
+        usage = TokenUsage()
+        try:
+            stream = await client.aio.models.generate_content_stream(
+                model=self.model,
+                contents=prompt,
+                config=config,
+            )
+            async for chunk in stream:
+                # `chunk.text` is the convenience accessor that returns the
+                # concatenation of every text part in this chunk's first
+                # candidate. Falls back to walking parts if absent.
+                text = getattr(chunk, "text", None)
+                if text is None:
+                    parts_text: list[str] = []
+                    for candidate in getattr(chunk, "candidates", []) or []:
+                        content = getattr(candidate, "content", None)
+                        if not content:
+                            continue
+                        for part in getattr(content, "parts", []) or []:
+                            piece = getattr(part, "text", None)
+                            if piece:
+                                parts_text.append(piece)
+                    text = "".join(parts_text)
+                if text:
+                    full_text.append(text)
+                    yield StreamDelta(text=text)
+                    await asyncio.sleep(0)
+                # Usage metadata is cumulative; the last non-None reading
+                # wins. Reading it on every chunk keeps the code simple.
+                meta = getattr(chunk, "usage_metadata", None)
+                if meta is not None:
+                    usage = TokenUsage(
+                        prompt_tokens=getattr(meta, "prompt_token_count", 0) or 0,
+                        completion_tokens=getattr(meta, "candidates_token_count", 0) or 0,
+                    )
+        except Exception as exc:
+            raise AIProviderError(f"gemini stream failed: {exc}") from exc
+
+        yield StreamDone(text="".join(full_text), usage=usage)
