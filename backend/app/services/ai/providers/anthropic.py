@@ -9,11 +9,15 @@ re-run of "suggest links" on the same infra extremely cheap.
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from app.services.ai.types import (
     AICompletion,
     AIProviderError,
+    StreamChunk,
+    StreamDelta,
+    StreamDone,
     TokenUsage,
     ToolCall,
     ToolDef,
@@ -142,3 +146,63 @@ class AnthropicProvider:
             usage=usage,
             raw={"id": resp.id, "stop_reason": resp.stop_reason, "latency_ms": elapsed_ms},
         )
+
+    async def stream_call(
+        self,
+        *,
+        system: str,
+        prompt: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.2,
+        cache_prefix: str = "",
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream text deltas using `client.messages.stream()`.
+
+        We don't expose tool calls in the streaming path — the only call
+        site (`/ai/query/stream`) renders Markdown progressively, which
+        is incompatible with the all-or-nothing tool_use validation we
+        do on the non-streaming endpoint.
+        """
+        client = self._get_client()
+
+        # Same cache_prefix splitting logic as `call()` — see that method for
+        # the rationale. Keep behaviour aligned so a switch from non-streaming
+        # to streaming doesn't suddenly stop hitting the cache.
+        if cache_prefix and len(cache_prefix) >= 4096:
+            user_block: list[dict[str, Any]] | str = [
+                {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+            ]
+            if prompt:
+                user_block.append({"type": "text", "text": prompt})
+        else:
+            user_block = (
+                cache_prefix + ("\n\n" if cache_prefix and prompt else "") + prompt
+            ) or prompt
+
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "system": [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}},
+            ],
+            "messages": [{"role": "user", "content": user_block}],
+        }
+
+        # `messages.stream(...)` returns an async context manager exposing
+        # `.text_stream` (async iterator of text deltas) and a final
+        # `.get_final_message()` for usage.
+        try:
+            async with client.messages.stream(**kwargs) as stream:
+                full_text: list[str] = []
+                async for delta in stream.text_stream:
+                    full_text.append(delta)
+                    yield StreamDelta(text=delta)
+                final = await stream.get_final_message()
+                usage = TokenUsage(
+                    prompt_tokens=getattr(final.usage, "input_tokens", 0) or 0,
+                    completion_tokens=getattr(final.usage, "output_tokens", 0) or 0,
+                )
+                yield StreamDone(text="".join(full_text), usage=usage)
+        except Exception as exc:
+            raise AIProviderError(f"anthropic stream failed: {exc}") from exc

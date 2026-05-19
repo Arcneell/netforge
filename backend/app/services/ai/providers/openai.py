@@ -15,11 +15,15 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from app.services.ai.types import (
     AICompletion,
     AIProviderError,
+    StreamChunk,
+    StreamDelta,
+    StreamDone,
     TokenUsage,
     ToolCall,
     ToolDef,
@@ -129,3 +133,57 @@ class OpenAIProvider:
             usage=usage,
             raw={"id": resp.id, "finish_reason": choice.finish_reason, "latency_ms": elapsed_ms},
         )
+
+    async def stream_call(
+        self,
+        *,
+        system: str,
+        prompt: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.2,
+        cache_prefix: str = "",
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream text deltas using `chat.completions.create(stream=True)`.
+
+        Same cache_prefix join as `call()` — OpenAI auto-caches identical
+        prefixes regardless of streaming.
+        """
+        client = self._get_client()
+        user_content = (
+            cache_prefix + ("\n\n" if cache_prefix and prompt else "") + prompt
+        ) or prompt
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_content},
+            ],
+            "stream": True,
+            # Ask the API to return usage on the final chunk. Required since
+            # mid-2024 (`stream_options.include_usage`); otherwise the
+            # streaming response carries no token totals.
+            "stream_options": {"include_usage": True},
+        }
+        try:
+            stream = await client.chat.completions.create(**kwargs)
+            full_text: list[str] = []
+            usage = TokenUsage()
+            async for event in stream:
+                if event.choices:
+                    delta = event.choices[0].delta
+                    chunk = getattr(delta, "content", None)
+                    if chunk:
+                        full_text.append(chunk)
+                        yield StreamDelta(text=chunk)
+                # Usage is attached to the final chunk (which may carry an
+                # empty `choices` list).
+                if getattr(event, "usage", None):
+                    usage = TokenUsage(
+                        prompt_tokens=getattr(event.usage, "prompt_tokens", 0) or 0,
+                        completion_tokens=getattr(event.usage, "completion_tokens", 0) or 0,
+                    )
+            yield StreamDone(text="".join(full_text), usage=usage)
+        except Exception as exc:
+            raise AIProviderError(f"openai stream failed: {exc}") from exc
