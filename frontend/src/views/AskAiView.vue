@@ -87,7 +87,12 @@ function onEnter(ev: KeyboardEvent) {
   }
 }
 
-const suggestions = ['askView.example1', 'askView.example2', 'askView.example3', 'askView.example4']
+const suggestions = [
+  'ai.askView.example1',
+  'ai.askView.example2',
+  'ai.askView.example3',
+  'ai.askView.example4',
+]
 
 function useSuggestion(key: string) {
   input.value = t(key)
@@ -144,7 +149,7 @@ onMounted(loadStatus)
 
 <template>
   <div class="p-4 sm:p-8 max-w-4xl mx-auto h-full flex flex-col">
-    <PageHeader :title="t('askView.title')" :subtitle="t('askView.subtitle')" />
+    <PageHeader :title="t('ai.askView.title')" :subtitle="t('ai.askView.subtitle')" />
 
     <!-- Transcript scroll -->
     <div ref="transcriptRef" class="flex-1 min-h-0 overflow-y-auto space-y-4 pb-6">
@@ -152,8 +157,8 @@ onMounted(loadStatus)
       <EmptyState
         v-if="turns.length === 0"
         :icon="Sparkles"
-        :title="t('askView.emptyTitle')"
-        :description="t('askView.emptyDescription')"
+        :title="t('ai.askView.emptyTitle')"
+        :description="t('ai.askView.emptyDescription')"
       >
         <template #action>
           <div class="flex flex-wrap justify-center gap-2 max-w-2xl mt-2">
@@ -189,7 +194,7 @@ onMounted(loadStatus)
         </span>
         <div class="min-w-0 flex-1">
           <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1">
-            {{ turn.role === 'assistant' ? t('askView.assistant') : t('askView.you') }}
+            {{ turn.role === 'assistant' ? t('ai.askView.assistant') : t('ai.askView.you') }}
           </p>
           <div
             class="rounded-lg px-4 py-3 text-sm leading-relaxed"
@@ -238,7 +243,7 @@ onMounted(loadStatus)
               v-if="turn.latency_ms !== undefined"
               class="text-[11px] text-fg-muted mt-2 tabular-nums"
             >
-              {{ t('askView.latency', { ms: turn.latency_ms }) }}
+              {{ t('ai.askView.latency', { ms: turn.latency_ms }) }}
             </p>
           </div>
         </div>
@@ -254,7 +259,7 @@ onMounted(loadStatus)
         </span>
         <div class="min-w-0 flex-1">
           <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1">
-            {{ t('askView.assistant') }}
+            {{ t('ai.askView.assistant') }}
           </p>
           <div class="rounded-lg px-4 py-3 bg-surface border border-border/70 inline-flex gap-1.5">
             <span class="w-2 h-2 bg-fg-muted rounded-full animate-bounce" />
@@ -277,9 +282,9 @@ onMounted(loadStatus)
         v-model="input"
         rows="2"
         class="flex-1 resize-none bg-transparent text-sm px-2 py-1.5 focus:outline-none placeholder:text-fg-muted"
-        :placeholder="t('askView.placeholder')"
+        :placeholder="t('ai.askView.placeholder')"
         :disabled="!status?.enabled || pending"
-        :aria-label="t('askView.placeholder')"
+        :aria-label="t('ai.askView.placeholder')"
         @keydown="onEnter"
       />
       <Button
@@ -290,12 +295,12 @@ onMounted(loadStatus)
         :disabled="!input.trim() || !status?.enabled"
       >
         <Send class="w-4 h-4" aria-hidden="true" />
-        {{ t('askView.send') }}
+        {{ t('ai.askView.send') }}
       </Button>
     </form>
 
     <p v-if="status && !status.enabled" class="text-xs text-fg-muted mt-2 text-center">
-      {{ t('askView.disabledHint') }}
+      {{ t('ai.askView.disabledHint') }}
     </p>
   </div>
 </template>
