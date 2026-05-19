@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { CheckCircle2, Sparkles, XCircle, Zap } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import AiUsageSection from '@/components/settings/AiUsageSection.vue'
 import { aiApi, type AIStatus, type AITestResult } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
@@ -146,6 +147,9 @@ const providerLabel = computed(() => {
         </div>
       </div>
     </div>
+
+    <!-- Usage dashboard — historical view of AI calls + estimated cost -->
+    <AiUsageSection />
 
     <!-- How-to-change note -->
     <div class="nf-card p-5 text-sm text-fg-muted leading-relaxed">

@@ -113,6 +113,32 @@ export interface QueryAnswer {
   completion_tokens: number
 }
 
+// --- AI Usage dashboard ----------------------------------------------------
+
+export interface UsageTotal {
+  calls: number
+  prompt_tokens: number
+  completion_tokens: number
+  cost_usd: number
+  success: number
+  failure: number
+  avg_latency_ms: number
+}
+
+export interface UsageBucket {
+  key: string
+  totals: UsageTotal
+}
+
+export interface UsageReport {
+  window_days: number
+  started_at: string
+  total: UsageTotal
+  by_day: UsageBucket[]
+  by_kind: UsageBucket[]
+  by_provider: UsageBucket[]
+}
+
 // LLM calls routinely take 20–60 s on a real inventory snapshot; the default
 // axios 20 s timeout was aborting valid responses mid-flight ("Impossible de
 // joindre le serveur"). Bump the AI-specific endpoints to 120 s — generous
@@ -159,6 +185,14 @@ export const aiApi = {
       url: '/ai/query',
       data: { question },
       timeout: AI_TIMEOUT_MS,
+    })
+  },
+  /** Aggregate AI usage over `days` days (1–365, default 30 server-side). */
+  usage(days?: number): Promise<UsageReport> {
+    return request<UsageReport>({
+      method: 'GET',
+      url: '/ai/usage',
+      params: days !== undefined ? { days } : undefined,
     })
   },
 }

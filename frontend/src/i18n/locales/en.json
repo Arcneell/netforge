@@ -627,6 +627,30 @@
       "testKo": "Connection failed.",
       "howToChange": "Switch provider",
       "envHint": "Update your .env file then restart the backend. Only the key matching AI_PROVIDER is required."
+    },
+    "usage": {
+      "title": "AI usage",
+      "description": "Overview of AI calls over the selected window — count, tokens, estimated cost and average latency.",
+      "windowLabel": "Window",
+      "daysOption": "{n} d",
+      "emptyTitle": "No AI calls in this window",
+      "emptyDescription": "Run the advisor or ask the AI a question to start populating this dashboard.",
+      "calls": "Calls",
+      "cost": "Cost",
+      "tokens": "Tokens",
+      "latency": "Avg. latency",
+      "successFailure": "{ok} ok · {ko} failed",
+      "costHint": "Estimate (list prices)",
+      "latencyHint": "LLM round-trip",
+      "peakDay": "Peak day: {n} calls",
+      "byKind": "By feature",
+      "byProvider": "By provider",
+      "disclaimer": "Cost derived from 2026-05 public list rates (Anthropic, OpenAI, Google). Real billing may differ (cache, batch, region).",
+      "kinds": {
+        "suggestLinks": "Link suggestions",
+        "advisor": "Infra advisor",
+        "nlQuery": "Ask the AI"
+      }
     }
   }
 }

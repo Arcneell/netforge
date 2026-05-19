@@ -147,3 +147,38 @@ class QueryAnswerRead(BaseModel):
     latency_ms: int
     prompt_tokens: int
     completion_tokens: int
+
+
+# --- AI Usage dashboard ------------------------------------------------------
+
+
+class UsageTotalRead(BaseModel):
+    """Aggregate counters for one bucket (or the whole window)."""
+
+    calls: int
+    prompt_tokens: int
+    completion_tokens: int
+    cost_usd: float
+    success: int
+    failure: int
+    avg_latency_ms: int
+
+
+class UsageBucketRead(BaseModel):
+    """Generic dimension bucket. `key` is "YYYY-MM-DD" for day, the enum value
+    for kind, the provider name otherwise."""
+
+    key: str
+    totals: UsageTotalRead
+
+
+class UsageReportRead(BaseModel):
+    """Response of GET /api/ai/usage. Empty `by_*` lists when the window has
+    no calls — the UI uses that to render the "no usage yet" state."""
+
+    window_days: int
+    started_at: datetime
+    total: UsageTotalRead
+    by_day: list[UsageBucketRead]
+    by_kind: list[UsageBucketRead]
+    by_provider: list[UsageBucketRead]
