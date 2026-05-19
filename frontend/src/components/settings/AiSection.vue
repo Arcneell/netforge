@@ -152,8 +152,9 @@ const providerLabel = computed(() => {
     <!-- Usage dashboard — historical view of AI calls + estimated cost -->
     <AiUsageSection />
 
-    <!-- Scheduled runs — periodic advisor / suggest-links + webhook notification -->
-    <AiSchedulesSection />
+    <!-- Scheduled runs — periodic advisor / suggest-links + webhook notification.
+         Hidden when the scheduler is disabled at the env level. -->
+    <AiSchedulesSection v-if="status?.scheduler_enabled !== false" />
 
     <!-- How-to-change note -->
     <div class="nf-card p-5 text-sm text-fg-muted leading-relaxed">

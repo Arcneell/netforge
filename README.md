@@ -25,6 +25,7 @@ Most network documentation lives in Excel files, sticky notes, and the memory of
 - **Switches, ports, VLANs** — auto-generated ports, access / trunk / hybrid modes, native + tagged VLANs, connected-device tracking.
 - **Interactive topology** — Cytoscape.js graph with drag, zoom, auto-layout, PNG export.
 - **Global search (Ctrl/Cmd K), CSV import / export, full audit log, OIDC SSO** (Entra ID, Keycloak, Google Workspace…) or GitHub OAuth.
+- **AI (optional, off by default)** — provider-agnostic (Anthropic, OpenAI, Gemini): infra advisor with SPOF / capacity / security findings, link suggestions, multi-turn Q&A on the live inventory, deterministic integrity checks, CSV mapping assistant, scheduled runs with Slack/Mattermost webhook, NL-to-action drafts (explicit-approval workflow), AI Usage dashboard with USD cost estimate, PDF export.
 - **Per-IP write rate limit, strict CSP, focus-trapped modals** — hardening up front, not as an afterthought.
 - **100% self-hosted** — everything runs under Docker Compose.
 
