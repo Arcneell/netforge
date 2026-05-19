@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("netforge.ai")
@@ -55,6 +55,8 @@ from app.services.ai.csv_mapping import list_canonical_fields, run_mapping_sugge
 from app.services.ai.integrity import run_all_checks
 from app.services.ai.locale import language_instruction as _lang_for
 from app.services.ai.nl_query import run_query
+from app.services.ai.pdf_export import build_filename as _pdf_filename
+from app.services.ai.pdf_export import render_advisor_report
 from app.services.ai.rate_limit import AIRateLimitExceeded, check_and_consume
 from app.services.ai.suggest_links import (
     accept_suggestion,
@@ -648,3 +650,44 @@ async def reject_draft_route(
     except ValueError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return ActionDraftRead.model_validate(draft)
+
+
+# --- PDF export ------------------------------------------------------------
+
+
+@router.get(
+    "/insights/export.pdf",
+    response_class=Response,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def export_insights_pdf(
+    db: AsyncSession = Depends(get_db),
+    accept_language: str | None = Header(default=None),
+) -> Response:
+    """Render the latest advisor report as a PDF.
+
+    Returns a 404 when no advisor run has ever succeeded (matches the empty
+    state the UI already handles). The PDF is rendered in the operator's UI
+    language — FR/EN, falls back to EN.
+    """
+    run_id, run_created_at, items = await list_latest_insights(db)
+    if run_id is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, detail="no advisor run has succeeded yet"
+        )
+    # Re-use the parsing logic the locale shim already implements.
+    from app.services.ai.locale import _parse_primary_tag
+
+    locale = _parse_primary_tag(accept_language)
+    pdf_bytes = render_advisor_report(
+        run_created_at=run_created_at,
+        insights=items,
+        locale=locale,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{_pdf_filename(run_created_at)}"',
+        },
+    )

@@ -596,6 +596,7 @@
       "cleanDescription": "L'IA n'a rien remonté lors de la dernière analyse. Relancez-la régulièrement pour rester à jour.",
       "recommendation": "Recommandation",
       "total": "Total",
+      "exportPdf": "Exporter en PDF",
       "runAge": "Rapport généré {age}",
       "ageJustNow": "à l'instant",
       "ageMinutes": "il y a {n} min",

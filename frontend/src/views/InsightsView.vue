@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import {
   AlertOctagon,
   AlertTriangle,
+  Download,
   Info,
   Lightbulb,
   Network,
@@ -61,6 +62,15 @@ async function loadIntegrity() {
   } finally {
     integrityLoading.value = false
   }
+}
+
+/**
+ * Open the rendered PDF in a new tab. The backend always sends back an
+ * `attachment` Content-Disposition, so the browser will offer "save" — but
+ * users routinely Cmd-Click the action and expect a preview tab.
+ */
+function exportPdf() {
+  window.open('/api/ai/insights/export.pdf', '_blank', 'noopener')
 }
 
 function selectTab(t: 'advisor' | 'integrity') {
@@ -215,6 +225,15 @@ function entityLabel(e: InsightEntityRef): string {
   <div class="p-4 sm:p-8 max-w-7xl mx-auto">
     <PageHeader :title="t('nav.insights')" :subtitle="t('ai.advisor.subtitle')">
       <template #actions>
+        <Button
+          v-if="tab === 'advisor' && runId !== null"
+          variant="ghost"
+          size="sm"
+          @click="exportPdf"
+        >
+          <Download class="w-4 h-4" aria-hidden="true" />
+          {{ t('ai.advisor.exportPdf') }}
+        </Button>
         <Button
           v-if="tab === 'advisor' && status?.enabled"
           variant="primary"
