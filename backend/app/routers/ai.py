@@ -770,6 +770,17 @@ async def ask_ai_stream(
         ) from exc
 
     async def _stream():
+        # SSE preamble — a no-op comment frame (`: ...\n\n`) sent before any
+        # real event. Forces the HTTP layer to flush response headers and the
+        # 2-KB-or-so of headroom that some proxies (notably nginx with
+        # `proxy_buffering` left on, and some Node http-proxy stacks)
+        # accumulate before delivering the first byte to the client. Without
+        # it, very small first deltas can sit in the pipeline until the next
+        # one piles on top.
+        yield ": ok\n\n"
+
+        import asyncio as _asyncio
+
         try:
             async for event_name, data in run_query_streaming(
                 db,
@@ -781,6 +792,11 @@ async def ask_ai_stream(
                 # SSE wire format: `event:` line is optional, `data:` line
                 # carries the JSON body, blank line terminates the frame.
                 yield f"event: {event_name}\ndata: {_json.dumps(data)}\n\n"
+                # Cooperative yield: lets the StreamingResponse writer
+                # actually drain the chunk to the socket before we wait on
+                # the next provider delta. Cheap insurance against the event
+                # loop holding multiple chunks in one tick.
+                await _asyncio.sleep(0)
         except Exception as exc:
             logger.exception("nl-query stream crashed")
             yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
