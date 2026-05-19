@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
+  ClipboardList,
   LayoutDashboard,
   Lightbulb,
   MessageCircle,
@@ -63,6 +64,7 @@ const sections: NavSection[] = [
     items: [
       { to: '/insights', icon: Lightbulb, labelKey: 'nav.insights' },
       { to: '/ask', icon: MessageCircle, labelKey: 'nav.ask' },
+      { to: '/drafts', icon: ClipboardList, labelKey: 'nav.drafts' },
       { to: '/import', icon: Upload, labelKey: 'nav.import' },
       { to: '/audit', icon: History, labelKey: 'nav.audit' },
       { to: '/settings', icon: Settings, labelKey: 'nav.settings' },

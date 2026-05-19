@@ -99,6 +99,12 @@ const routes: RouteRecordRaw[] = [
         meta: { minRole: 'admin', titleKey: 'nav.ask' },
       },
       {
+        path: 'drafts',
+        name: 'drafts',
+        component: () => import('@/views/DraftsView.vue'),
+        meta: { minRole: 'admin', titleKey: 'nav.drafts' },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/SettingsView.vue'),

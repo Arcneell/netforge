@@ -57,6 +57,8 @@ export {
   type InsightsResponse,
   type LinkSuggestion,
   type LinkSuggestionStatus,
+  type ActionDraft,
+  type ActionDraftStatus,
   type AISchedule,
   type AIScheduleKind,
   type AIScheduleUpsert,

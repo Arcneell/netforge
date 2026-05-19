@@ -1,0 +1,181 @@
+"""Tests for the NL-to-action draft / apply pipeline."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from app.services.ai import actions as svc
+
+# --- Pure payload validators -----------------------------------------------
+
+
+def test_validate_create_site_requires_code_and_name() -> None:
+    assert isinstance(svc._validate_payload("create_site", {"name": "Paris"}), str)
+    assert isinstance(svc._validate_payload("create_site", {"code": "PAR"}), str)
+
+
+def test_validate_create_site_uppercases_code() -> None:
+    out = svc._validate_payload("create_site", {"code": "par", "name": "Paris", "address": " "})
+    assert isinstance(out, dict)
+    assert out["code"] == "PAR"
+    # Blank address coerces to None.
+    assert out["address"] is None
+
+
+def test_validate_create_room_uppercases_site_code() -> None:
+    out = svc._validate_payload(
+        "create_room", {"site_code": "par", "code": "R-101", "description": "DC"}
+    )
+    assert out["site_code"] == "PAR"
+
+
+def test_validate_create_vlan_bounds() -> None:
+    assert isinstance(svc._validate_payload("create_vlan", {"vlan_id": 0, "name": "x"}), str)
+    assert isinstance(svc._validate_payload("create_vlan", {"vlan_id": 5000, "name": "x"}), str)
+    ok = svc._validate_payload("create_vlan", {"vlan_id": 50, "name": "IoT"})
+    assert ok == {"vlan_id": 50, "name": "IoT", "description": None, "color": None}
+
+
+def test_validate_create_subnet_minimum() -> None:
+    """Only cidr + site_code are mandatory; gateway/vlan_id stay optional."""
+    out = svc._validate_payload(
+        "create_subnet",
+        {"cidr": "10.0.0.0/24", "site_code": "par", "vlan_id": "50"},
+    )
+    assert isinstance(out, dict)
+    assert out == {"cidr": "10.0.0.0/24", "site_code": "PAR", "vlan_id": 50}
+
+
+def test_validate_unknown_intent() -> None:
+    assert isinstance(svc._validate_payload("nuke_everything", {}), str)
+
+
+# --- Appliers ---------------------------------------------------------------
+
+
+def _scalar_result(value) -> MagicMock:
+    r = MagicMock()
+    r.scalar_one_or_none = MagicMock(return_value=value)
+    return r
+
+
+def _mock_db(scalar_results: list) -> AsyncMock:
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_scalar_result(v) for v in scalar_results])
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    return db
+
+
+@pytest.mark.asyncio
+async def test_apply_create_site_rejects_duplicate_code() -> None:
+    db = _mock_db([SimpleNamespace(id=1, code="PAR")])  # already exists
+    with pytest.raises(ValueError):
+        await svc._apply_create_site(db, {"code": "PAR", "name": "Paris", "address": None})
+
+
+@pytest.mark.asyncio
+async def test_apply_create_room_requires_existing_site() -> None:
+    db = _mock_db([None])  # site lookup empty
+    with pytest.raises(ValueError):
+        await svc._apply_create_room(
+            db, {"site_code": "ZZ", "code": "R-1", "description": None}
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_create_vlan_rejects_duplicate_id() -> None:
+    db = _mock_db([SimpleNamespace(id=1, vlan_id=50)])
+    with pytest.raises(ValueError):
+        await svc._apply_create_vlan(
+            db, {"vlan_id": 50, "name": "IoT", "description": None, "color": None}
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_create_subnet_requires_existing_site_and_vlan() -> None:
+    # Site lookup hits nothing.
+    db = _mock_db([None])
+    with pytest.raises(ValueError):
+        await svc._apply_create_subnet(
+            db, {"cidr": "10.0.0.0/24", "site_code": "ZZ"}
+        )
+
+    # Site OK but vlan_id is unknown.
+    site = SimpleNamespace(id=1)
+    db = _mock_db([site, None])
+    with pytest.raises(ValueError):
+        await svc._apply_create_subnet(
+            db, {"cidr": "10.0.0.0/24", "site_code": "PAR", "vlan_id": 999}
+        )
+
+
+# --- Apply / reject lifecycle ----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_draft_marks_failed_on_inner_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the per-intent applier raises, the draft must transition to
+    `failed` with the error message captured."""
+    draft = SimpleNamespace(
+        id=1,
+        intent="create_vlan",
+        payload={"vlan_id": 50, "name": "IoT", "description": None, "color": None},
+        status=svc.AIActionDraftStatus.pending,
+        error_message=None,
+        applied_at=None,
+        applied_by_user_id=None,
+        applied_resource=None,
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=draft)
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+
+    async def boom(*a, **k):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(svc, "_apply_create_vlan", boom)
+
+    with pytest.raises(ValueError):
+        await svc.apply_draft(db, draft_id=1, user_id=99)
+    assert draft.status == svc.AIActionDraftStatus.failed
+    assert "boom" in (draft.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_apply_draft_rejects_already_resolved() -> None:
+    draft = SimpleNamespace(
+        id=1,
+        intent="create_vlan",
+        payload={},
+        status=svc.AIActionDraftStatus.applied,
+        error_message=None,
+        applied_at=None,
+        applied_by_user_id=None,
+        applied_resource=None,
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=draft)
+    with pytest.raises(ValueError):
+        await svc.apply_draft(db, draft_id=1, user_id=99)
+
+
+@pytest.mark.asyncio
+async def test_reject_draft_marks_rejected() -> None:
+    draft = SimpleNamespace(
+        id=1,
+        status=svc.AIActionDraftStatus.pending,
+        applied_at=None,
+        applied_by_user_id=None,
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=draft)
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+    out = await svc.reject_draft(db, draft_id=1, user_id=42)
+    assert out.status == svc.AIActionDraftStatus.rejected
+    assert out.applied_by_user_id == 42

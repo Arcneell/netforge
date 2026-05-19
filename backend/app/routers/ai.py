@@ -25,6 +25,8 @@ from app.config import get_settings
 from app.db import get_session as get_db
 from app.models.user import User, UserRole
 from app.schemas.ai import (
+    ActionDraftCreate,
+    ActionDraftRead,
     AdvisorReportRead,
     AIScheduleRead,
     AIScheduleUpsert,
@@ -47,6 +49,7 @@ from app.schemas.ai import (
 )
 from app.schemas.link import LinkRead
 from app.services.ai import AIProviderError, AIUnsupportedFeatureError, get_provider
+from app.services.ai.actions import apply_draft, draft_action, reject_draft
 from app.services.ai.advisor import list_latest_insights, run_advisor
 from app.services.ai.csv_mapping import list_canonical_fields, run_mapping_suggestion
 from app.services.ai.integrity import run_all_checks
@@ -526,3 +529,122 @@ async def upsert_schedule(
     await db.commit()
     await db.refresh(row)
     return AIScheduleRead.model_validate(row)
+
+
+# --- NL-to-action drafts ---------------------------------------------------
+
+
+@router.post(
+    "/drafts",
+    response_model=ActionDraftRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def create_draft(
+    payload: ActionDraftCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    accept_language: str | None = Header(default=None),
+) -> ActionDraftRead:
+    """Ask the LLM to draft one CRUD action from a free-text prompt.
+
+    NEVER executes the action — the resulting row sits at `status=pending`
+    until an admin POSTs to `/drafts/{id}/apply`."""
+    _require_ai_enabled()
+    try:
+        check_and_consume(user.id)
+    except AIRateLimitExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"rate limit exceeded, retry in {exc.retry_after_seconds}s",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+    try:
+        draft = await draft_action(
+            db,
+            user_id=user.id,
+            prompt=payload.prompt,
+            language_instruction=_lang_for(accept_language),
+        )
+    except AIUnsupportedFeatureError as exc:
+        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        # 422 — the call itself worked, the model just couldn't produce a
+        # valid draft. Keeping 502 for true provider/HTTP failures.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except Exception as exc:
+        logger.exception("draft_action crashed")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=f"{type(exc).__name__}: {exc}",
+        ) from exc
+    return ActionDraftRead.model_validate(draft)
+
+
+@router.get(
+    "/drafts",
+    response_model=list[ActionDraftRead],
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def list_drafts(db: AsyncSession = Depends(get_db)) -> list[ActionDraftRead]:
+    """Return drafts, newest first. The UI typically filters to pending."""
+    from sqlalchemy import select
+
+    from app.models.ai import AIActionDraft
+
+    rows = (
+        (
+            await db.execute(
+                select(AIActionDraft).order_by(AIActionDraft.created_at.desc()).limit(200)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [ActionDraftRead.model_validate(r) for r in rows]
+
+
+@router.post(
+    "/drafts/{draft_id}/apply",
+    response_model=ActionDraftRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def apply_draft_route(
+    draft_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ActionDraftRead:
+    """Execute the draft against the inventory. Idempotent in the sense
+    that the second call returns 409 — the first apply marks the row
+    `applied`."""
+    _require_ai_enabled()
+    try:
+        draft = await apply_draft(db, draft_id=draft_id, user_id=user.id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return ActionDraftRead.model_validate(draft)
+
+
+@router.post(
+    "/drafts/{draft_id}/reject",
+    response_model=ActionDraftRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def reject_draft_route(
+    draft_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ActionDraftRead:
+    """Mark the draft as rejected — the operator declined to apply it."""
+    _require_ai_enabled()
+    try:
+        draft = await reject_draft(db, draft_id=draft_id, user_id=user.id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return ActionDraftRead.model_validate(draft)

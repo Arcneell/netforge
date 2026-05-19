@@ -198,6 +198,55 @@ class AISchedule(Base):
     )
 
 
+class AIActionDraftStatus(str, Enum):
+    """Lifecycle of an NL-to-action draft."""
+
+    pending = "pending"
+    applied = "applied"
+    rejected = "rejected"
+    # Applier ran but the underlying service raised — payload is bad. Distinct
+    # from "rejected" (user said no) so the UI can surface the actual error.
+    failed = "failed"
+
+
+class AIActionDraft(Base):
+    """An AI-proposed CRUD action awaiting operator approval.
+
+    Drafts are NEVER auto-applied — the explicit POST to the apply endpoint
+    is the audit trail. `applied_resource` is a free-form `kind:id` pointer
+    to whatever entity the apply created; the UI renders it as a chip.
+    """
+
+    __tablename__ = "ai_action_drafts"
+    __table_args__ = (
+        Index("ai_action_drafts_status_idx", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    intent: Mapped[str] = mapped_column(String(50), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[AIActionDraftStatus] = mapped_column(
+        SAEnum(AIActionDraftStatus, name="ai_action_draft_status", native_enum=True),
+        nullable=False,
+        default=AIActionDraftStatus.pending,
+    )
+    error_message: Mapped[str | None] = mapped_column(Text)
+    applied_resource: Mapped[str | None] = mapped_column(String(120))
+    applied_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class InfraInsight(Base):
     """One AI-generated infrastructure recommendation.
 
