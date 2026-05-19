@@ -31,7 +31,7 @@ from app.models.ai import (
     InsightCategory,
     InsightSeverity,
 )
-from app.services.ai.context import build_topology_context
+from app.services.ai.context import build_topology_context_cached
 from app.services.ai.providers import get_provider
 from app.services.ai.types import AIProviderError, ToolDef
 
@@ -160,7 +160,7 @@ async def run_advisor(
     """
     settings = get_settings()
     provider = get_provider()
-    context = await build_topology_context(db)
+    context, _was_cached = await build_topology_context_cached(db)
     payload = json.dumps(context, separators=(",", ":"), default=str)
     system = SYSTEM_PROMPT + (f"\n\n{language_instruction}" if language_instruction else "")
 
