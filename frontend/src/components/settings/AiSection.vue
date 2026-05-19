@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { CheckCircle2, Sparkles, XCircle, Zap } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import AiSchedulesSection from '@/components/settings/AiSchedulesSection.vue'
 import AiUsageSection from '@/components/settings/AiUsageSection.vue'
 import { aiApi, type AIStatus, type AITestResult } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -150,6 +151,9 @@ const providerLabel = computed(() => {
 
     <!-- Usage dashboard — historical view of AI calls + estimated cost -->
     <AiUsageSection />
+
+    <!-- Scheduled runs — periodic advisor / suggest-links + webhook notification -->
+    <AiSchedulesSection />
 
     <!-- How-to-change note -->
     <div class="nf-card p-5 text-sm text-fg-muted leading-relaxed">

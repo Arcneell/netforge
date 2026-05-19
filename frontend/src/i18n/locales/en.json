@@ -622,6 +622,25 @@
       "cleanTitle": "Everything is clean",
       "cleanDescription": "No integrity issues detected in your inventory."
     },
+    "schedules": {
+      "title": "Scheduled runs",
+      "description": "Periodically run the advisor or the link-suggestion scan. For the advisor, optionally configure a webhook (Slack, Mattermost, Teams, …) that fires when a brand-new finding above the threshold appears.",
+      "kinds": {
+        "advisor": "Infra advisor",
+        "suggestLinks": "Link suggestions"
+      },
+      "fieldEnabled": "Enabled",
+      "fieldInterval": "Interval",
+      "fieldThreshold": "Webhook threshold",
+      "fieldWebhook": "Webhook URL",
+      "webhookHint": "Optional. POSTed with a JSON envelope {source, event, run_id, findings[]} whenever a new threshold-passing finding appears.",
+      "intervalMinutes": "{n} min",
+      "intervalHours": "{n} h",
+      "intervalDays": "{n} d",
+      "neverRun": "Never ran",
+      "lastRunAt": "Last run: {at}",
+      "savedToast": "Schedule saved."
+    },
     "csvMapping": {
       "openButton": "Mapping helper",
       "title": "CSV mapping assistant",
