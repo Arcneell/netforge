@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   Bot,
   MessageSquare,
   Network,
+  Plus,
   Send,
   Server,
   Sparkles,
@@ -16,7 +17,7 @@ import {
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import { aiApi, type AIStatus, type QueryEntityRef } from '@/api'
+import { aiApi, type AIStatus, type QueryEntityRef, type QueryHistoryTurn } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
 
@@ -47,17 +48,35 @@ async function loadStatus() {
   }
 }
 
+// History capped to the last 10 turns to match the server-side schema cap.
+// The newest user message is NOT part of the history we send — it goes in the
+// `question` field, so we only need to forward the prior turns.
+const HISTORY_CAP = 10
+
+function historyForBackend(): QueryHistoryTurn[] {
+  // Take the most recent turns up to the cap; preserve order.
+  const previous = turns.value.slice(-HISTORY_CAP)
+  return previous.map((t) => ({
+    role: t.role,
+    text: t.text,
+  }))
+}
+
 async function send() {
   const question = input.value.trim()
   if (!question || pending.value) return
   input.value = ''
+  // Snapshot history BEFORE we push the new user turn so the server sees
+  // exactly the prior exchange, not a copy of the question it's about to
+  // answer.
+  const history = historyForBackend()
   const userTurn: Turn = { id: nextId++, role: 'user', text: question }
   turns.value.push(userTurn)
   await scrollToBottom()
 
   pending.value = true
   try {
-    const ans = await aiApi.ask(question)
+    const ans = await aiApi.ask(question, history)
     turns.value.push({
       id: nextId++,
       role: 'assistant',
@@ -72,6 +91,13 @@ async function send() {
     await scrollToBottom()
   }
 }
+
+function newChat() {
+  turns.value = []
+  input.value = ''
+}
+
+const hasConversation = computed(() => turns.value.length > 0)
 
 async function scrollToBottom() {
   await nextTick()
@@ -149,7 +175,21 @@ onMounted(loadStatus)
 
 <template>
   <div class="p-4 sm:p-8 max-w-4xl mx-auto h-full flex flex-col">
-    <PageHeader :title="t('ai.askView.title')" :subtitle="t('ai.askView.subtitle')" />
+    <PageHeader :title="t('ai.askView.title')" :subtitle="t('ai.askView.subtitle')">
+      <template #actions>
+        <Button
+          v-if="hasConversation"
+          variant="ghost"
+          size="sm"
+          shape="pill"
+          :disabled="pending"
+          @click="newChat"
+        >
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('ai.askView.newChat') }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <!-- Transcript scroll -->
     <div ref="transcriptRef" class="flex-1 min-h-0 overflow-y-auto space-y-4 pb-6">

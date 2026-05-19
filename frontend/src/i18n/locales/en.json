@@ -579,7 +579,8 @@
       "example3": "List the VLANs used on SW-CORE-01.",
       "example4": "Which ports are in trunk mode in room R-101?",
       "latency": "Answered in {ms} ms",
-      "disabledHint": "The AI assistant is disabled. Enable it in Settings → AI to ask questions."
+      "disabledHint": "The AI assistant is disabled. Enable it in Settings → AI to ask questions.",
+      "newChat": "New conversation"
     },
     "advisor": {
       "subtitle": "The AI scans your inventory for SPOFs, capacity pressure, segmentation gaps and other weak points.",

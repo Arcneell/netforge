@@ -59,6 +59,7 @@ export {
   type LinkSuggestionStatus,
   type QueryAnswer,
   type QueryEntityRef,
+  type QueryHistoryTurn,
   type ScanReport,
   type UsageBucket,
   type UsageReport,

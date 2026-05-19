@@ -304,6 +304,7 @@ async def ask_ai(
             user_id=user.id,
             question=payload.question,
             language_instruction=_lang_for(accept_language),
+            history=[t.model_dump() for t in payload.history],
         )
     except AIUnsupportedFeatureError as exc:
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
