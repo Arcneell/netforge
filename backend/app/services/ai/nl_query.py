@@ -103,18 +103,28 @@ class QueryAnswer:
 
 
 async def run_query(
-    db: AsyncSession, *, user_id: int | None, question: str
+    db: AsyncSession,
+    *,
+    user_id: int | None,
+    question: str,
+    language_instruction: str | None = None,
 ) -> QueryAnswer:
+    """Answer one natural-language question grounded in the live inventory.
+
+    `language_instruction` carries the user's UI locale so the markdown
+    answer comes back in the same language the user is reading.
+    """
     settings = get_settings()
     provider = get_provider()
     context = await build_topology_context(db)
     payload = json.dumps(context, separators=(",", ":"), default=str)
+    system = SYSTEM_PROMPT + (f"\n\n{language_instruction}" if language_instruction else "")
 
     t0 = time.monotonic()
     error: str | None = None
     try:
         completion = await provider.call(
-            system=SYSTEM_PROMPT,
+            system=system,
             prompt=(
                 f"Network snapshot:\n```json\n{payload}\n```\n\n"
                 f"Question: {question}"

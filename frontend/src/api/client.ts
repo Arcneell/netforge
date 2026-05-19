@@ -29,6 +29,16 @@ export function registerApiHooks(h: ApiHooks): void {
   Object.assign(hooks, h)
 }
 
+// Getter for the user's current UI locale — used by the request interceptor
+// to tag every call with `Accept-Language`. Wired from main.ts after i18n is
+// created so this module stays free of i18n imports (avoids a circular
+// dependency between api/client → i18n → some store that uses request()).
+let getLocale: () => string | null = () => null
+
+export function registerLocaleProvider(fn: () => string | null): void {
+  getLocale = fn
+}
+
 export const api: AxiosInstance = axios.create({
   baseURL: '/api',
   withCredentials: true, // send the netforge_session cookie
@@ -36,6 +46,17 @@ export const api: AxiosInstance = axios.create({
   headers: {
     Accept: 'application/json',
   },
+})
+
+// Tag every outgoing request with the user's current UI locale so the backend
+// can localise responses where it matters — today the AI features pick this
+// up to answer in the same language the user is reading.
+api.interceptors.request.use((config) => {
+  const locale = getLocale()
+  if (locale) {
+    config.headers.set('Accept-Language', locale)
+  }
+  return config
 })
 
 api.interceptors.response.use(
