@@ -90,9 +90,25 @@ async function submit() {
   if (!file.value || submitting.value) return
   submitting.value = true
   try {
-    const result = await importsApi.upload(entity.value, file.value, dryRun.value)
+    // Use the pending mapping iff it was prepared for THIS entity — keeps
+    // a stale mapping from accidentally rewriting a different file's
+    // headers when the user switches entities between mapping and upload.
+    const mapping =
+      pendingMappingEntity.value === entity.value ? pendingMapping.value ?? undefined : undefined
+    const result = await importsApi.upload(
+      entity.value,
+      file.value,
+      dryRun.value,
+      mapping,
+    )
     report.value = result
     lastEntity.value = entity.value
+    // Single-shot use — clear so a follow-up import on the same entity
+    // doesn't surprise the operator by reusing it.
+    if (mapping) {
+      pendingMapping.value = null
+      pendingMappingEntity.value = null
+    }
     queueMicrotask(() => {
       document
         .getElementById('import-report')
@@ -162,6 +178,21 @@ const totalBulkBytes = computed(() => bulkFiles.value.reduce((s, b) => s + b.fil
 // AI-assisted column mapping modal — opened by the "Need help mapping?"
 // button. Always available; the LLM call is admin-only and rate-limited.
 const mappingOpen = ref(false)
+// When the assistant emits `apply`, we stash the mapping here. The next
+// `submit()` forwards it to the backend as `column_map` (server-side
+// header rewrite) and then clears the slot so a subsequent import doesn't
+// silently keep using stale field translations.
+const pendingMapping = ref<Record<string, string | null> | null>(null)
+const pendingMappingEntity = ref<ImportEntity | null>(null)
+
+function onMappingApply(mapping: Record<string, string | null>, mappedEntity: ImportEntity) {
+  pendingMapping.value = mapping
+  pendingMappingEntity.value = mappedEntity
+  // Auto-switch the single-import dropdown to the entity the mapping was
+  // built for — avoids the surprise of "I mapped for switches but the
+  // upload tab is still on sites".
+  entity.value = mappedEntity
+}
 
 const bulkOverLimit = computed(() => totalBulkBytes.value > MAX_TOTAL_BYTES)
 
@@ -312,7 +343,23 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
       </template>
     </PageHeader>
 
-    <CsvMappingAssistant :open="mappingOpen" :entity="entity" @close="mappingOpen = false" />
+    <CsvMappingAssistant
+      :open="mappingOpen"
+      :entity="entity"
+      @close="mappingOpen = false"
+      @apply="onMappingApply"
+    />
+
+    <!-- Visible reminder that a mapping is queued. Same entity gate as the
+         `submit()` logic so a stale mapping on a different entity stays
+         hidden. -->
+    <p
+      v-if="pendingMapping && pendingMappingEntity === entity"
+      class="text-xs text-primary-700 bg-primary-50 border border-primary-200 rounded p-3 mb-3 flex items-center gap-2"
+    >
+      <Wand2 class="w-3.5 h-3.5" aria-hidden="true" />
+      {{ t('ai.csvMapping.pendingNotice') }}
+    </p>
 
     <!-- Mode tabs -->
     <div

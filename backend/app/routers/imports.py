@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,8 +89,36 @@ async def import_entity(
     entity: str,
     file: UploadFile = File(...),
     dry_run: bool = Form(default=False),
+    column_map: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> ImportReport:
+    """Import one CSV. The optional `column_map` is a JSON dict
+    `{csv_column: netforge_field | null}` — when present the header row is
+    rewritten in-memory before parsing. This is what backs the AI mapping
+    assistant: the operator pastes their CSV, the LLM proposes the mapping,
+    and the import is replayed with that mapping applied automatically."""
     content = await file.read()
     _enforce_size(content)
-    return await service.run_import(db, entity, content, dry_run=dry_run)
+    parsed_map: dict[str, str | None] | None = None
+    if column_map:
+        try:
+            raw = json.loads(column_map)
+        except json.JSONDecodeError:
+            business_rule(
+                "BAD_COLUMN_MAP",
+                "`column_map` must be valid JSON.",
+            )
+        if not isinstance(raw, dict):
+            business_rule(
+                "BAD_COLUMN_MAP",
+                "`column_map` must be a JSON object of {csv_column: field}.",
+            )
+        # Normalise values: anything other than a non-empty string becomes
+        # `None` (= drop column). Keeps the downstream service simple.
+        parsed_map = {
+            str(k): (str(v) if isinstance(v, str) and v.strip() else None)
+            for k, v in raw.items()
+        }
+    return await service.run_import(
+        db, entity, content, dry_run=dry_run, column_map=parsed_map
+    )

@@ -689,7 +689,9 @@
       "colConfidence": "Confidence",
       "colNotes": "Notes",
       "unmapped": "unmapped",
-      "missingFields": "Required fields missing: {fields}"
+      "missingFields": "Required fields missing: {fields}",
+      "applyButton": "Use this mapping for import",
+      "pendingNotice": "An AI mapping is queued — it will be applied automatically on the next import (CSV headers rewritten server-side)."
     },
     "settings": {
       "title": "AI assistant",
