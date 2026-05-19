@@ -53,6 +53,7 @@ class AIProvider(Protocol):
         tools: list[ToolDef] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.2,
+        cache_prefix: str = "",
     ) -> AICompletion: ...
 
 

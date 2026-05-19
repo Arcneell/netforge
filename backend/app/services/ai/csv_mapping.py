@@ -81,7 +81,7 @@ _FIELD_CATALOG: dict[str, dict[str, str]] = {
         "port_count": "Number of ports.",
         "site_code": "Parent site code.",
         "room_code": "Parent room code.",
-        "mgmt_ip": "Management IP address.",
+        "management_ip": "Management IP address.",
         "description": "Optional free-text description.",
     },
     "ports": {
@@ -90,7 +90,7 @@ _FIELD_CATALOG: dict[str, dict[str, str]] = {
         "label": "Optional label.",
         "mode": "access | trunk | hybrid | disabled.",
         "native_vlan": "Native VLAN id.",
-        "tagged_vlans": "Comma-separated list of tagged VLAN ids.",
+        "trunk_vlans": "Comma-separated list of tagged / trunk VLAN ids.",
         "admin_status": "up | down.",
         "notes": "Free-text notes.",
     },

@@ -123,7 +123,11 @@ class GeminiProvider:
         tools: list[ToolDef] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.2,
+        cache_prefix: str = "",
     ) -> AICompletion:
+        # Gemini's `cachedContents` API is heavier than what we need here —
+        # for now just concat. Heavy users can wire explicit caching later.
+        prompt = (cache_prefix + ("\n\n" if cache_prefix and prompt else "") + prompt) or prompt
         client, gtypes = self._get_client()
 
         config_kwargs: dict[str, Any] = {

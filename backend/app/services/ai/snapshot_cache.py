@@ -41,23 +41,25 @@ from app.models.switch import Switch
 from app.models.vlan import Vlan
 
 # Tables we fingerprint. The first element of each pair is the model; the
-# second is the optional `updated_at` column — None when the table doesn't
-# carry timestamps. Order matters for cache key stability.
+# second is the optional `updated_at` column — None only for `Link` because
+# it's append-only (link rows are insert / delete, never UPDATE in the
+# canonical CRUD). Everything else carries a server-managed `updated_at`
+# via the TimestampMixin (Site / Switch / Subnet / Ip from day 1, Room /
+# Port / Vlan / Device since the `0007_add_timestamps` migration).
 #
-# `Room`, `Port`, `Link`, `Vlan`, `Device` do NOT use TimestampMixin in the
-# current schema. For those we rely on row count alone — a pure update that
-# does not change the count won't invalidate the cache, but the TTL safety
-# net (`_TTL_SECONDS`) bounds the staleness at 5 minutes.
+# Including `max(updated_at)` makes a pure UPDATE on those tables — e.g.
+# `update_port` flipping admin_status or rewriting notes — change the
+# fingerprint, so the AI features never serve a stale snapshot.
 _TRACKED: list[tuple[Any, Any]] = [
     (Site, Site.updated_at),
     (Switch, Switch.updated_at),
     (Subnet, Subnet.updated_at),
     (Ip, Ip.updated_at),
-    (Room, None),
-    (Port, None),
-    (Link, None),
-    (Vlan, None),
-    (Device, None),
+    (Room, Room.updated_at),
+    (Port, Port.updated_at),
+    (Vlan, Vlan.updated_at),
+    (Device, Device.updated_at),
+    (Link, None),  # append-only, count alone is enough
 ]
 
 _TTL_SECONDS = 300
