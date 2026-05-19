@@ -75,21 +75,105 @@ async function send() {
   await scrollToBottom()
 
   pending.value = true
+  // The assistant turn is created lazily on the FIRST delta so the existing
+  // "thinking" indicator (three bouncing dots) stays visible until the
+  // model actually starts emitting tokens. After that it's replaced by the
+  // typed bubble, which grows in place.
+  let assistantTurn: Turn | null = null
   try {
-    const ans = await aiApi.ask(question, history)
-    turns.value.push({
-      id: nextId++,
-      role: 'assistant',
-      text: ans.answer,
-      entities: ans.referenced_entities,
-      latency_ms: ans.latency_ms,
+    await streamAnswer(question, history, (delta, meta) => {
+      if (!assistantTurn) {
+        assistantTurn = { id: nextId++, role: 'assistant', text: '' }
+        turns.value.push(assistantTurn)
+        pending.value = false
+      }
+      assistantTurn.text += delta
+      if (meta?.latency_ms !== undefined) {
+        assistantTurn.latency_ms = meta.latency_ms
+      }
     })
+    if (!assistantTurn) {
+      // Stream completed with zero deltas — surface as a one-liner so the
+      // operator doesn't sit on an empty chat.
+      turns.value.push({ id: nextId++, role: 'assistant', text: t('ai.askView.emptyAnswer') })
+    }
   } catch (err) {
     toastError(describe(err))
   } finally {
     pending.value = false
     await scrollToBottom()
   }
+}
+
+interface DeltaMeta {
+  latency_ms?: number
+}
+type DeltaCallback = (delta: string, meta?: DeltaMeta) => void
+
+/**
+ * Consume the SSE stream from `/api/ai/query/stream`. We parse the wire
+ * format inline — there's no standard "event source for POST" in the
+ * browser yet, so a tiny reader over the response body is the simplest
+ * option. The callback receives one chunk at a time; the `done` frame
+ * arrives as an empty-string delta carrying the latency metadata.
+ */
+async function streamAnswer(
+  question: string,
+  history: QueryHistoryTurn[],
+  onDelta: DeltaCallback,
+) {
+  const resp = await aiApi.askStream(question, history)
+  if (!resp.ok || !resp.body) {
+    throw new Error(`stream rejected: HTTP ${resp.status}`)
+  }
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  let streamError: string | null = null
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    // SSE frames are separated by blank lines (\n\n). Split, leaving any
+    // trailing partial frame in `buffer` for the next iteration.
+    let separator: number
+    while ((separator = buffer.indexOf('\n\n')) !== -1) {
+      const rawFrame = buffer.slice(0, separator)
+      buffer = buffer.slice(separator + 2)
+      const result = handleFrame(rawFrame, onDelta)
+      if (result?.error) {
+        streamError = result.error
+      }
+    }
+  }
+  if (streamError) throw new Error(streamError)
+}
+
+function handleFrame(
+  rawFrame: string,
+  onDelta: DeltaCallback,
+): { error?: string } | undefined {
+  let eventName = 'message'
+  let dataLine = ''
+  for (const line of rawFrame.split('\n')) {
+    if (line.startsWith('event:')) eventName = line.slice(6).trim()
+    else if (line.startsWith('data:')) dataLine += line.slice(5).trim()
+  }
+  if (!dataLine) return undefined
+  let payload: { text?: string; message?: string; latency_ms?: number }
+  try {
+    payload = JSON.parse(dataLine)
+  } catch {
+    return undefined
+  }
+  if (eventName === 'delta' && payload.text) {
+    onDelta(payload.text)
+  } else if (eventName === 'done') {
+    onDelta('', { latency_ms: payload.latency_ms })
+  } else if (eventName === 'error') {
+    return { error: payload.message || 'stream error' }
+  }
+  return undefined
 }
 
 function newChat() {

@@ -21,9 +21,9 @@ from typing import Any
 class AIProviderError(RuntimeError):
     """Wraps any provider-side failure (network, auth, rate limit, parse).
 
-    Always raised from inside `AIProvider.call()`; routers translate it to
-    a 502 so the operator can tell "the LLM call failed" from "your
-    business rules rejected the input".
+    Always raised from inside `AIProvider.call()` / `stream_call()`;
+    routers translate it to a 502 so the operator can tell "the LLM call
+    failed" from "your business rules rejected the input".
     """
 
 
@@ -74,3 +74,26 @@ class AICompletion:
     usage: TokenUsage = field(default_factory=TokenUsage)
     # Provider-specific raw response, kept for debugging. Never persisted.
     raw: Any = None
+
+
+@dataclass(frozen=True)
+class StreamDelta:
+    """One incremental text chunk yielded by a streaming provider call."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class StreamDone:
+    """Final marker emitted once the stream is exhausted. Carries the
+    aggregated usage + the full text (cheaper than re-assembling client-
+    side from the deltas)."""
+
+    text: str
+    usage: TokenUsage = field(default_factory=TokenUsage)
+
+
+# A streaming call yields a sequence of `StreamDelta` followed by exactly
+# one `StreamDone` at the end. Errors raise `AIProviderError` directly —
+# the route layer catches and translates them into an SSE `error` frame.
+StreamChunk = StreamDelta | StreamDone

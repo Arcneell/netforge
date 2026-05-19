@@ -13,9 +13,11 @@ All write paths are admin-only and rate-limited.
 
 from __future__ import annotations
 
+import json as _json
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("netforge.ai")
@@ -54,7 +56,7 @@ from app.services.ai.advisor import list_latest_insights, run_advisor
 from app.services.ai.csv_mapping import list_canonical_fields, run_mapping_suggestion
 from app.services.ai.integrity import run_all_checks
 from app.services.ai.locale import language_instruction as _lang_for
-from app.services.ai.nl_query import run_query
+from app.services.ai.nl_query import run_query, run_query_streaming
 from app.services.ai.pdf_export import build_filename as _pdf_filename
 from app.services.ai.pdf_export import render_advisor_report
 from app.services.ai.rate_limit import AIRateLimitExceeded, check_and_consume
@@ -701,5 +703,65 @@ async def export_insights_pdf(
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'attachment; filename="{_pdf_filename(run_created_at)}"',
+        },
+    )
+
+
+# --- Streaming Ask AI ------------------------------------------------------
+
+
+@router.post(
+    "/query/stream",
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def ask_ai_stream(
+    payload: QueryRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    accept_language: str | None = Header(default=None),
+) -> StreamingResponse:
+    """Server-Sent-Events variant of `/api/ai/query`.
+
+    The client receives incremental `delta` frames as the model writes,
+    plus a final `done` frame carrying token usage + latency. Tool calls
+    are NOT used in this path — the answer is Markdown text only (entity
+    references stay inline). The non-streaming endpoint remains available
+    for callers that need the structured `referenced_entities` chips.
+    """
+    _require_ai_enabled()
+    try:
+        check_and_consume(user.id)
+    except AIRateLimitExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"rate limit exceeded, retry in {exc.retry_after_seconds}s",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+    async def _stream():
+        try:
+            async for event_name, data in run_query_streaming(
+                db,
+                user_id=user.id,
+                question=payload.question,
+                history=[t.model_dump() for t in payload.history],
+                language_instruction=_lang_for(accept_language),
+            ):
+                # SSE wire format: `event:` line is optional, `data:` line
+                # carries the JSON body, blank line terminates the frame.
+                yield f"event: {event_name}\ndata: {_json.dumps(data)}\n\n"
+        except Exception as exc:
+            logger.exception("nl-query stream crashed")
+            yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={
+            # Tell nginx (and any other reverse proxy) NOT to buffer — SSE
+            # only works end-to-end when each frame is flushed immediately.
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
         },
     )

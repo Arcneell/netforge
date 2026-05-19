@@ -24,7 +24,12 @@ from app.config import get_settings
 from app.models.ai import AIRunKind, AIRunLog
 from app.services.ai.context import build_topology_context_cached
 from app.services.ai.providers import get_provider
-from app.services.ai.types import AIProviderError, ToolDef
+from app.services.ai.types import (
+    AIProviderError,
+    StreamDelta,
+    StreamDone,
+    ToolDef,
+)
 
 SYSTEM_PROMPT = """You are NetForge's answer-the-network-question assistant.
 
@@ -219,3 +224,96 @@ async def run_query(
         prompt_tokens=run.prompt_tokens,
         completion_tokens=run.completion_tokens,
     )
+
+
+# --- Streaming variant -----------------------------------------------------
+
+
+# A small extra suffix for the streaming system prompt: we don't pass a tool,
+# the model just emits Markdown text and we render it progressively.
+_STREAM_SYSTEM_SUFFIX = """
+
+In this STREAMING mode you DO NOT call a tool — write a Markdown answer
+directly. Entity references are inline only; the UI renders the text but
+does not pull out a separate chips list.
+"""
+
+
+async def run_query_streaming(
+    db: AsyncSession,
+    *,
+    user_id: int | None,
+    question: str,
+    history: list[dict] | None = None,
+    language_instruction: str | None = None,
+):
+    """Async generator yielding `(event_name, payload)` pairs.
+
+    The route layer wraps each yielded item into one SSE frame. We persist
+    an `AIRunLog` row at the END of the stream so the Usage dashboard
+    accounts for streaming calls just like one-shots; latency is the time
+    until the LAST chunk arrives.
+    """
+    settings = get_settings()
+    provider = get_provider()
+    context, _was_cached = await build_topology_context_cached(db)
+    payload = json.dumps(context, separators=(",", ":"), default=str)
+
+    system = SYSTEM_PROMPT + _STREAM_SYSTEM_SUFFIX
+    if language_instruction:
+        system = system + "\n\n" + language_instruction
+    rendered_history = _render_history(history or [])
+    cache_prefix = f"Network snapshot:\n```json\n{payload}\n```"
+    dynamic_suffix = f"{rendered_history}Question: {question}"
+
+    t0 = time.monotonic()
+    full_text = ""
+    final_usage = None
+    error: str | None = None
+    try:
+        async for chunk in provider.stream_call(
+            system=system,
+            prompt=dynamic_suffix,
+            cache_prefix=cache_prefix,
+            max_tokens=settings.ai_max_output_tokens,
+            temperature=0.2,
+        ):
+            if isinstance(chunk, StreamDelta):
+                full_text += chunk.text
+                yield ("delta", {"text": chunk.text})
+            elif isinstance(chunk, StreamDone):
+                final_usage = chunk.usage
+                full_text = chunk.text or full_text
+    except AIProviderError as exc:
+        error = str(exc)
+        yield ("error", {"message": error})
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+    # Persist the run log — same shape as the non-streaming endpoint so the
+    # Usage dashboard accounts for streaming + non-streaming calls together.
+    run = AIRunLog(
+        user_id=user_id,
+        kind=AIRunKind.nl_query,
+        provider=provider.name,
+        model=provider.model,
+        prompt_tokens=final_usage.prompt_tokens if final_usage else 0,
+        completion_tokens=final_usage.completion_tokens if final_usage else 0,
+        latency_ms=elapsed_ms,
+        success=error is None,
+        error=error,
+    )
+    db.add(run)
+    await db.commit()
+
+    if error is None:
+        yield (
+            "done",
+            {
+                "answer": full_text,
+                "provider": provider.name,
+                "model": provider.model,
+                "latency_ms": elapsed_ms,
+                "prompt_tokens": final_usage.prompt_tokens if final_usage else 0,
+                "completion_tokens": final_usage.completion_tokens if final_usage else 0,
+            },
+        )
