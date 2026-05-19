@@ -11,19 +11,24 @@ several GETs per page load and we don't want to penalise normal browsing.
 The CSV upload endpoint also passes through (uploads are throttled by their
 own 10 MiB cap; counting them with a single hit per minute is the right
 trade-off given their size).
+
+Implementation note: this is a raw ASGI middleware, NOT a
+`BaseHTTPMiddleware` subclass. Starlette's `BaseHTTPMiddleware` bridges
+the response through an anyio memory stream, which silently breaks
+`text/event-stream` streaming (chunks pile up until the response ends).
+The raw ASGI shape pipes `(scope, receive, send)` straight through, so
+SSE on `/api/ai/query/stream` actually flushes per-token.
 """
 
 from __future__ import annotations
 
 import time
 from collections import deque
-from collections.abc import Awaitable, Callable
 from threading import Lock
 
-from fastapi import Request, Response
+from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.utils.request import client_ip
 
@@ -37,7 +42,9 @@ _EXEMPT_PATHS = frozenset(
 )
 
 
-class WriteRateLimitMiddleware(BaseHTTPMiddleware):
+class WriteRateLimitMiddleware:
+    """Raw ASGI middleware — see module docstring for why not BaseHTTPMiddleware."""
+
     def __init__(
         self,
         app: ASGIApp,
@@ -45,18 +52,26 @@ class WriteRateLimitMiddleware(BaseHTTPMiddleware):
         max_per_window: int,
         window_seconds: int,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._max = max_per_window
         self._window = float(window_seconds)
         self._hits: dict[str, deque[float]] = {}
         self._lock = Lock()
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        if request.method not in WRITE_METHODS or request.url.path in _EXEMPT_PATHS:
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
+        method = scope.get("method", "")
+        path = scope.get("path", "")
+        if method not in WRITE_METHODS or path in _EXEMPT_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        # Build a tiny Request just to reuse the `client_ip` resolution logic
+        # (it normalises X-Real-IP vs scope["client"]).
+        request = Request(scope)
         key = client_ip(request) or "unknown"
         now = time.monotonic()
         with self._lock:
@@ -66,7 +81,7 @@ class WriteRateLimitMiddleware(BaseHTTPMiddleware):
                 bucket.popleft()
             if len(bucket) >= self._max:
                 retry_after = max(1, int(bucket[0] + self._window - now))
-                return JSONResponse(
+                response = JSONResponse(
                     status_code=429,
                     content={
                         "error": {
@@ -80,7 +95,11 @@ class WriteRateLimitMiddleware(BaseHTTPMiddleware):
                     },
                     headers={"Retry-After": str(retry_after)},
                 )
+                await response(scope, receive, send)
+                return
             bucket.append(now)
-        return await call_next(request)
+
+        await self.app(scope, receive, send)
 
 
+__all__ = ["WriteRateLimitMiddleware", "WRITE_METHODS"]
