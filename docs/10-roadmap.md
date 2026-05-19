@@ -147,13 +147,14 @@ deployments can disable individual features via `AI_DRAFTS_ENABLED` and
       security / segmentation / naming / redundancy / other findings,
       each with a concrete recommendation. Cached run, re-run on demand.
 - [x] **Ask AI** — multi-turn natural-language Q&A on the live inventory,
-      reply rendered as Markdown with clickable entity chips.
+      SSE-streamed reply rendered as Markdown with clickable entity chips.
 - [x] **Integrity checks** — zero-LLM deterministic detectors (duplicate
       MACs, orphan IPs, switches without ports, …), shown alongside the
       advisor findings.
 - [x] **CSV mapping assistant** — paste foreign headers + sample rows;
       the model proposes the canonical NetForge column mapping with
-      confidence scores.
+      confidence scores, and auto-rewrites the CSV header row for
+      one-click import.
 - [x] **Scheduled runs + webhook** — opt-in periodic advisor /
       suggest-links scan; advisor schedule can fire a Slack / Mattermost /
       Teams webhook on **new** findings above a chosen severity.
@@ -161,18 +162,17 @@ deployments can disable individual features via `AI_DRAFTS_ENABLED` and
       LLM-drafted CRUD payload (create site / room / VLAN / subnet) that
       an admin reviews and explicitly applies. Never auto-applied.
 - [x] **AI Usage dashboard** — per-day / per-feature / per-provider
-      token + USD cost estimate from public list prices.
+      token + USD cost estimate from public list prices, with sparkline
+      and breakdowns.
 - [x] **PDF export** of the advisor report.
+- [x] **Localisation** — AI responses + integrity check titles /
+      descriptions / recommendations follow the operator's UI language
+      (EN + FR shipped).
 - [x] Performance & UX: per-user rate limiter, prompt-injection
       sanitisation of free-text fields, topology snapshot cache,
       Anthropic prompt caching on system + large user blocks, SDK client
-      reuse across requests.
-
-Deferred:
-- [ ] SSE streaming on Ask AI — needs a provider-interface refactor to
-      expose chunks while still capturing the final tool-use payload.
-- [ ] Automatic CSV column rename based on the mapping assistant's
-      proposal (today the operator copies the suggestion manually).
+      reuse across requests, axios 120s timeout on AI endpoints, full
+      rollback on partial draft-apply failure.
 
 ## Phase 13+ — v2
 

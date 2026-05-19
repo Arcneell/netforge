@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Self-hosted IPAM and network infrastructure management.</strong><br>
-  Subnets · VLANs · switches · ports · graph topology.
+  <strong>Self-hosted IPAM and network infrastructure management — with an optional AI co-pilot.</strong><br>
+  Subnets · VLANs · switches · ports · graph topology · advisor · ask AI · drafts.
 </p>
 
 <p align="center">
@@ -12,22 +12,43 @@
   <img src="https://img.shields.io/badge/python-3.12+-3776ab.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/PostgreSQL-16-336791.svg?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL 16">
   <img src="https://img.shields.io/badge/Vue-3-4FC08D.svg?style=flat-square&logo=vue.js&logoColor=white" alt="Vue 3">
-  <img src="https://img.shields.io/badge/status-alpha-f59e0b.svg?style=flat-square" alt="Alpha">
+  <img src="https://img.shields.io/badge/AI-Anthropic%20%C2%B7%20OpenAI%20%C2%B7%20Gemini-8b5cf6.svg?style=flat-square" alt="AI: Anthropic · OpenAI · Gemini">
+  <img src="https://img.shields.io/badge/status-v1-22c55e.svg?style=flat-square" alt="v1">
 </p>
 
 ---
 
-Most network documentation lives in Excel files, sticky notes, and the memory of whoever set it up. NetForge is a single source of truth for your IP plan, VLANs, switches, cabling and topology — with full change history and an interactive graph view.
+Most network documentation lives in Excel files, sticky notes, and the memory of whoever set it up. NetForge is a single source of truth for your IP plan, VLANs, switches, cabling and topology — with full change history, an interactive graph view, and an opt-in AI layer that turns the inventory into insights.
 
-## Features
+## Core features
 
 - **IPAM** — IPv4 subnets with overlap prevention enforced in the database (GiST exclusion constraint), reserved / assigned / DHCP addresses, free-IP calculation in SQL.
 - **Switches, ports, VLANs** — auto-generated ports, access / trunk / hybrid modes, native + tagged VLANs, connected-device tracking.
-- **Interactive topology** — Cytoscape.js graph with drag, zoom, auto-layout, PNG export.
-- **Global search (Ctrl/Cmd K), CSV import / export, full audit log, OIDC SSO** (Entra ID, Keycloak, Google Workspace…) or GitHub OAuth.
-- **AI (optional, off by default)** — provider-agnostic (Anthropic, OpenAI, Gemini): infra advisor with SPOF / capacity / security findings, link suggestions, multi-turn Q&A on the live inventory, deterministic integrity checks, CSV mapping assistant, scheduled runs with Slack/Mattermost webhook, NL-to-action drafts (explicit-approval workflow), AI Usage dashboard with USD cost estimate, PDF export.
-- **Per-IP write rate limit, strict CSP, focus-trapped modals** — hardening up front, not as an afterthought.
+- **Interactive topology** — Cytoscape.js graph with drag, zoom, auto-layout, PNG export, manual link management.
+- **Global search (Ctrl/Cmd K)** — fuzzy match across sites, rooms, vlans, subnets, switches, devices.
+- **CSV import / export** — bulk import with header auto-detection + dry-run, per-row error report, audit-log CSV stream, full-DB ZIP export.
+- **Audit log** — every mutation logged with before/after diff, side-by-side coloured view, user + IP + user-agent captured.
+- **Auth** — OIDC SSO (Entra ID, Keycloak, Authentik, Google Workspace, GitLab, …) or GitHub OAuth, personal access tokens for scripts (Bearer auth).
+- **Hardening up front** — per-IP write rate limit, strict CSP, focus-trapped modals, skeleton loaders + empty states, Playwright E2E on the critical flows.
+- **Localisation** — UI + AI responses in English and French.
 - **100% self-hosted** — everything runs under Docker Compose.
+
+## AI co-pilot (optional, off by default)
+
+Provider-agnostic — pick **Anthropic Claude**, **OpenAI**, or **Google Gemini** by config. Admin-only, rate-limited per user, gated by `AI_ENABLED`. Privacy-sensitive sites can disable individual surfaces with `AI_DRAFTS_ENABLED` / `AI_SCHEDULER_ENABLED`.
+
+| Surface | What it does |
+|---------|-------------|
+| **Infra advisor** | Full-snapshot review — SPOF, capacity, security, segmentation, naming, redundancy findings, each with a concrete recommendation. PDF export. |
+| **Suggest links** | Scan that proposes missing port-to-port topology links from labels / notes / VLAN profiles. Accept / reject per row. |
+| **Ask AI** | Multi-turn natural-language Q&A on the live inventory, **SSE-streamed** reply rendered as Markdown with clickable entity chips. |
+| **Integrity checks** | Zero-LLM deterministic detectors (duplicate MACs, orphan IPs, switches without ports, VLAN/subnet drift, port label collisions, missing gateways) — no API call, no cost. |
+| **CSV mapping assistant** | Paste foreign headers + sample rows → canonical NetForge column mapping with confidence scores, **auto-rewrites the CSV header row** for one-click import. |
+| **NL-to-action drafts** | Free-text request → drafted CRUD payload (create site / room / VLAN / subnet). Admin reviews and explicitly applies — never auto-applied, full rollback on partial failure. |
+| **Scheduled runs + webhook** | Periodic advisor / suggest-links scan; fires a **Slack / Mattermost / Teams** webhook on *new* findings above a chosen severity. |
+| **Usage dashboard** | Per-day / per-feature / per-provider token + USD cost estimate from public list prices, with sparkline + breakdowns. |
+
+Performance & safety: per-user rate limiter, prompt-injection sanitisation of free-text fields, topology snapshot cache, Anthropic prompt caching on system + large user blocks, SDK client reuse across requests.
 
 ## Stack
 
@@ -35,9 +56,10 @@ Most network documentation lives in Excel files, sticky notes, and the memory of
 |-------|------------|
 | Backend | Python 3.12 · FastAPI · SQLAlchemy 2.0 async · Alembic |
 | Database | PostgreSQL 16 (`INET` / `CIDR` / `MACADDR`, GiST exclusion, triggers) |
-| Frontend | Vue 3 · Vite · TypeScript · Tailwind · Pinia |
-| Topology | Cytoscape.js |
-| Auth | OIDC (any IdP) or GitHub OAuth — pluggable provider |
+| Frontend | Vue 3 · Vite · TypeScript · Tailwind · Pinia · vue-i18n |
+| Topology | Cytoscape.js (dagre + fcose layouts) |
+| Auth | OIDC (any IdP) or GitHub OAuth — pluggable provider · personal access tokens |
+| AI | Anthropic Claude · OpenAI · Google Gemini — swappable via `AI_PROVIDER` |
 | Deployment | Docker Compose |
 
 ## Quick start
@@ -72,11 +94,28 @@ npm run gen:types
 npm run dev
 ```
 
+### Enable AI (optional)
+
+Set `AI_ENABLED=true`, pick a provider and drop in its API key:
+
+```env
+AI_ENABLED=true
+AI_PROVIDER=anthropic              # anthropic | openai | gemini
+AI_ANTHROPIC_API_KEY=sk-ant-...    # or AI_OPENAI_API_KEY / AI_GEMINI_API_KEY
+# Optional fine-tuning
+AI_MODEL=                          # provider default if blank
+AI_RATE_LIMIT_CALLS=20             # per user, per AI_RATE_WINDOW_SECONDS (default 1h)
+AI_DRAFTS_ENABLED=true             # disable to keep the LLM strictly read-only
+AI_SCHEDULER_ENABLED=true          # disable to keep manual buttons but never auto-fire
+```
+
+> **Privacy:** when AI is enabled, the inventory snapshot (sites, rooms, switches, ports, vlans, subnets, devices, links) is sent to the chosen provider's API. Keep `AI_ENABLED=false` if that's not acceptable.
+
 For production, see [docs/07-deployment.md](docs/07-deployment.md).
 
 ## Status
 
-**v1 ready.** Phases 0 through 10 are merged: backend foundations, auth, CRUD, search, topology, CSV import/export, the full SPA, hardening (rate limit, a11y, CSP), and Playwright E2E coverage of the critical flows. See the [roadmap](docs/10-roadmap.md) for what remains on the deploy side (TLS, Zabbix, real CSV import).
+**v1 shipped.** Phases 0 through 11 are merged (backend foundations, auth, CRUD, search, topology, CSV import/export, the full SPA, hardening, Playwright E2E, go-live prep), plus **Phase 12 — AI** (advisor, Ask AI with SSE streaming, suggest links, integrity, CSV mapping with auto-rename, NL-to-action drafts, scheduled runs + webhook, usage dashboard, PDF export). See the [roadmap](docs/10-roadmap.md) for what's planned in v2 (Aruba SNMP polling, Zabbix sync, threshold-based alerts).
 
 ## Documentation
 
