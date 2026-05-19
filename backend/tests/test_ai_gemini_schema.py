@@ -92,3 +92,75 @@ def test_recurses_through_items() -> None:
     cleaned = _clean_schema_for_gemini(schema)
     assert "additionalProperties" not in cleaned["items"]
     assert cleaned["items"]["properties"]["id"] == {"type": "integer"}
+
+
+# --- Streaming -------------------------------------------------------------
+
+
+import pytest
+
+from app.services.ai.providers.gemini import GeminiProvider
+from app.services.ai.types import StreamDelta, StreamDone
+
+
+class _FakeStream:
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._chunks:
+            raise StopAsyncIteration
+        return self._chunks.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_gemini_stream_yields_one_delta_per_chunk(monkeypatch) -> None:
+    """Regression for the 'Gemini pops the whole answer at once' bug: the
+    streaming path now iterates `generate_content_stream` chunks and
+    forwards each as a `StreamDelta`. With three text chunks from the SDK
+    we expect three deltas + one terminating `done`."""
+    from types import SimpleNamespace
+
+    chunks = [
+        SimpleNamespace(text="Hello", usage_metadata=None, candidates=[]),
+        SimpleNamespace(text=" world", usage_metadata=None, candidates=[]),
+        SimpleNamespace(
+            text="!",
+            usage_metadata=SimpleNamespace(prompt_token_count=12, candidates_token_count=3),
+            candidates=[],
+        ),
+    ]
+
+    fake_client = SimpleNamespace()
+    fake_client.aio = SimpleNamespace()
+    fake_client.aio.models = SimpleNamespace()
+
+    async def fake_stream(**_kwargs):
+        return _FakeStream(chunks)
+
+    fake_client.aio.models.generate_content_stream = fake_stream
+
+    fake_gtypes = SimpleNamespace(GenerateContentConfig=lambda **kw: kw)
+
+    provider = GeminiProvider.__new__(GeminiProvider)
+    provider._api_key = "k"
+    provider.model = "gemini-test"
+    provider._client = fake_client
+    provider._gtypes = fake_gtypes
+
+    events = []
+    async for ev in provider.stream_call(system="sys", prompt="hi"):
+        events.append(ev)
+
+    # 3 deltas + 1 done
+    assert len(events) == 4
+    assert all(isinstance(e, StreamDelta) for e in events[:3])
+    assert [e.text for e in events[:3]] == ["Hello", " world", "!"]
+    final = events[-1]
+    assert isinstance(final, StreamDone)
+    assert final.text == "Hello world!"
+    assert final.usage.prompt_tokens == 12
+    assert final.usage.completion_tokens == 3
