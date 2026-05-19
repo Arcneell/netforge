@@ -23,16 +23,20 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    severity = sa.Enum(
+    # `create_type=False` keeps op.create_table from re-issuing CREATE TYPE
+    # on top of the explicit .create(checkfirst=True) call below. Without it,
+    # a re-run that survived a partial failure would crash on
+    # "type insight_severity already exists".
+    severity = postgresql.ENUM(
         "info",
         "warning",
         "critical",
         name="insight_severity",
-        native_enum=True,
+        create_type=False,
     )
     severity.create(op.get_bind(), checkfirst=True)
 
-    category = sa.Enum(
+    category = postgresql.ENUM(
         "spof",
         "capacity",
         "security",
@@ -41,7 +45,7 @@ def upgrade() -> None:
         "redundancy",
         "other",
         name="insight_category",
-        native_enum=True,
+        create_type=False,
     )
     category.create(op.get_bind(), checkfirst=True)
 
@@ -75,5 +79,9 @@ def downgrade() -> None:
     op.drop_index("infra_insights_category_idx", table_name="infra_insights")
     op.drop_index("infra_insights_run_idx", table_name="infra_insights")
     op.drop_table("infra_insights")
-    sa.Enum(name="insight_category").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="insight_severity").drop(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(name="insight_category", create_type=False).drop(
+        op.get_bind(), checkfirst=True
+    )
+    postgresql.ENUM(name="insight_severity", create_type=False).drop(
+        op.get_bind(), checkfirst=True
+    )

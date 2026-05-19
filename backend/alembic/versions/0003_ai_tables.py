@@ -18,6 +18,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0003_ai_tables"
 down_revision: str | None = "0002_api_tokens"
@@ -26,12 +27,17 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    ai_run_kind = sa.Enum(
+    # `create_type=False` on the column-side reference: we own the lifecycle
+    # explicitly via .create()/.drop() with checkfirst=True. Without this,
+    # `op.create_table` re-triggers CREATE TYPE and Postgres errors with
+    # "type X already exists" on a re-run that recovered from a partial
+    # previous failure.
+    ai_run_kind = postgresql.ENUM(
         "suggest_links",
         "advisor",
         "nl_query",
         name="ai_run_kind",
-        native_enum=True,
+        create_type=False,
     )
     ai_run_kind.create(op.get_bind(), checkfirst=True)
 
@@ -61,13 +67,13 @@ def upgrade() -> None:
     op.create_index("ai_run_logs_kind_idx", "ai_run_logs", ["kind", "created_at"])
     op.create_index("ai_run_logs_user_idx", "ai_run_logs", ["user_id", "created_at"])
 
-    link_suggestion_status = sa.Enum(
+    link_suggestion_status = postgresql.ENUM(
         "pending",
         "accepted",
         "rejected",
         "superseded",
         name="link_suggestion_status",
-        native_enum=True,
+        create_type=False,
     )
     link_suggestion_status.create(op.get_bind(), checkfirst=True)
 
@@ -128,9 +134,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("link_suggestions_status_idx", table_name="link_suggestions")
     op.drop_table("link_suggestions")
-    sa.Enum(name="link_suggestion_status").drop(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(name="link_suggestion_status", create_type=False).drop(
+        op.get_bind(), checkfirst=True
+    )
 
     op.drop_index("ai_run_logs_user_idx", table_name="ai_run_logs")
     op.drop_index("ai_run_logs_kind_idx", table_name="ai_run_logs")
     op.drop_table("ai_run_logs")
-    sa.Enum(name="ai_run_kind").drop(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(name="ai_run_kind", create_type=False).drop(op.get_bind(), checkfirst=True)
