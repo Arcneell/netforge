@@ -39,6 +39,13 @@ export function registerLocaleProvider(fn: () => string | null): void {
   getLocale = fn
 }
 
+/** Read the current UI locale. Used by callers that bypass the axios
+ *  request interceptor (e.g. the raw `fetch` SSE call needs to attach
+ *  `Accept-Language` itself). */
+export function getActiveLocale(): string | null {
+  return getLocale()
+}
+
 export const api: AxiosInstance = axios.create({
   baseURL: '/api',
   withCredentials: true, // send the netforge_session cookie

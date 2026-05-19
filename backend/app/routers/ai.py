@@ -636,7 +636,20 @@ async def apply_draft_route(
 ) -> ActionDraftRead:
     """Execute the draft against the inventory. Idempotent in the sense
     that the second call returns 409 — the first apply marks the row
-    `applied`."""
+    `applied`.
+
+    Error mapping:
+        404 — draft not found
+        409 — draft already applied/rejected, OR a DB-level conflict raised
+              by the applier (subnet overlap, duplicate site code, missing
+              referenced VLAN, …). The draft row is marked `failed` and the
+              `error_message` is surfaced to the operator.
+        502 — anything else (transient DB error, unexpected internal bug).
+              The draft is also marked `failed`; the message is in `detail`
+              so the UI can show it.
+    """
+    from sqlalchemy.exc import IntegrityError
+
     _require_drafts_enabled()
     try:
         draft = await apply_draft(db, draft_id=draft_id, user_id=user.id)
@@ -644,6 +657,20 @@ async def apply_draft_route(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        # The applier already rolled back and marked the draft as failed —
+        # surface the constraint name + message so the UI can explain
+        # "subnet overlaps with 10.0.0.0/24" instead of a generic 502.
+        message = str(getattr(exc, "orig", exc)) or "database integrity violation"
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail=message
+        ) from exc
+    except Exception as exc:
+        logger.exception("draft apply crashed (draft_id=%s)", draft_id)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=f"{type(exc).__name__}: {exc}",
+        ) from exc
     return ActionDraftRead.model_validate(draft)
 
 

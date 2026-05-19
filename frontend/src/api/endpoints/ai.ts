@@ -1,4 +1,4 @@
-import { request } from '@/api/client'
+import { getActiveLocale, request } from '@/api/client'
 import type { Link } from '@/api/types'
 
 export interface AIStatus {
@@ -293,12 +293,21 @@ export const aiApi = {
    * mid-stream (e.g. when the provider hiccups halfway through).
    */
   askStream(question: string, history: QueryHistoryTurn[] = []): Promise<Response> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    }
+    // The axios interceptor that tags every API call with `Accept-Language`
+    // doesn't run here (we use raw `fetch` to read the SSE body via
+    // `getReader()`). Replicate the header so the model answers in the
+    // operator's UI locale, same as the non-streaming endpoint.
+    const locale = getActiveLocale()
+    if (locale) {
+      headers['Accept-Language'] = locale
+    }
     return fetch('/api/ai/query/stream', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-      },
+      headers,
       credentials: 'include',
       body: JSON.stringify({ question, history }),
     })

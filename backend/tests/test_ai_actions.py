@@ -179,3 +179,59 @@ async def test_reject_draft_marks_rejected() -> None:
     out = await svc.reject_draft(db, draft_id=1, user_id=42)
     assert out.status == svc.AIActionDraftStatus.rejected
     assert out.applied_by_user_id == 42
+
+
+# --- Route error mapping ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_route_maps_integrity_error_to_409(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression for the 502-on-apply bug: when the inner applier trips a
+    DB constraint (e.g. `subnets_no_overlap` GiST), the route used to leak
+    a bare 500 (or 502 behind nginx) with no detail. Now: 409 with the
+    constraint message in `detail`."""
+    from fastapi import HTTPException
+    from sqlalchemy.exc import IntegrityError
+
+    from app.routers import ai as ai_route
+
+    # `_require_drafts_enabled` reads settings — patch it to a no-op so we
+    # can drive the route handler in isolation.
+    monkeypatch.setattr(ai_route, "_require_drafts_enabled", lambda: None)
+
+    async def boom(*_a, **_kw):
+        raise IntegrityError("INSERT ...", params=None, orig=Exception("subnet overlaps 10.0.0.0/24"))
+
+    monkeypatch.setattr(ai_route, "apply_draft", boom)
+
+    user = SimpleNamespace(id=1)
+    db = AsyncMock()
+    with pytest.raises(HTTPException) as exc:
+        await ai_route.apply_draft_route(draft_id=1, user=user, db=db)
+    assert exc.value.status_code == 409
+    assert "overlap" in str(exc.value.detail).lower()
+
+
+@pytest.mark.asyncio
+async def test_apply_route_maps_unexpected_exception_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Anything that isn't LookupError / ValueError / IntegrityError now
+    returns a 502 with the exception type in the detail — the operator
+    sees what crashed instead of a bare 'Request failed with status 502'."""
+    from fastapi import HTTPException
+
+    from app.routers import ai as ai_route
+
+    monkeypatch.setattr(ai_route, "_require_drafts_enabled", lambda: None)
+
+    async def boom(*_a, **_kw):
+        raise RuntimeError("connection lost mid-commit")
+
+    monkeypatch.setattr(ai_route, "apply_draft", boom)
+
+    user = SimpleNamespace(id=1)
+    db = AsyncMock()
+    with pytest.raises(HTTPException) as exc:
+        await ai_route.apply_draft_route(draft_id=1, user=user, db=db)
+    assert exc.value.status_code == 502
+    assert "RuntimeError" in str(exc.value.detail)
+    assert "connection lost" in str(exc.value.detail)
