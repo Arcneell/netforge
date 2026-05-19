@@ -289,3 +289,31 @@ class AIScheduleUpsert(BaseModel):
     webhook_severity_threshold: str = Field(
         default="warning", pattern="^(info|warning|critical)$"
     )
+
+
+# --- NL-to-action drafts ---------------------------------------------------
+
+
+class ActionDraftCreate(BaseModel):
+    """Body of POST /api/ai/drafts. The operator types a free-text request;
+    the server asks the LLM to draft one CRUD action."""
+
+    prompt: str = Field(min_length=4, max_length=2000)
+
+
+class ActionDraftRead(BaseModel):
+    """One drafted action awaiting (or past) review."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int | None
+    prompt: str
+    intent: str
+    payload: dict
+    status: str
+    error_message: str | None
+    applied_resource: str | None
+    applied_by_user_id: int | None
+    applied_at: datetime | None
+    created_at: datetime
