@@ -29,14 +29,20 @@ from app.services.ai.types import (
 # etc. — Gemini rejects the request with a 400 INVALID_ARGUMENT the moment it
 # sees one. Keep this list narrow: only the keys actually used by our prompts.
 # Source: https://ai.google.dev/api/caching#Schema
+#
+# `maxItems` / `minItems` are explicitly NOT in this list even though Google's
+# docs claim they're supported. Observed in May 2026 that any non-trivial
+# schema with `maxItems` at multiple nesting levels makes the v1beta endpoint
+# return a generic "Request contains an invalid argument" 400 — isolating the
+# keyword alone passes, but the advisor's multi-level schema fails. The cap
+# is informative (our prompts say "up to N items" in prose, and the persist
+# layer is the actual enforcement), so we strip rather than fight the API.
 _GEMINI_SCHEMA_KEYS = {
     "type",
     "format",
     "description",
     "nullable",
     "enum",
-    "maxItems",
-    "minItems",
     "properties",
     "required",
     "items",
