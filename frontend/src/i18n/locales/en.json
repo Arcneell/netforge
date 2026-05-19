@@ -596,6 +596,7 @@
       "cleanDescription": "The advisor returned nothing on its last run. Re-run periodically to stay up to date.",
       "recommendation": "Recommendation",
       "total": "Total",
+      "exportPdf": "Export PDF",
       "runAge": "Report generated {age}",
       "ageJustNow": "just now",
       "ageMinutes": "{n} min ago",

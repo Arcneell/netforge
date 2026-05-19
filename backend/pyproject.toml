@@ -24,6 +24,10 @@ dependencies = [
     "anthropic>=0.40",
     "openai>=1.50",
     "google-genai>=0.7",
+    # PDF export of the advisor report. fpdf2 is pure-Python, no native deps,
+    # which keeps the backend Dockerfile slim — WeasyPrint would pull libcairo,
+    # libpango and friends for a single endpoint that ships once a month.
+    "fpdf2>=2.7",
 ]
 
 [project.optional-dependencies]
