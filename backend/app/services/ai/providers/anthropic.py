@@ -189,15 +189,30 @@ class AnthropicProvider:
             "messages": [{"role": "user", "content": user_block}],
         }
 
-        # `messages.stream(...)` returns an async context manager exposing
-        # `.text_stream` (async iterator of text deltas) and a final
-        # `.get_final_message()` for usage.
+        # `messages.stream(...)` returns an async context manager. Iterating
+        # the stream directly (instead of `.text_stream`) lets us pull text
+        # one `content_block_delta` at a time — `.text_stream` is supposed
+        # to be equivalent but has historically batched deltas on some SDK
+        # versions, so iterating events ourselves is the safe, fine-grained
+        # path. The `asyncio.sleep(0)` after each yield is a cooperative
+        # yield to the event loop so the StreamingResponse writer flushes
+        # the chunk to the socket before we read the next delta.
+        import asyncio
+
         try:
             async with client.messages.stream(**kwargs) as stream:
                 full_text: list[str] = []
-                async for delta in stream.text_stream:
-                    full_text.append(delta)
-                    yield StreamDelta(text=delta)
+                async for event in stream:
+                    event_type = getattr(event, "type", None)
+                    if event_type == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        delta_type = getattr(delta, "type", None)
+                        if delta_type == "text_delta":
+                            text = getattr(delta, "text", "") or ""
+                            if text:
+                                full_text.append(text)
+                                yield StreamDelta(text=text)
+                                await asyncio.sleep(0)
                 final = await stream.get_final_message()
                 usage = TokenUsage(
                     prompt_tokens=getattr(final.usage, "input_tokens", 0) or 0,
