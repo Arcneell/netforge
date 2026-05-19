@@ -157,6 +157,33 @@ export interface IntegrityReport {
   issues: IntegrityIssue[]
 }
 
+// --- CSV mapping assistant -------------------------------------------------
+
+export interface CsvMappingRequest {
+  entity: string
+  csv_columns: string[]
+  /** Each row is an array aligned with `csv_columns`. */
+  sample_rows: string[][]
+}
+
+export interface CsvColumnMapping {
+  csv_column: string
+  suggested_field: string | null
+  confidence: number
+  notes: string
+}
+
+export interface CsvMappingResponse {
+  entity: string
+  columns: CsvColumnMapping[]
+  missing_required_fields: string[]
+  provider: string
+  model: string
+  latency_ms: number
+  prompt_tokens: number
+  completion_tokens: number
+}
+
 // LLM calls routinely take 20–60 s on a real inventory snapshot; the default
 // axios 20 s timeout was aborting valid responses mid-flight ("Impossible de
 // joindre le serveur"). Bump the AI-specific endpoints to 120 s — generous
@@ -223,5 +250,13 @@ export const aiApi = {
    *  when AI is otherwise disabled. */
   integrityChecks(): Promise<IntegrityReport> {
     return request<IntegrityReport>({ method: 'GET', url: '/ai/integrity-checks' })
+  },
+  suggestCsvMapping(req: CsvMappingRequest): Promise<CsvMappingResponse> {
+    return request<CsvMappingResponse>({
+      method: 'POST',
+      url: '/ai/csv/suggest-mapping',
+      data: req,
+      timeout: AI_TIMEOUT_MS,
+    })
   },
 }

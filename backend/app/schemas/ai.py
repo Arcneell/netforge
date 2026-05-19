@@ -219,3 +219,41 @@ class IntegrityReportRead(BaseModel):
     is wrong — the UI renders the "all clear" state."""
 
     issues: list[IntegrityIssueRead]
+
+
+# --- CSV mapping assistant -------------------------------------------------
+
+
+class CsvMappingRequest(BaseModel):
+    """Body of POST /api/ai/csv/suggest-mapping.
+
+    `entity` is one of the import-pipeline entities (sites, vlans, …).
+    `csv_columns` is the foreign header row as-is. `sample_rows` is a few
+    sample lines aligned with the headers — the LLM uses the cell shape
+    (CIDR vs IP, MAC notation, boolean encoding) to disambiguate."""
+
+    entity: str = Field(min_length=1, max_length=40)
+    csv_columns: list[str] = Field(min_length=1, max_length=80)
+    sample_rows: list[list[str]] = Field(default_factory=list, max_length=10)
+
+
+class CsvColumnMapping(BaseModel):
+    """One column → field decision."""
+
+    csv_column: str
+    suggested_field: str | None
+    confidence: float = Field(ge=0, le=1)
+    notes: str
+
+
+class CsvMappingResponse(BaseModel):
+    """Response of POST /api/ai/csv/suggest-mapping."""
+
+    entity: str
+    columns: list[CsvColumnMapping]
+    missing_required_fields: list[str]
+    provider: str
+    model: str
+    latency_ms: int
+    prompt_tokens: int
+    completion_tokens: int
