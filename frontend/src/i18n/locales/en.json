@@ -622,6 +622,26 @@
       "cleanTitle": "Everything is clean",
       "cleanDescription": "No integrity issues detected in your inventory."
     },
+    "csvMapping": {
+      "openButton": "Mapping helper",
+      "title": "CSV mapping assistant",
+      "description": "Paste the first lines of your CSV (header + 1–3 sample rows). The AI suggests which canonical NetForge field each column maps to. Rename your columns accordingly before running the import.",
+      "entity": "Entity type",
+      "delimiter": "Delimiter",
+      "pasteLabel": "CSV lines",
+      "pastePlaceholder": "Code;Name;Address\\nPAR;Paris;...\\nLYO;Lyon;...",
+      "parsedHint": "{cols} column(s) · {rows} sample row(s)",
+      "suggest": "Suggest mapping",
+      "emptyTitle": "Paste your headers above",
+      "emptyDescription": "The assistant reads the headers + a few rows to propose a reliable mapping.",
+      "resultMeta": "{provider} · {model} · {latency} ms",
+      "colCsv": "CSV column",
+      "colTarget": "NetForge field",
+      "colConfidence": "Confidence",
+      "colNotes": "Notes",
+      "unmapped": "unmapped",
+      "missingFields": "Required fields missing: {fields}"
+    },
     "settings": {
       "title": "AI assistant",
       "description": "Three providers supported: Anthropic Claude, OpenAI, Google Gemini. Configuration is environment-driven — edit your .env and restart the backend to switch.",

@@ -28,6 +28,9 @@ from app.schemas.ai import (
     AdvisorReportRead,
     AIStatusRead,
     AITestResult,
+    CsvColumnMapping,
+    CsvMappingRequest,
+    CsvMappingResponse,
     InsightRead,
     InsightsResponse,
     IntegrityIssueRead,
@@ -43,6 +46,7 @@ from app.schemas.ai import (
 from app.schemas.link import LinkRead
 from app.services.ai import AIProviderError, AIUnsupportedFeatureError, get_provider
 from app.services.ai.advisor import list_latest_insights, run_advisor
+from app.services.ai.csv_mapping import list_canonical_fields, run_mapping_suggestion
 from app.services.ai.integrity import run_all_checks
 from app.services.ai.locale import language_instruction as _lang_for
 from app.services.ai.nl_query import run_query
@@ -387,4 +391,72 @@ async def get_usage(
             UsageBucketRead(key=b.key, totals=UsageTotalRead(**b.totals.__dict__))
             for b in report.by_provider
         ],
+    )
+
+
+# --- CSV mapping assistant -------------------------------------------------
+
+
+@router.post(
+    "/csv/suggest-mapping",
+    response_model=CsvMappingResponse,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def suggest_csv_mapping(
+    payload: CsvMappingRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    accept_language: str | None = Header(default=None),
+) -> CsvMappingResponse:
+    """Ask the model to guess which NetForge field each CSV column maps to.
+
+    Pure suggestion — the operator still renames their headers and runs the
+    canonical import pipeline. Counts against the AI rate limit because it
+    burns a full LLM call.
+    """
+    _require_ai_enabled()
+    try:
+        check_and_consume(user.id)
+    except AIRateLimitExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"rate limit exceeded, retry in {exc.retry_after_seconds}s",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+
+    if not list_canonical_fields(payload.entity):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"unknown entity for mapping: {payload.entity!r}",
+        )
+
+    try:
+        result = await run_mapping_suggestion(
+            db,
+            user_id=user.id,
+            entity=payload.entity,
+            csv_columns=payload.csv_columns,
+            sample_rows=payload.sample_rows,
+            language_instruction=_lang_for(accept_language),
+        )
+    except AIUnsupportedFeatureError as exc:
+        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("csv-mapping crashed")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=f"{type(exc).__name__}: {exc}",
+        ) from exc
+
+    return CsvMappingResponse(
+        entity=result.entity,
+        columns=[CsvColumnMapping(**c.__dict__) for c in result.columns],
+        missing_required_fields=result.missing_required_fields,
+        provider=result.provider,
+        model=result.model,
+        latency_ms=result.latency_ms,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
     )

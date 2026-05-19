@@ -11,12 +11,14 @@ import {
   FileText,
   Archive,
   HelpCircle,
+  Wand2,
 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Select from '@/components/ui/Select.vue'
 import Badge from '@/components/ui/Badge.vue'
 import CsvDropzone from '@/components/CsvDropzone.vue'
+import CsvMappingAssistant from '@/components/CsvMappingAssistant.vue'
 import {
   importsApi,
   IMPORT_ENTITIES,
@@ -157,6 +159,10 @@ const MAX_PER_FILE = 10 * 1024 * 1024
 
 const totalBulkBytes = computed(() => bulkFiles.value.reduce((s, b) => s + b.file.size, 0))
 
+// AI-assisted column mapping modal — opened by the "Need help mapping?"
+// button. Always available; the LLM call is admin-only and rate-limited.
+const mappingOpen = ref(false)
+
 const bulkOverLimit = computed(() => totalBulkBytes.value > MAX_TOTAL_BYTES)
 
 const canSubmitBulk = computed(
@@ -295,12 +301,18 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
   <div class="p-6 max-w-5xl mx-auto">
     <PageHeader :title="t('nav.import')" :subtitle="t('import.subtitle')">
       <template #actions>
+        <Button variant="ghost" @click="mappingOpen = true">
+          <Wand2 class="w-4 h-4" aria-hidden="true" />
+          {{ t('ai.csvMapping.openButton') }}
+        </Button>
         <Button variant="secondary" @click="downloadAll">
           <Download class="w-4 h-4" aria-hidden="true" />
           {{ t('import.downloadAll') }}
         </Button>
       </template>
     </PageHeader>
+
+    <CsvMappingAssistant :open="mappingOpen" :entity="entity" @close="mappingOpen = false" />
 
     <!-- Mode tabs -->
     <div

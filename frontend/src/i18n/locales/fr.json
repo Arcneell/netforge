@@ -622,6 +622,26 @@
       "cleanTitle": "Tout est en ordre",
       "cleanDescription": "Aucune incohérence détectée dans votre inventaire."
     },
+    "csvMapping": {
+      "openButton": "Aide au mapping",
+      "title": "Assistant de mapping CSV",
+      "description": "Collez les premières lignes de votre CSV (en-tête + 1 à 3 lignes d'exemple). L'IA suggérera, pour chaque colonne, à quel champ NetForge canonique elle correspond. Renommez ensuite vos colonnes en conséquence avant l'import.",
+      "entity": "Type d'entité",
+      "delimiter": "Séparateur",
+      "pasteLabel": "Lignes CSV",
+      "pastePlaceholder": "Code;Name;Address\\nPAR;Paris;...\\nLYO;Lyon;...",
+      "parsedHint": "{cols} colonne(s) · {rows} ligne(s) d'exemple",
+      "suggest": "Suggérer un mapping",
+      "emptyTitle": "Collez vos en-têtes ci-dessus",
+      "emptyDescription": "L'assistant analyse les en-têtes + quelques lignes pour proposer un mapping fiable.",
+      "resultMeta": "{provider} · {model} · {latency} ms",
+      "colCsv": "Colonne CSV",
+      "colTarget": "Champ NetForge",
+      "colConfidence": "Confiance",
+      "colNotes": "Notes",
+      "unmapped": "non mappée",
+      "missingFields": "Champs requis manquants : {fields}"
+    },
     "settings": {
       "title": "Assistant IA",
       "description": "Trois providers supportés : Anthropic Claude, OpenAI, Google Gemini. La configuration se fait via les variables d'environnement — modifiez votre .env et redémarrez le backend pour basculer.",
