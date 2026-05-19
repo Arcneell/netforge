@@ -28,6 +28,134 @@ from app.models.port import Port
 from app.models.subnet import Subnet
 from app.models.switch import Switch
 from app.models.vlan import Vlan
+from app.services.ai.locale import _parse_primary_tag
+
+# Embedded translation table — these strings are server-rendered (no LLM
+# call, so the language_instruction shim used elsewhere doesn't apply) and
+# we don't want to round-trip them through the frontend i18n bundle either,
+# because the message format is dynamic (counts, MAC values, switch names).
+# Keep the dictionary keyed by `locale → key` so adding a third language
+# means adding one block, not threading a context through every detector.
+_STRINGS: dict[str, dict[str, str]] = {
+    "fr": {
+        "dup_mac_title": "Adresse MAC en double {mac}",
+        "dup_mac_desc": (
+            "{count} adresses IP partagent la MAC `{mac}`. Une interface réseau "
+            "donnée ne peut figurer qu'une fois — vérifiez et corrigez ou fusionnez."
+        ),
+        "dup_mac_reco": (
+            "Ouvrez chaque IP, identifiez celle qui possède réellement la MAC, "
+            "et videz le champ MAC sur les autres."
+        ),
+        "orphan_ip_title": "{count} IP(s) marquée(s) « assignée » sans équipement lié",
+        "orphan_ip_desc": (
+            "Ces IPs ont le statut **assignée** mais aucun `device_id`. Liez-les à "
+            "l'équipement réel ou repassez-les en `réservée` si aucun hôte ne les détient."
+        ),
+        "orphan_ip_reco": (
+            "Édition groupée depuis la vue du subnet : renseignez l'équipement sur "
+            "chaque ligne (ou changez le statut en `réservée`)."
+        ),
+        "no_gateway_title": "{count} subnet(s) sans passerelle",
+        "no_gateway_desc": (
+            "Ces subnets n'ont pas de passerelle enregistrée. C'est normal pour "
+            "des loopbacks ou des liens point-à-point, mais pour un VLAN utilisateur "
+            "cela trahit en général un champ resté vide."
+        ),
+        "no_gateway_reco": (
+            "Modifiez chaque subnet et renseignez la passerelle, ou laissez vide si "
+            "le réseau n'en a pas."
+        ),
+        "switch_no_ports_title": "{count} switch(es) sans aucun port",
+        "switch_no_ports_desc": (
+            "Ces switches existent dans l'inventaire mais n'ont aucune ligne dans "
+            "`Port`. Les vues topologie et les suggestions de liens les ignoreront."
+        ),
+        "switch_no_ports_reco": (
+            "Ouvrez chaque switch et ressaisissez le nombre de ports — le système "
+            "régénérera automatiquement les lignes manquantes."
+        ),
+        "orphan_vlan_title": "{count} VLAN(s) utilisé(s) par aucun subnet",
+        "orphan_vlan_desc": (
+            "Ces VLANs sont définis mais aucun subnet n'y fait référence. "
+            "Réservation volontaire, ou héritage d'une ancienne configuration."
+        ),
+        "orphan_vlan_reco": "Attachez un subnet à chaque VLAN, ou supprimez les entrées inutiles.",
+        "port_label_dup_title": "Libellé de port `{label}` en double sur {switch}",
+        "port_label_dup_desc": (
+            "{count} ports du switch `{switch}` partagent le libellé `{label}` "
+            "(sans tenir compte de la casse). Probable erreur de copier-coller."
+        ),
+        "port_label_dup_reco": (
+            "Ouvrez la vue détail du switch et renommez les doublons pour qu'ils "
+            "reflètent le rôle réel de chaque port."
+        ),
+        "fallback_port_default_name": "port {n}",
+    },
+    "en": {
+        "dup_mac_title": "Duplicate MAC address {mac}",
+        "dup_mac_desc": (
+            "{count} IP records share the MAC address `{mac}`. A given network "
+            "interface can only appear once — review and merge or correct."
+        ),
+        "dup_mac_reco": (
+            "Open each IP, confirm which one actually owns the MAC, and clear the "
+            "MAC field on the others."
+        ),
+        "orphan_ip_title": "{count} assigned IP(s) missing a device link",
+        "orphan_ip_desc": (
+            "These IPs are marked as **assigned** but have no `device_id`. Either "
+            "link them to the real device, or downgrade them to `reserved` if no "
+            "host owns them yet."
+        ),
+        "orphan_ip_reco": (
+            "Bulk-edit from the subnet view: set the device on each row (or change "
+            "the status to `reserved`)."
+        ),
+        "no_gateway_title": "{count} subnet(s) without a gateway",
+        "no_gateway_desc": (
+            "These subnets have no recorded gateway. That's expected for loopback "
+            "or point-to-point ranges, but for end-user VLANs it usually means the "
+            "gateway field was simply not filled in."
+        ),
+        "no_gateway_reco": (
+            "Edit each subnet and set the gateway, or leave it blank if the range "
+            "really doesn't have one."
+        ),
+        "switch_no_ports_title": "{count} switch(es) have zero ports",
+        "switch_no_ports_desc": (
+            "These switches exist in the inventory but have no `Port` rows. "
+            "Topology views and link suggestions will skip them entirely."
+        ),
+        "switch_no_ports_reco": (
+            "Open each switch and re-enter the port count — the system will "
+            "auto-generate the missing rows."
+        ),
+        "orphan_vlan_title": "{count} VLAN(s) not used by any subnet",
+        "orphan_vlan_desc": (
+            "These VLANs are defined but no subnet maps to them. They may be "
+            "reserved on purpose, or they may be left-overs from an old "
+            "configuration."
+        ),
+        "orphan_vlan_reco": "Either bind a subnet to each VLAN or delete the unused entries.",
+        "port_label_dup_title": "Duplicate port label `{label}` on {switch}",
+        "port_label_dup_desc": (
+            "{count} ports on switch `{switch}` share the label `{label}` "
+            "(case-insensitive). Likely a copy-paste mistake."
+        ),
+        "port_label_dup_reco": (
+            "Open the switch detail view and rename the duplicates to reflect "
+            "each port's actual role."
+        ),
+        "fallback_port_default_name": "port {n}",
+    },
+}
+
+
+def _t(locale: str, key: str, **kwargs: Any) -> str:
+    bundle = _STRINGS.get(locale, _STRINGS["en"])
+    template = bundle.get(key, _STRINGS["en"].get(key, key))
+    return template.format(**kwargs)
 
 
 @dataclass
@@ -44,27 +172,36 @@ class IntegrityIssue:
     affected_entities: list[dict[str, Any]]
 
 
-async def run_all_checks(db: AsyncSession) -> list[IntegrityIssue]:
+async def run_all_checks(
+    db: AsyncSession, *, accept_language: str | None = None
+) -> list[IntegrityIssue]:
     """Run every detector and concatenate their findings.
 
     Order matters for UI predictability (critical first). Each detector is
     independent — a slow query doesn't block the others (sequential here for
     simplicity; the whole batch should still finish in under a second).
+
+    `accept_language` carries the request header so the issue titles /
+    descriptions come back in the operator's UI language (FR/EN, falls
+    back to EN — matches the rest of the AI surface).
     """
+    locale = _parse_primary_tag(accept_language) if accept_language else "en"
+    if locale not in _STRINGS:
+        locale = "en"
     issues: list[IntegrityIssue] = []
-    issues.extend(await _check_duplicate_macs(db))
-    issues.extend(await _check_orphan_assigned_ips(db))
-    issues.extend(await _check_subnets_without_gateway(db))
-    issues.extend(await _check_switches_without_ports(db))
-    issues.extend(await _check_vlans_without_subnet(db))
-    issues.extend(await _check_port_label_collisions(db))
+    issues.extend(await _check_duplicate_macs(db, locale))
+    issues.extend(await _check_orphan_assigned_ips(db, locale))
+    issues.extend(await _check_subnets_without_gateway(db, locale))
+    issues.extend(await _check_switches_without_ports(db, locale))
+    issues.extend(await _check_vlans_without_subnet(db, locale))
+    issues.extend(await _check_port_label_collisions(db, locale))
     # Sort: critical → warning → info, then keep insertion order within each.
     rank = {"critical": 0, "warning": 1, "info": 2}
     issues.sort(key=lambda i: rank.get(i.severity, 99))
     return issues
 
 
-async def _check_duplicate_macs(db: AsyncSession) -> list[IntegrityIssue]:
+async def _check_duplicate_macs(db: AsyncSession, locale: str) -> list[IntegrityIssue]:
     """Two IPs sharing a MAC almost certainly mean a data-entry error — the
     same NIC can't be in two subnets. (Aggregated devices behind a router
     keep their own MAC; bonding shows up as one MAC per side.)"""
@@ -95,22 +232,16 @@ async def _check_duplicate_macs(db: AsyncSession) -> list[IntegrityIssue]:
             IntegrityIssue(
                 severity="warning",
                 category="other",
-                title=f"Duplicate MAC address {mac}",
-                description=(
-                    f"{len(ips)} IP records share the MAC address `{mac}`. "
-                    f"A given network interface can only appear once — review and merge or correct."
-                ),
-                recommendation=(
-                    "Open each IP, confirm which one actually owns the MAC, "
-                    "and clear the MAC field on the others."
-                ),
+                title=_t(locale, "dup_mac_title", mac=mac),
+                description=_t(locale, "dup_mac_desc", count=len(ips), mac=mac),
+                recommendation=_t(locale, "dup_mac_reco"),
                 affected_entities=entities,
             )
         )
     return issues
 
 
-async def _check_orphan_assigned_ips(db: AsyncSession) -> list[IntegrityIssue]:
+async def _check_orphan_assigned_ips(db: AsyncSession, locale: str) -> list[IntegrityIssue]:
     """An IP in `assigned` status without a `device_id` AND not bound to any
     port is a mistake — either it's actually `reserved`, or somebody forgot
     to link the device. An IP that lives on a port (mgmt-IPs on switches,
@@ -131,22 +262,15 @@ async def _check_orphan_assigned_ips(db: AsyncSession) -> list[IntegrityIssue]:
         IntegrityIssue(
             severity="info",
             category="other",
-            title=f"{len(ips)} assigned IP(s) missing a device link",
-            description=(
-                "These IPs are marked as **assigned** but have no `device_id`. "
-                "Either link them to the real device, or downgrade them to "
-                "`reserved` if no host owns them yet."
-            ),
-            recommendation=(
-                "Bulk-edit from the subnet view: set the device on each row "
-                "(or change the status to `reserved`)."
-            ),
+            title=_t(locale, "orphan_ip_title", count=len(ips)),
+            description=_t(locale, "orphan_ip_desc"),
+            recommendation=_t(locale, "orphan_ip_reco"),
             affected_entities=entities,
         )
     ]
 
 
-async def _check_subnets_without_gateway(db: AsyncSession) -> list[IntegrityIssue]:
+async def _check_subnets_without_gateway(db: AsyncSession, locale: str) -> list[IntegrityIssue]:
     """Subnets without a gateway can be intentional (loopback /32, point-to-
     point /30) — surface as `info` rather than `warning` so the operator
     isn't nagged about legitimate ones."""
@@ -164,22 +288,15 @@ async def _check_subnets_without_gateway(db: AsyncSession) -> list[IntegrityIssu
         IntegrityIssue(
             severity="info",
             category="naming",
-            title=f"{len(subnets)} subnet(s) without a gateway",
-            description=(
-                "These subnets have no recorded gateway. That's expected for "
-                "loopback / point-to-point ranges, but for end-user VLANs it "
-                "usually means the gateway field was simply not filled in."
-            ),
-            recommendation=(
-                "Edit each subnet and set the gateway, or leave it blank if "
-                "the range really doesn't have one."
-            ),
+            title=_t(locale, "no_gateway_title", count=len(subnets)),
+            description=_t(locale, "no_gateway_desc"),
+            recommendation=_t(locale, "no_gateway_reco"),
             affected_entities=entities,
         )
     ]
 
 
-async def _check_switches_without_ports(db: AsyncSession) -> list[IntegrityIssue]:
+async def _check_switches_without_ports(db: AsyncSession, locale: str) -> list[IntegrityIssue]:
     """A switch with `port_count = 0` is almost always a half-created record —
     the create flow auto-generates ports based on `port_count`."""
     stmt = (
@@ -196,21 +313,15 @@ async def _check_switches_without_ports(db: AsyncSession) -> list[IntegrityIssue
         IntegrityIssue(
             severity="warning",
             category="other",
-            title=f"{len(rows)} switch(es) have zero ports",
-            description=(
-                "These switches exist in the inventory but have no `Port` rows. "
-                "Topology views and link suggestions will skip them entirely."
-            ),
-            recommendation=(
-                "Open each switch and re-enter the port count — the system "
-                "will auto-generate the missing rows."
-            ),
+            title=_t(locale, "switch_no_ports_title", count=len(rows)),
+            description=_t(locale, "switch_no_ports_desc"),
+            recommendation=_t(locale, "switch_no_ports_reco"),
             affected_entities=entities,
         )
     ]
 
 
-async def _check_vlans_without_subnet(db: AsyncSession) -> list[IntegrityIssue]:
+async def _check_vlans_without_subnet(db: AsyncSession, locale: str) -> list[IntegrityIssue]:
     """A VLAN that no subnet references is dead weight or a forgotten setup —
     flag it as info; the operator can confirm or delete."""
     referenced = (
@@ -229,21 +340,15 @@ async def _check_vlans_without_subnet(db: AsyncSession) -> list[IntegrityIssue]:
         IntegrityIssue(
             severity="info",
             category="segmentation",
-            title=f"{len(orphans)} VLAN(s) not used by any subnet",
-            description=(
-                "These VLANs are defined but no subnet maps to them. They may "
-                "be reserved on purpose, or they may be left-overs from an old "
-                "configuration."
-            ),
-            recommendation=(
-                "Either bind a subnet to each VLAN or delete the unused entries."
-            ),
+            title=_t(locale, "orphan_vlan_title", count=len(orphans)),
+            description=_t(locale, "orphan_vlan_desc"),
+            recommendation=_t(locale, "orphan_vlan_reco"),
             affected_entities=entities,
         )
     ]
 
 
-async def _check_port_label_collisions(db: AsyncSession) -> list[IntegrityIssue]:
+async def _check_port_label_collisions(db: AsyncSession, locale: str) -> list[IntegrityIssue]:
     """Two ports on the same switch sharing a label (case-insensitive) is a
     typo or a paste mistake. Genuine labels — port numbers, named uplinks —
     are unique on a single chassis."""
@@ -284,21 +389,24 @@ async def _check_port_label_collisions(db: AsyncSession) -> list[IntegrityIssue]
         ).scalars().all()
         entities = (
             [{"type": "switch", "id": r.switch_id, "name": sw_name}]
-            + [{"type": "port", "id": p.id, "name": p.label or f"port {p.number}"} for p in ports]
+            + [
+                {
+                    "type": "port",
+                    "id": p.id,
+                    "name": p.label or _t(locale, "fallback_port_default_name", n=p.number),
+                }
+                for p in ports
+            ]
         )
         issues.append(
             IntegrityIssue(
                 severity="info",
                 category="naming",
-                title=f"Duplicate port label `{r.lbl}` on {sw_name}",
-                description=(
-                    f"{r.n} ports on switch `{sw_name}` share the label `{r.lbl}` "
-                    f"(case-insensitive). Likely a copy-paste mistake."
+                title=_t(locale, "port_label_dup_title", label=r.lbl, switch=sw_name),
+                description=_t(
+                    locale, "port_label_dup_desc", count=r.n, switch=sw_name, label=r.lbl
                 ),
-                recommendation=(
-                    "Open the switch detail view and rename the duplicates to "
-                    "reflect each port's actual role."
-                ),
+                recommendation=_t(locale, "port_label_dup_reco"),
                 affected_entities=entities,
             )
         )

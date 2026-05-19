@@ -569,7 +569,7 @@
     "scanDoneToast": "{persisted} suggestion(s) ajoutée(s) sur {raw} renvoyée(s).",
     "askView": {
       "title": "Demander à l'IA",
-      "subtitle": "Posez une question en langage naturel sur votre inventaire — l'IA répond à partir des données actuelles.",
+      "subtitle": "Questions en langage naturel sur votre inventaire.",
       "you": "Vous",
       "assistant": "Assistant",
       "placeholder": "Posez une question (ex : combien de ports sont libres sur SW-CORE-01 ?)",
@@ -587,7 +587,7 @@
     },
     "advisor": {
       "tab": "Conseiller IA",
-      "subtitle": "L'IA scanne votre inventaire pour repérer SPOFs, problèmes de capacité, failles de segmentation et autres points faibles.",
+      "subtitle": "Analyse de votre infrastructure : SPOF, capacité, sécurité, segmentation.",
       "refresh": "Relancer l'analyse",
       "runFirst": "Lancer l'analyse",
       "refreshedToast": "{count} insight(s) générés · {latency} ms",
@@ -621,13 +621,13 @@
     },
     "integrity": {
       "tab": "Cohérence des données",
-      "description": "Vérifications déterministes sur votre inventaire — pas d'appel IA, pas de coût. Détecte MAC dupliquées, IPs orphelines, switches sans port, etc.",
+      "description": "Vérifie la cohérence de votre inventaire.",
       "cleanTitle": "Tout est en ordre",
-      "cleanDescription": "Aucune incohérence détectée dans votre inventaire."
+      "cleanDescription": "Aucune incohérence détectée."
     },
     "drafts": {
       "title": "Actions IA à valider",
-      "subtitle": "Décrivez en langage naturel ce que vous voulez faire. L'IA prépare un brouillon d'action que VOUS validez ensuite — rien n'est exécuté automatiquement.",
+      "subtitle": "Décrivez ce que vous voulez faire — l'IA prépare un brouillon que vous validez.",
       "composerLabel": "Demande",
       "composerPlaceholder": "Crée un VLAN 50 nommé IoT au site PAR…",
       "safetyHint": "Le brouillon est uniquement préparé : pas d'exécution sans clic explicite.",
@@ -654,7 +654,7 @@
     },
     "schedules": {
       "title": "Exécutions planifiées",
-      "description": "Lance automatiquement l'advisor ou le scan de liens à intervalle régulier. Pour l'advisor, configure aussi un webhook (Slack, Mattermost, Teams, …) qui sera notifié dès qu'une nouvelle alerte au seuil défini apparaît.",
+      "description": "Lance automatiquement l'advisor ou le scan de liens, avec webhook optionnel sur nouvelle alerte.",
       "kinds": {
         "advisor": "Conseiller infra",
         "suggestLinks": "Suggestion de liens"
@@ -663,7 +663,7 @@
       "fieldInterval": "Intervalle",
       "fieldThreshold": "Seuil webhook",
       "fieldWebhook": "URL du webhook",
-      "webhookHint": "Optionnel. POSTé avec un JSON {source, event, run_id, findings[]} dès qu'une nouvelle alerte au seuil apparaît.",
+      "webhookHint": "Optionnel — Slack / Mattermost / Teams supportés.",
       "intervalMinutes": "{n} min",
       "intervalHours": "{n} h",
       "intervalDays": "{n} j",
@@ -674,7 +674,7 @@
     "csvMapping": {
       "openButton": "Aide au mapping",
       "title": "Assistant de mapping CSV",
-      "description": "Collez les premières lignes de votre CSV (en-tête + 1 à 3 lignes d'exemple). L'IA suggérera, pour chaque colonne, à quel champ NetForge canonique elle correspond. Renommez ensuite vos colonnes en conséquence avant l'import.",
+      "description": "Collez les premières lignes de votre CSV. L'IA propose le mapping des colonnes vers les champs NetForge.",
       "entity": "Type d'entité",
       "delimiter": "Séparateur",
       "pasteLabel": "Lignes CSV",
@@ -691,11 +691,11 @@
       "unmapped": "non mappée",
       "missingFields": "Champs requis manquants : {fields}",
       "applyButton": "Utiliser ce mapping pour l'import",
-      "pendingNotice": "Un mapping IA est en attente — il sera appliqué automatiquement lors du prochain import (les en-têtes du CSV seront réécrits côté serveur)."
+      "pendingNotice": "Mapping IA en attente — il sera appliqué au prochain import."
     },
     "settings": {
       "title": "Assistant IA",
-      "description": "Trois providers supportés : Anthropic Claude, OpenAI, Google Gemini. La configuration se fait via les variables d'environnement — modifiez votre .env et redémarrez le backend pour basculer.",
+      "description": "Trois providers : Anthropic, OpenAI, Gemini. Configuration via le fichier .env.",
       "enabled": "Activé",
       "disabled": "Désactivé",
       "provider": "Provider",
@@ -710,7 +710,7 @@
     },
     "usage": {
       "title": "Consommation IA",
-      "description": "Vue d'ensemble des appels IA sur la période sélectionnée — nombre, jetons, coût estimé et latence moyenne.",
+      "description": "Appels, jetons, coût estimé et latence sur la période.",
       "windowLabel": "Fenêtre",
       "daysOption": "{n} j",
       "emptyTitle": "Aucun appel IA sur la période",

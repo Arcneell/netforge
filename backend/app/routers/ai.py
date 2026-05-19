@@ -354,12 +354,16 @@ async def ask_ai(
     response_model=IntegrityReportRead,
     dependencies=[Depends(require_role(UserRole.admin))],
 )
-async def get_integrity_checks(db: AsyncSession = Depends(get_db)) -> IntegrityReportRead:
+async def get_integrity_checks(
+    db: AsyncSession = Depends(get_db),
+    accept_language: str | None = Header(default=None),
+) -> IntegrityReportRead:
     """Run the deterministic integrity checks (no LLM round-trip).
 
     Always returns a 200 — even when AI is disabled this endpoint stays up
-    because it does not call any external provider."""
-    issues = await run_all_checks(db)
+    because it does not call any external provider. `Accept-Language`
+    drives the issue titles + descriptions (FR/EN baked in)."""
+    issues = await run_all_checks(db, accept_language=accept_language)
     return IntegrityReportRead(
         issues=[
             IntegrityIssueRead(
