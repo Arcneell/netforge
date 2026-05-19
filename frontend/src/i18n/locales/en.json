@@ -89,6 +89,7 @@
     "topology": "Topology",
     "insights": "AI insights",
     "ask": "Ask AI",
+    "drafts": "Drafted actions",
     "import": "Import",
     "audit": "Audit log",
     "settings": "Settings",
@@ -621,6 +622,33 @@
       "description": "Deterministic checks against your inventory — no AI call, no cost. Surfaces duplicate MACs, orphan IPs, switches with no ports, and similar data-entry issues.",
       "cleanTitle": "Everything is clean",
       "cleanDescription": "No integrity issues detected in your inventory."
+    },
+    "drafts": {
+      "title": "Drafted actions",
+      "subtitle": "Describe what you want to do in plain English. The AI prepares a draft action — YOU explicitly apply it. Nothing runs automatically.",
+      "composerLabel": "Request",
+      "composerPlaceholder": "Create a VLAN 50 named IoT on site PAR…",
+      "safetyHint": "Drafts are only prepared — nothing runs without an explicit click.",
+      "draftButton": "Draft action",
+      "draftedToast": "Draft prepared.",
+      "appliedToast": "Action applied.",
+      "pendingHint": "{n} draft(s) waiting for your review",
+      "emptyTitle": "No drafts",
+      "emptyDescription": "Type a request above to prepare your first draft.",
+      "apply": "Apply",
+      "reject": "Reject",
+      "status": {
+        "pending": "Pending",
+        "applied": "Applied",
+        "rejected": "Rejected",
+        "failed": "Failed"
+      },
+      "intents": {
+        "createSite": "Create site",
+        "createRoom": "Create room",
+        "createVlan": "Create VLAN",
+        "createSubnet": "Create subnet"
+      }
     },
     "schedules": {
       "title": "Scheduled runs",

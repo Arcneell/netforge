@@ -206,6 +206,24 @@ export interface AIScheduleUpsert {
   webhook_severity_threshold: InsightSeverity
 }
 
+// --- NL-to-action drafts ---------------------------------------------------
+
+export type ActionDraftStatus = 'pending' | 'applied' | 'rejected' | 'failed'
+
+export interface ActionDraft {
+  id: number
+  user_id: number | null
+  prompt: string
+  intent: string
+  payload: Record<string, unknown>
+  status: ActionDraftStatus
+  error_message: string | null
+  applied_resource: string | null
+  applied_by_user_id: number | null
+  applied_at: string | null
+  created_at: string
+}
+
 // LLM calls routinely take 20–60 s on a real inventory snapshot; the default
 // axios 20 s timeout was aborting valid responses mid-flight ("Impossible de
 // joindre le serveur"). Bump the AI-specific endpoints to 120 s — generous
@@ -290,5 +308,22 @@ export const aiApi = {
       url: `/ai/schedules/${kind}`,
       data: body,
     })
+  },
+  createDraft(prompt: string): Promise<ActionDraft> {
+    return request<ActionDraft>({
+      method: 'POST',
+      url: '/ai/drafts',
+      data: { prompt },
+      timeout: AI_TIMEOUT_MS,
+    })
+  },
+  listDrafts(): Promise<ActionDraft[]> {
+    return request<ActionDraft[]>({ method: 'GET', url: '/ai/drafts' })
+  },
+  applyDraft(id: number): Promise<ActionDraft> {
+    return request<ActionDraft>({ method: 'POST', url: `/ai/drafts/${id}/apply` })
+  },
+  rejectDraft(id: number): Promise<ActionDraft> {
+    return request<ActionDraft>({ method: 'POST', url: `/ai/drafts/${id}/reject` })
   },
 }

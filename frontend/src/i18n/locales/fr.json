@@ -89,6 +89,7 @@
     "topology": "Topologie",
     "insights": "Conseils IA",
     "ask": "Poser une question",
+    "drafts": "Actions à valider",
     "import": "Importer",
     "audit": "Journal d'audit",
     "settings": "Paramètres",
@@ -621,6 +622,33 @@
       "description": "Vérifications déterministes sur votre inventaire — pas d'appel IA, pas de coût. Détecte MAC dupliquées, IPs orphelines, switches sans port, etc.",
       "cleanTitle": "Tout est en ordre",
       "cleanDescription": "Aucune incohérence détectée dans votre inventaire."
+    },
+    "drafts": {
+      "title": "Actions IA à valider",
+      "subtitle": "Décrivez en langage naturel ce que vous voulez faire. L'IA prépare un brouillon d'action que VOUS validez ensuite — rien n'est exécuté automatiquement.",
+      "composerLabel": "Demande",
+      "composerPlaceholder": "Crée un VLAN 50 nommé IoT au site PAR…",
+      "safetyHint": "Le brouillon est uniquement préparé : pas d'exécution sans clic explicite.",
+      "draftButton": "Préparer le brouillon",
+      "draftedToast": "Brouillon préparé.",
+      "appliedToast": "Action appliquée.",
+      "pendingHint": "{n} brouillon(s) en attente de validation",
+      "emptyTitle": "Aucun brouillon",
+      "emptyDescription": "Tapez une commande ci-dessus pour préparer votre premier brouillon d'action.",
+      "apply": "Appliquer",
+      "reject": "Rejeter",
+      "status": {
+        "pending": "En attente",
+        "applied": "Appliquée",
+        "rejected": "Rejetée",
+        "failed": "Échec"
+      },
+      "intents": {
+        "createSite": "Créer un site",
+        "createRoom": "Créer une salle",
+        "createVlan": "Créer un VLAN",
+        "createSubnet": "Créer un subnet"
+      }
     },
     "schedules": {
       "title": "Exécutions planifiées",
