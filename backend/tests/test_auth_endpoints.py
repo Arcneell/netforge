@@ -6,7 +6,7 @@ End-to-end OAuth flow tests are out of scope here: that is authlib's
 responsibility, not ours.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -32,8 +32,8 @@ def _make_session(expires_in: timedelta = timedelta(hours=4)) -> Session:
     return Session(
         id="sess-abc",
         user_id=1,
-        created_at=datetime.now(timezone.utc),
-        expires_at=datetime.now(timezone.utc) + expires_in,
+        created_at=datetime.now(UTC),
+        expires_at=datetime.now(UTC) + expires_in,
     )
 
 

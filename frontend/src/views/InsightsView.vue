@@ -38,6 +38,7 @@ const { error: toastError, success: toastSuccess } = useToast()
 const status = ref<AIStatus | null>(null)
 const insights = ref<Insight[]>([])
 const runId = ref<number | null>(null)
+const runCreatedAt = ref<string | null>(null)
 const loading = ref(true)
 const refreshing = ref(false)
 const lastReport = ref<AdvisorReport | null>(null)
@@ -49,6 +50,7 @@ async function loadAll() {
     status.value = st
     insights.value = list.insights
     runId.value = list.run_id
+    runCreatedAt.value = list.run_created_at
   } catch (err) {
     toastError(describe(err))
   } finally {
@@ -70,12 +72,40 @@ async function refresh() {
     const list = await aiApi.getInsights()
     insights.value = list.insights
     runId.value = list.run_id
+    runCreatedAt.value = list.run_created_at
   } catch (err) {
     toastError(describe(err))
   } finally {
     refreshing.value = false
   }
 }
+
+/**
+ * Localised "generated X ago" hint. We avoid pulling a `dayjs`/`luxon`
+ * dependency just for this: the precision needed is "minutes / hours / days",
+ * fluent in both UI locales via i18n plural rules.
+ */
+function ageLabel(iso: string | null): string {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000))
+  if (seconds < 60) return t('ai.advisor.ageJustNow')
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return t('ai.advisor.ageMinutes', { n: minutes })
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return t('ai.advisor.ageHours', { n: hours })
+  const days = Math.round(hours / 24)
+  return t('ai.advisor.ageDays', { n: days })
+}
+
+const stale = computed(() => {
+  if (!runCreatedAt.value) return false
+  const then = new Date(runCreatedAt.value).getTime()
+  if (Number.isNaN(then)) return false
+  // Anything older than 7 days is flagged as worth re-running.
+  return Date.now() - then > 7 * 24 * 3600 * 1000
+})
 
 onMounted(loadAll)
 
@@ -168,6 +198,18 @@ function entityLabel(e: InsightEntityRef): string {
         </Button>
       </template>
     </PageHeader>
+
+    <!-- Run freshness banner — surfaces the age of the latest run and nudges
+         the operator to re-run when older than a week. -->
+    <p
+      v-if="!loading && runCreatedAt"
+      class="text-xs text-fg-muted -mt-2 mb-6 flex items-center gap-2"
+      :class="{ 'text-warning': stale }"
+    >
+      <RefreshCw class="w-3 h-3" aria-hidden="true" />
+      <span>{{ t('ai.advisor.runAge', { age: ageLabel(runCreatedAt) }) }}</span>
+      <span v-if="stale" class="font-medium">· {{ t('ai.advisor.staleHint') }}</span>
+    </p>
 
     <!-- Stat strip — same iOS Today-widget feel as Dashboard -->
     <section v-if="!loading && runId !== null" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">

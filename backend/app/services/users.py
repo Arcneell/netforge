@@ -9,7 +9,7 @@ Promotion rules on first sight of a user:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +46,7 @@ async def upsert_user_from_provider(
         user.email = info.email
         user.display_name = info.display_name
 
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(user)
     return user

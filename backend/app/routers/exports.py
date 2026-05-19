@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import StreamingResponse
@@ -36,7 +36,7 @@ async def export_audit(
     because the audit log is — `/api/audit` already requires admin and we
     keep the same surface here."""
     filename = (
-        f"netforge-audit-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.csv"
+        f"netforge-audit-{datetime.now(UTC).strftime('%Y-%m-%d')}.csv"
     )
     return StreamingResponse(
         service.stream_audit_export(
@@ -61,7 +61,7 @@ async def export_all(db: AsyncSession = Depends(get_db)) -> Response:
     so it doubles as a logical backup and as a round-trip-ready snapshot.
     """
     payload = await service.build_zip(db)
-    filename = f"netforge-export-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.zip"
+    filename = f"netforge-export-{datetime.now(UTC).strftime('%Y-%m-%d')}.zip"
     return Response(
         content=payload,
         media_type="application/zip",

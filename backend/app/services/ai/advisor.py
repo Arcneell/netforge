@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -253,23 +254,36 @@ async def _persist_insights(
     return len(rows)
 
 
-async def latest_run_id(db: AsyncSession) -> int | None:
-    """Return the most recent advisor run id, or None if none."""
+async def latest_run(db: AsyncSession) -> tuple[int, datetime] | None:
+    """Return the (id, created_at) of the most recent successful advisor run,
+    or `None` if none has succeeded yet."""
     row = (
         await db.execute(
-            select(AIRunLog.id)
+            select(AIRunLog.id, AIRunLog.created_at)
             .where(AIRunLog.kind == AIRunKind.advisor, AIRunLog.success.is_(True))
             .order_by(desc(AIRunLog.created_at))
             .limit(1)
         )
     ).first()
-    return row[0] if row else None
+    if not row:
+        return None
+    return row[0], row[1]
 
 
-async def list_latest_insights(db: AsyncSession) -> tuple[int | None, list[InfraInsight]]:
-    run_id = await latest_run_id(db)
-    if run_id is None:
-        return None, []
+async def latest_run_id(db: AsyncSession) -> int | None:
+    """Back-compat shim used by callers that only need the id."""
+    pair = await latest_run(db)
+    return pair[0] if pair else None
+
+
+async def list_latest_insights(
+    db: AsyncSession,
+) -> tuple[int | None, datetime | None, list[InfraInsight]]:
+    """Return `(run_id, run_created_at, insights)` for the latest successful run."""
+    pair = await latest_run(db)
+    if pair is None:
+        return None, None, []
+    run_id, created_at = pair
     items = (
         (
             await db.execute(
@@ -285,4 +299,4 @@ async def list_latest_insights(db: AsyncSession) -> tuple[int | None, list[Infra
         .scalars()
         .all()
     )
-    return run_id, items
+    return run_id, created_at, items

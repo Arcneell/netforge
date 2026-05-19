@@ -17,9 +17,10 @@ import csv
 import io
 import re
 import zipfile
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv4Network
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -42,7 +43,6 @@ from app.schemas.imports import (
     ImportErrorRow,
     ImportReport,
 )
-
 
 # --------------------------------------------------------------------------- #
 # Row models — one Pydantic class per entity, mapping the CSV column names.
@@ -219,7 +219,7 @@ class _SwitchRow(BaseModel):
         return None if v is None else str(IPv4Address(v))
 
     @model_validator(mode="after")
-    def _both_or_neither_location(self) -> "_SwitchRow":
+    def _both_or_neither_location(self) -> _SwitchRow:
         # Without this, a row like `site_code=PAR;room_code=` would silently
         # land in the DB as roomless — and the supplied site code would never
         # be validated against the sites table. Force the user to either fill

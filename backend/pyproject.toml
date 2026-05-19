@@ -48,7 +48,40 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
-ignore = ["E501"]  # line length — handled by ruff format
+ignore = [
+    "E501",   # line length — handled by ruff format
+    # `Depends(...)`, `Query(...)`, `File(...)`, `Header(...)` in default
+    # arguments is the canonical FastAPI dependency-injection pattern; the
+    # B008 warning is a known false positive for this framework.
+    "B008",
+    # Migrations and a few routers intentionally import after a guard / logger
+    # setup; the constraint that imports live at top-of-file is not worth
+    # fighting in those generated / boilerplate files.
+    "E402",
+    # Single-letter capitalised locals named for SQLAlchemy aliases ("Switch_a",
+    # "Port_b") read better with the model casing — disable the N806 nag in
+    # the topology helpers where this pattern is intentional.
+    "N806",
+    # NetForge raises `AIRateLimitExceeded` / `AIUnsupportedFeatureError`; the
+    # "Error suffix" convention is fine for new ones but renaming the legacy
+    # `*Exceeded` would break public imports for no real upside.
+    "N818",
+    # The codebase's enums explicitly inherit `(str, Enum)` rather than the
+    # 3.11+ `StrEnum` because StrEnum's `__str__` returns the value not the
+    # member name, which subtly breaks a few of the existing equality checks.
+    # Forcing a flip is a separate refactor — keep the rule off for now.
+    "UP042",
+    "UP046",
+    # Em-dashes and curly quotes are used intentionally in docstrings and
+    # prose-style comments. The ambiguous-unicode warnings are only useful
+    # inside string literals that look like code, which is not the case here.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*" = ["E402", "F401", "I001"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

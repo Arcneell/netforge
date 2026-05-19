@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
 from app.config import get_settings
+from app.middleware.rate_limit import WriteRateLimitMiddleware
 from app.routers import (
     ai,
     audit,
@@ -30,7 +31,6 @@ from app.routers import (
     topology,
     vlans,
 )
-from app.middleware.rate_limit import WriteRateLimitMiddleware
 from app.services.audit import (
     current_request_ip_var,
     current_request_ua_var,

@@ -147,7 +147,7 @@ async def scan_links(
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 - last-line defence
+    except Exception as exc:
         logger.exception("suggest-links scan crashed")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
@@ -221,9 +221,10 @@ async def reject(
 async def get_insights(db: AsyncSession = Depends(get_db)) -> InsightsResponse:
     """Latest cached advisor report. Empty when no run has ever succeeded."""
     _require_ai_enabled()
-    run_id, items = await list_latest_insights(db)
+    run_id, run_created_at, items = await list_latest_insights(db)
     return InsightsResponse(
         run_id=run_id,
+        run_created_at=run_created_at,
         insights=[InsightRead.model_validate(i) for i in items],
     )
 
@@ -259,7 +260,7 @@ async def refresh_insights(
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 - last-line defence
+    except Exception as exc:
         logger.exception("advisor run crashed")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
@@ -304,7 +305,7 @@ async def ask_ai(
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 - last-line defence
+    except Exception as exc:
         logger.exception("nl-query crashed")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
