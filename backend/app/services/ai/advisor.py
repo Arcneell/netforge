@@ -145,18 +145,29 @@ class AdvisorReport:
     completion_tokens: int
 
 
-async def run_advisor(db: AsyncSession, *, user_id: int | None) -> AdvisorReport:
-    """Drive one advisor run end-to-end and persist insights."""
+async def run_advisor(
+    db: AsyncSession,
+    *,
+    user_id: int | None,
+    language_instruction: str | None = None,
+) -> AdvisorReport:
+    """Drive one advisor run end-to-end and persist insights.
+
+    `language_instruction`, when supplied by the route from the request's
+    Accept-Language header, is appended to the system prompt so the model
+    answers in the same language the user is reading the UI in.
+    """
     settings = get_settings()
     provider = get_provider()
     context = await build_topology_context(db)
     payload = json.dumps(context, separators=(",", ":"), default=str)
+    system = SYSTEM_PROMPT + (f"\n\n{language_instruction}" if language_instruction else "")
 
     t0 = time.monotonic()
     error: str | None = None
     try:
         completion = await provider.call(
-            system=SYSTEM_PROMPT,
+            system=system,
             prompt=f"Network snapshot:\n```json\n{payload}\n```",
             tools=[ADVISOR_TOOL],
             max_tokens=settings.ai_max_output_tokens,

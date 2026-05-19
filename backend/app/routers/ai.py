@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("netforge.ai")
@@ -38,6 +38,7 @@ from app.schemas.ai import (
 from app.schemas.link import LinkRead
 from app.services.ai import AIProviderError, AIUnsupportedFeatureError, get_provider
 from app.services.ai.advisor import list_latest_insights, run_advisor
+from app.services.ai.locale import language_instruction as _lang_for
 from app.services.ai.nl_query import run_query
 from app.services.ai.rate_limit import AIRateLimitExceeded, check_and_consume
 from app.services.ai.suggest_links import (
@@ -124,6 +125,7 @@ async def test_connection(user: User = Depends(get_current_user)) -> AITestResul
 async def scan_links(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    accept_language: str | None = Header(default=None),
 ) -> ScanReportRead:
     _require_ai_enabled()
     try:
@@ -136,7 +138,11 @@ async def scan_links(
         ) from exc
 
     try:
-        report = await run_suggest_links(db, user_id=user.id)
+        report = await run_suggest_links(
+            db,
+            user_id=user.id,
+            language_instruction=_lang_for(accept_language),
+        )
     except AIUnsupportedFeatureError as exc:
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
@@ -230,6 +236,7 @@ async def get_insights(db: AsyncSession = Depends(get_db)) -> InsightsResponse:
 async def refresh_insights(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    accept_language: str | None = Header(default=None),
 ) -> AdvisorReportRead:
     """Run a fresh advisor scan. Replaces the "latest" set in one transaction."""
     _require_ai_enabled()
@@ -243,7 +250,11 @@ async def refresh_insights(
         ) from exc
 
     try:
-        report = await run_advisor(db, user_id=user.id)
+        report = await run_advisor(
+            db,
+            user_id=user.id,
+            language_instruction=_lang_for(accept_language),
+        )
     except AIUnsupportedFeatureError as exc:
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
@@ -269,6 +280,7 @@ async def ask_ai(
     payload: QueryRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    accept_language: str | None = Header(default=None),
 ) -> QueryAnswerRead:
     """Ask one free-text question grounded in the live inventory."""
     _require_ai_enabled()
@@ -282,7 +294,12 @@ async def ask_ai(
         ) from exc
 
     try:
-        result = await run_query(db, user_id=user.id, question=payload.question)
+        result = await run_query(
+            db,
+            user_id=user.id,
+            question=payload.question,
+            language_instruction=_lang_for(accept_language),
+        )
     except AIUnsupportedFeatureError as exc:
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except AIProviderError as exc:
