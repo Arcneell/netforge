@@ -27,6 +27,10 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   (e: 'close'): void
+  /** Operator validated the mapping and wants it applied to their next
+   *  import. The parent stores the dict and forwards it to the backend
+   *  as `column_map` (server-side CSV header rewrite). */
+  (e: 'apply', mapping: Record<string, string | null>, entity: ImportEntity): void
 }>()
 
 const { t } = useI18n()
@@ -103,6 +107,22 @@ function confidenceTone(c: number): 'success' | 'primary' | 'warning' {
   if (c >= 0.8) return 'success'
   if (c >= 0.5) return 'primary'
   return 'warning'
+}
+
+/**
+ * Pack the current mapping into the `column_map` dict the import endpoint
+ * accepts and hand it up. Unmapped columns are stored as `null` so the
+ * server-side rewrite drops them — that matches the visible behaviour of
+ * the modal (a "—" / muted "unmapped" badge).
+ */
+function applyMapping() {
+  if (!result.value) return
+  const mapping: Record<string, string | null> = {}
+  for (const c of result.value.columns) {
+    mapping[c.csv_column] = c.suggested_field
+  }
+  emit('apply', mapping, entity.value)
+  emit('close')
 }
 </script>
 
@@ -221,6 +241,16 @@ function confidenceTone(c: number): 'success' | 'primary' | 'warning' {
             })
           }}
         </p>
+
+        <!-- Apply: send the mapping back to ImportView; it will be passed
+             as `column_map` on the next CSV upload (server rewrites the
+             header row in-flight). -->
+        <div class="flex justify-end pt-2">
+          <Button variant="primary" shape="pill" @click="applyMapping">
+            <Wand2 class="w-4 h-4" aria-hidden="true" />
+            {{ t('ai.csvMapping.applyButton') }}
+          </Button>
+        </div>
       </div>
 
       <EmptyState

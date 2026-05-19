@@ -689,7 +689,9 @@
       "colConfidence": "Confiance",
       "colNotes": "Notes",
       "unmapped": "non mappée",
-      "missingFields": "Champs requis manquants : {fields}"
+      "missingFields": "Champs requis manquants : {fields}",
+      "applyButton": "Utiliser ce mapping pour l'import",
+      "pendingNotice": "Un mapping IA est en attente — il sera appliqué automatiquement lors du prochain import (les en-têtes du CSV seront réécrits côté serveur)."
     },
     "settings": {
       "title": "Assistant IA",
