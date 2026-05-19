@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 from sqlalchemy import CheckConstraint, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.subnet import Subnet
 
 
-class Vlan(Base):
+class Vlan(Base, TimestampMixin):
     __tablename__ = "vlans"
     __table_args__ = (
         CheckConstraint("vlan_id BETWEEN 1 AND 4094", name="vlans_id_range"),

@@ -16,15 +16,30 @@ const days = ref<7 | 30 | 90>(30)
 const report = ref<UsageReport | null>(null)
 const loading = ref(true)
 
+// Monotonic request token — when the admin flips 7 → 30 → 90 quickly, every
+// in-flight call resolves but only the LATEST one is allowed to update
+// `report.value`. Without this the slowest response wins, leaving the badge
+// in disagreement with the data shown.
+let requestSeq = 0
+
 async function load() {
   loading.value = true
+  const myToken = ++requestSeq
   try {
-    report.value = await aiApi.usage(days.value)
+    const r = await aiApi.usage(days.value)
+    if (myToken !== requestSeq) {
+      // A newer call has already started — drop this stale answer on the floor.
+      return
+    }
+    report.value = r
   } catch (err) {
+    if (myToken !== requestSeq) return
     toastError(describe(err))
     report.value = null
   } finally {
-    loading.value = false
+    if (myToken === requestSeq) {
+      loading.value = false
+    }
   }
 }
 

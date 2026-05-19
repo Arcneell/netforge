@@ -187,10 +187,8 @@ async def draft_action(
     try:
         completion = await provider.call(
             system=system,
-            prompt=(
-                f"Network snapshot:\n```json\n{payload_json}\n```\n\n"
-                f"Operator request: {prompt}"
-            ),
+            prompt=f"Operator request: {prompt}",
+            cache_prefix=f"Network snapshot:\n```json\n{payload_json}\n```",
             tools=[DRAFT_TOOL],
             max_tokens=settings.ai_max_output_tokens,
             temperature=0.1,
@@ -273,6 +271,15 @@ async def apply_draft(
         else:
             raise ValueError(f"unsupported intent: {draft.intent}")
     except Exception as exc:
+        # Roll back the failed transaction before touching the draft row,
+        # otherwise `commit()` raises `PendingRollbackError` (e.g. when the
+        # inner applier tripped a constraint like `subnets_no_overlap` —
+        # the session is in failed state until we explicitly roll it back).
+        await db.rollback()
+        # Re-fetch the draft because rollback evicts it from the session.
+        draft = await db.get(AIActionDraft, draft_id)
+        if not draft:
+            raise
         draft.status = AIActionDraftStatus.failed
         draft.error_message = str(exc)[:1000]
         draft.applied_at = datetime.now(UTC)
@@ -370,6 +377,32 @@ async def _apply_create_vlan(db: AsyncSession, payload: dict[str, Any]) -> str:
 
 
 async def _apply_create_subnet(db: AsyncSession, payload: dict[str, Any]) -> str:
+    """Mirrors the `/api/subnets` create path's semantic checks so a draft
+    can never produce inventory state that the canonical endpoint would
+    have rejected.
+
+    Specifically: validate the CIDR, ensure the gateway is inside it, and
+    reject a malformed combination before the INSERT — Postgres' INET
+    column stores any address regardless of membership, so the DB alone is
+    not enough."""
+    from ipaddress import IPv4Address, IPv4Network
+
+    try:
+        network = IPv4Network(payload["cidr"], strict=False)
+    except (ValueError, KeyError) as exc:
+        raise ValueError(f"invalid CIDR: {exc}") from exc
+
+    gateway = payload.get("gateway")
+    if gateway:
+        try:
+            gw = IPv4Address(gateway)
+        except ValueError as exc:
+            raise ValueError(f"invalid gateway: {exc}") from exc
+        if gw not in network:
+            raise ValueError(
+                f"gateway {gw} is outside the subnet {network}"
+            )
+
     site = (
         await db.execute(select(Site).where(Site.code == payload["site_code"]))
     ).scalar_one_or_none()
@@ -386,8 +419,8 @@ async def _apply_create_subnet(db: AsyncSession, payload: dict[str, Any]) -> str
             raise ValueError(f"VLAN id {payload['vlan_id']} not found")
         vlan_pk = vlan_row.id
     subnet = Subnet(
-        cidr=payload["cidr"],
-        gateway=payload.get("gateway"),
+        cidr=str(network),
+        gateway=str(gw) if gateway else None,
         vlan_id=vlan_pk,
         site_id=site.id,
         description=payload.get("description"),

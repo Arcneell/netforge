@@ -162,16 +162,21 @@ async def run_query(
 
     rendered_history = _render_history(history or [])
 
+    # Split the user message: the snapshot prefix is stable across follow-up
+    # questions in the same conversation, so it gets `cache_prefix` (which
+    # Anthropic translates into a `cache_control` breakpoint, letting a
+    # second call within the 5-minute TTL pay the cache-read rate instead
+    # of re-billing the full snapshot). History + question stay in `prompt`.
+    cache_prefix = f"Network snapshot:\n```json\n{payload}\n```"
+    dynamic_suffix = f"{rendered_history}Question: {question}"
+
     t0 = time.monotonic()
     error: str | None = None
     try:
         completion = await provider.call(
             system=system,
-            prompt=(
-                f"Network snapshot:\n```json\n{payload}\n```\n\n"
-                f"{rendered_history}"
-                f"Question: {question}"
-            ),
+            prompt=dynamic_suffix,
+            cache_prefix=cache_prefix,
             tools=[QUERY_TOOL],
             max_tokens=settings.ai_max_output_tokens,
             temperature=0.2,

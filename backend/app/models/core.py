@@ -29,7 +29,7 @@ class Site(Base, TimestampMixin):
     subnets: Mapped[list[Subnet]] = relationship(back_populates="site")
 
 
-class Room(Base):
+class Room(Base, TimestampMixin):
     __tablename__ = "rooms"
     __table_args__ = (UniqueConstraint("site_id", "code", name="rooms_site_code_uniq"),)
 

@@ -169,7 +169,11 @@ async def run_advisor(
     try:
         completion = await provider.call(
             system=system,
-            prompt=f"Network snapshot:\n```json\n{payload}\n```",
+            # Snapshot is the only thing in the user message — passing it as
+            # `cache_prefix` so re-runs against unchanged infra hit the
+            # Anthropic prompt cache.
+            prompt="",
+            cache_prefix=f"Network snapshot:\n```json\n{payload}\n```",
             tools=[ADVISOR_TOOL],
             max_tokens=settings.ai_max_output_tokens,
             temperature=0.3,

@@ -62,20 +62,32 @@ class AnthropicProvider:
         tools: list[ToolDef] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.2,
+        cache_prefix: str = "",
     ) -> AICompletion:
         client = self._get_client()
         # Anthropic's prompt cache requires a content block of ≥ 1024 tokens
-        # (~4 KB of text). Below that, `cache_control` is a no-op. The system
-        # prompt is always large enough; the user message only is when it
-        # contains the topology snapshot — guard the marker so we don't ship
-        # a useless `cache_control` on a short ping.
-        user_block: list[dict[str, Any]] | str = prompt
-        if len(prompt) >= 4096:
-            # Cache the bulky snapshot+conversation prefix. Anthropic accepts
-            # up to 4 cache breakpoints per request, well above the two we use.
+        # (~4 KB of text). When the caller supplies a `cache_prefix` (the
+        # stable snapshot body for nl_query / advisor / suggest_links), we
+        # split the user message into TWO blocks: one cached for the prefix,
+        # one non-cached for the dynamic suffix (history + question). This
+        # is what lets a follow-up Ask AI within the cache TTL pay the
+        # cache-read rate instead of re-billing the full snapshot.
+        user_block: list[dict[str, Any]] | str
+        if cache_prefix and len(cache_prefix) >= 4096:
+            user_block = [
+                {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+            ]
+            if prompt:
+                user_block.append({"type": "text", "text": prompt})
+        elif len(prompt) >= 4096 and not cache_prefix:
+            # Legacy path — caller didn't split, but the prompt itself is
+            # large. Wrap the whole thing in one cached block. Less efficient
+            # for follow-ups but correct.
             user_block = [
                 {"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}},
             ]
+        else:
+            user_block = (cache_prefix + ("\n\n" if cache_prefix and prompt else "") + prompt) or prompt
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": max_tokens,
