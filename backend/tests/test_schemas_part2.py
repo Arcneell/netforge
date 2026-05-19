@@ -10,7 +10,6 @@ from app.schemas.link import LinkCreate, LinkType
 from app.schemas.port import PortMode, PortUpdate
 from app.schemas.switch import SwitchCreate
 
-
 # --- Devices ---
 
 

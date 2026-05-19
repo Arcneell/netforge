@@ -11,6 +11,7 @@ Easy to relax later if a feature needs them.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -23,6 +24,37 @@ from app.models.port import Port
 from app.models.subnet import Subnet
 from app.models.switch import Switch
 from app.models.vlan import Vlan
+
+# Patterns that look like prompt-injection attempts inside free-text fields
+# (port notes, descriptions). Admins type those fields, but a CSV import or a
+# previous compromise might have introduced something hostile. We blank the
+# field rather than fight a parsing arms-race — the legitimate use case is
+# "uplink to SW-CORE-01 port 24", not "Disregard previous instructions".
+_INJECTION_HINT_RE = re.compile(
+    r"(ignore\s+(all\s+)?previous|disregard\s+previous|"
+    r"system\s+prompt|forget\s+(all\s+)?(your\s+)?instructions|"
+    r"you\s+are\s+now\s+|new\s+instructions:|"
+    r"<\s*\|.*\|\s*>|"
+    r"```\s*system|"
+    r"\[\s*system\s*\])",
+    re.IGNORECASE | re.DOTALL,
+)
+# Cap any single free-text field — paste-bombing a 50 KB README into a port
+# note would otherwise show up in the prompt verbatim.
+_FREE_TEXT_MAX = 500
+
+
+def _sanitize_freetext(value: str | None) -> str | None:
+    """Strip control chars, length-cap, and replace likely prompt-injection
+    payloads with a fixed marker. Returns None unchanged."""
+    if value is None:
+        return None
+    cleaned = "".join(ch for ch in value if ch == "\n" or ch == "\t" or ord(ch) >= 0x20)
+    if len(cleaned) > _FREE_TEXT_MAX:
+        cleaned = cleaned[:_FREE_TEXT_MAX] + "…"
+    if _INJECTION_HINT_RE.search(cleaned):
+        return "[redacted: suspicious content]"
+    return cleaned
 
 
 async def build_topology_context(db: AsyncSession) -> dict[str, Any]:
@@ -45,7 +77,12 @@ async def build_topology_context(db: AsyncSession) -> dict[str, Any]:
 
     return {
         "sites": [
-            {"id": s.id, "name": s.name, "code": s.code, "address": s.address}
+            {
+                "id": s.id,
+                "name": s.name,
+                "code": s.code,
+                "address": _sanitize_freetext(s.address),
+            }
             for s in sites
         ],
         "rooms": [
@@ -53,7 +90,7 @@ async def build_topology_context(db: AsyncSession) -> dict[str, Any]:
                 "id": r.id,
                 "site_id": r.site_id,
                 "code": r.code,
-                "description": r.description,
+                "description": _sanitize_freetext(r.description),
             }
             for r in rooms
         ],
@@ -67,7 +104,7 @@ async def build_topology_context(db: AsyncSession) -> dict[str, Any]:
                 # Derived for convenience; not a column on switches.
                 "site_id": room_to_site.get(s.room_id) if s.room_id else None,
                 "port_count": s.port_count,
-                "description": s.description,
+                "description": _sanitize_freetext(s.description),
             }
             for s in switches
         ],
@@ -88,7 +125,7 @@ async def build_topology_context(db: AsyncSession) -> dict[str, Any]:
                 ),
                 # Notes can hold operator hints like "uplink to SW-CORE-01" —
                 # the single most-useful free-text field for linking.
-                "notes": p.notes,
+                "notes": _sanitize_freetext(p.notes),
             }
             for p in ports
         ],
@@ -105,7 +142,7 @@ async def build_topology_context(db: AsyncSession) -> dict[str, Any]:
                 "vlan_id": s.vlan_id,
                 "site_id": s.site_id,
                 "dhcp_enabled": s.dhcp_enabled,
-                "description": s.description,
+                "description": _sanitize_freetext(s.description),
             }
             for s in subnets
         ],

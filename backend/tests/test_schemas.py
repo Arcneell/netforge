@@ -11,7 +11,6 @@ from app.schemas.site import SiteCreate
 from app.schemas.subnet import SubnetCreate
 from app.schemas.vlan import VlanCreate
 
-
 # --- Sites ---
 
 

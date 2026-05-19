@@ -8,9 +8,6 @@ from enum import Enum
 from sqlalchemy import (
     BigInteger,
     DateTime,
-)
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import (
     ForeignKey,
     Index,
     String,
@@ -18,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 

@@ -1,0 +1,70 @@
+name: ci
+
+# Pull-request + main-push gate. Keeps merges green: lint + unit tests for the
+# backend, lint + typecheck + build for the frontend. No DB needed — backend
+# tests use AsyncMock; integration coverage lives in Playwright (separate).
+#
+# Both jobs run in parallel; the workflow status is the and of the two so a
+# branch needs both before being mergeable.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend deps (editable + dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check app tests
+
+      - name: Pytest
+        # The AI tests rely only on mocked SDKs / mocked DB sessions, so the
+        # job stays fully self-contained.
+        run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: ESLint (check only — no --fix)
+        # The repo's `npm run lint` script ships `--fix`, which is fine
+        # locally but mutates files in CI. Call eslint directly.
+        run: npx eslint . --ext .vue,.ts,.js
+
+      - name: Production build (runs vue-tsc + vite build)
+        run: npm run build

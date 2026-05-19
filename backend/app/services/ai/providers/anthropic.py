@@ -37,6 +37,22 @@ class AnthropicProvider:
             )
         self._api_key = api_key
         self.model = model
+        # Lazily-built AsyncAnthropic client, reused across calls. Each SDK
+        # client holds an httpx pool; rebuilding it for every advisor /
+        # nl_query call was throwing away connection reuse and TLS handshakes.
+        self._client: Any = None
+
+    def _get_client(self) -> Any:
+        if self._client is not None:
+            return self._client
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError as exc:  # pragma: no cover - env-dependent
+            raise AIProviderError(
+                "anthropic SDK not installed (`pip install anthropic`)"
+            ) from exc
+        self._client = AsyncAnthropic(api_key=self._api_key)
+        return self._client
 
     async def call(
         self,
@@ -47,14 +63,7 @@ class AnthropicProvider:
         max_tokens: int = 2048,
         temperature: float = 0.2,
     ) -> AICompletion:
-        try:
-            from anthropic import AsyncAnthropic
-        except ImportError as exc:  # pragma: no cover - env-dependent
-            raise AIProviderError(
-                "anthropic SDK not installed (`pip install anthropic`)"
-            ) from exc
-
-        client = AsyncAnthropic(api_key=self._api_key)
+        client = self._get_client()
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": max_tokens,

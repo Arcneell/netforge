@@ -7,7 +7,7 @@ to phase 3.5 (`testcontainers-postgres`).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from app.models.port import PortMode
@@ -35,7 +35,7 @@ def test_jsonsafe_primitives_pass_through() -> None:
 
 
 def test_jsonsafe_datetime_to_iso() -> None:
-    dt = datetime(2026, 4, 24, 15, 30, tzinfo=timezone.utc)
+    dt = datetime(2026, 4, 24, 15, 30, tzinfo=UTC)
     out = _jsonsafe(dt)
     assert isinstance(out, str)
     assert "2026-04-24" in out

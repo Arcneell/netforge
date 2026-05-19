@@ -8,7 +8,7 @@ account disable) which JWTs do not.
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Request, Response
 from sqlalchemy import delete, select, update
@@ -22,7 +22,7 @@ _RENEW_THRESHOLD = timedelta(hours=1)
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 async def create_session(
