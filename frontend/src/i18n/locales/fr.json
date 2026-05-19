@@ -627,6 +627,30 @@
       "testKo": "Échec de la connexion.",
       "howToChange": "Changer de provider",
       "envHint": "Mettez à jour votre fichier .env puis relancez le backend. Une seule clé suffit — celle qui correspond à AI_PROVIDER."
+    },
+    "usage": {
+      "title": "Consommation IA",
+      "description": "Vue d'ensemble des appels IA sur la période sélectionnée — nombre, jetons, coût estimé et latence moyenne.",
+      "windowLabel": "Fenêtre",
+      "daysOption": "{n} j",
+      "emptyTitle": "Aucun appel IA sur la période",
+      "emptyDescription": "Lancez l'advisor ou posez une question à l'IA pour commencer à remplir ce tableau.",
+      "calls": "Appels",
+      "cost": "Coût",
+      "tokens": "Jetons",
+      "latency": "Latence moy.",
+      "successFailure": "{ok} OK · {ko} en erreur",
+      "costHint": "Estimation (tarifs publics)",
+      "latencyHint": "Aller-retour LLM",
+      "peakDay": "Pic journalier : {n} appels",
+      "byKind": "Par fonctionnalité",
+      "byProvider": "Par provider",
+      "disclaimer": "Coût calculé à partir des tarifs publics 2026-05 (Anthropic, OpenAI, Google). La facturation réelle peut varier (cache, batch, région).",
+      "kinds": {
+        "suggestLinks": "Suggestion de liens",
+        "advisor": "Conseiller infra",
+        "nlQuery": "Demander à l'IA"
+      }
     }
   }
 }
