@@ -821,9 +821,68 @@ async def _import_one(
     )
 
 
+def apply_column_mapping(content: bytes, mapping: dict[str, str | None]) -> bytes:
+    """Rewrite the header row of a CSV in-memory using `{csv_column → canonical}`.
+
+    - A mapping value of `None` (or a value that resolves to the canonical
+      name `null`) means "drop this column entirely" — the rest of the
+      rows lose that field as well.
+    - Headers absent from the mapping are passed through verbatim, which
+      is what lets the AI assistant only worry about the columns it
+      successfully identified.
+    - The CSV is assumed to use the canonical NetForge encoding (`;`
+      delimiter, `utf-8-sig`). Mixed delimiters in the same file are not
+      supported because the import pipeline doesn't accept them either.
+
+    Returns the rewritten bytes. The original `content` is not mutated.
+    """
+    if not mapping:
+        return content
+    text = content.decode("utf-8-sig", errors="replace")
+    reader = csv.reader(io.StringIO(text), delimiter=";")
+    try:
+        headers = next(reader)
+    except StopIteration:
+        return content
+    # Build per-column decisions in original order: either the rewritten
+    # name (and we keep the column) or None (and we drop the column from
+    # every row below). Decisions stored as a list of (keep, new_name).
+    decisions: list[tuple[bool, str | None]] = []
+    for h in headers:
+        target = mapping.get(h, h) if h in mapping else h
+        if target is None:
+            decisions.append((False, None))
+        else:
+            decisions.append((True, str(target)))
+    out = io.StringIO()
+    writer = csv.writer(out, delimiter=";")
+    writer.writerow([new_name for keep, new_name in decisions if keep])
+    for row in reader:
+        # Skip empty trailing lines without breaking — csv emits a `[]` for
+        # them.
+        if not row:
+            writer.writerow([])
+            continue
+        writer.writerow(
+            [
+                row[i] if i < len(row) else ""
+                for i, (keep, _new_name) in enumerate(decisions)
+                if keep
+            ]
+        )
+    return out.getvalue().encode("utf-8-sig")
+
+
 async def run_import(
-    db: AsyncSession, entity: str, content: bytes, dry_run: bool
+    db: AsyncSession,
+    entity: str,
+    content: bytes,
+    dry_run: bool,
+    *,
+    column_map: dict[str, str | None] | None = None,
 ) -> ImportReport:
+    if column_map:
+        content = apply_column_mapping(content, column_map)
     result = await _import_one(db, entity, content)
 
     if result.error_rows or dry_run:

@@ -56,10 +56,27 @@ export const importsApi = {
    * We bypass the standard request() helper because we need a multipart body
    * (axios builds the boundary from FormData automatically).
    */
-  async upload(entity: ImportEntity, file: File, dryRun: boolean): Promise<ImportReport> {
+  /**
+   * Upload a CSV file. With `dry_run=true` the backend parses and validates
+   * but always rolls back — same shape of report either way.
+   *
+   * `columnMap` is the optional AI-mapping output (`{csv_column: canonical |
+   * null}`): when present, the backend rewrites the CSV header row before
+   * parsing. Use it to feed in foreign headers without the operator having
+   * to manually rename them.
+   */
+  async upload(
+    entity: ImportEntity,
+    file: File,
+    dryRun: boolean,
+    columnMap?: Record<string, string | null>,
+  ): Promise<ImportReport> {
     const form = new FormData()
     form.append('file', file)
     form.append('dry_run', dryRun ? 'true' : 'false')
+    if (columnMap && Object.keys(columnMap).length > 0) {
+      form.append('column_map', JSON.stringify(columnMap))
+    }
     const res = await api.post<ImportReport>(`/imports/${entity}`, form)
     return res.data
   },
