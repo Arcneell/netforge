@@ -3,7 +3,8 @@
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,6 +49,23 @@ def _configure_logging(level: str) -> None:
     )
 
 
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Start the AI scheduler at process boot, cancel it on shutdown.
+
+    The scheduler is opt-in: rows in `ai_schedules` ship with `enabled=false`,
+    so this is a no-op for fresh installs. Test environments override the
+    lifespan by passing their own `lifespan=` argument when building the app.
+    """
+    from app.services.ai.scheduler import start_scheduler, stop_scheduler
+
+    start_scheduler()
+    try:
+        yield
+    finally:
+        await stop_scheduler()
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     _configure_logging(settings.log_level)
@@ -58,6 +76,7 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
+        lifespan=_lifespan,
     )
 
     # Short-lived signed cookie used by authlib to store the OAuth `state`

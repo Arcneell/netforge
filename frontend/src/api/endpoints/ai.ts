@@ -184,6 +184,28 @@ export interface CsvMappingResponse {
   completion_tokens: number
 }
 
+// --- Scheduled AI runs -----------------------------------------------------
+
+export type AIScheduleKind = 'advisor' | 'suggest_links'
+
+export interface AISchedule {
+  id: number
+  kind: AIScheduleKind
+  enabled: boolean
+  interval_minutes: number
+  webhook_url: string | null
+  webhook_severity_threshold: InsightSeverity
+  last_run_at: string | null
+  last_run_id: number | null
+}
+
+export interface AIScheduleUpsert {
+  enabled: boolean
+  interval_minutes: number
+  webhook_url: string | null
+  webhook_severity_threshold: InsightSeverity
+}
+
 // LLM calls routinely take 20–60 s on a real inventory snapshot; the default
 // axios 20 s timeout was aborting valid responses mid-flight ("Impossible de
 // joindre le serveur"). Bump the AI-specific endpoints to 120 s — generous
@@ -257,6 +279,16 @@ export const aiApi = {
       url: '/ai/csv/suggest-mapping',
       data: req,
       timeout: AI_TIMEOUT_MS,
+    })
+  },
+  listSchedules(): Promise<AISchedule[]> {
+    return request<AISchedule[]>({ method: 'GET', url: '/ai/schedules' })
+  },
+  upsertSchedule(kind: AIScheduleKind, body: AIScheduleUpsert): Promise<AISchedule> {
+    return request<AISchedule>({
+      method: 'PUT',
+      url: `/ai/schedules/${kind}`,
+      data: body,
     })
   },
 }

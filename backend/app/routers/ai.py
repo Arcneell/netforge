@@ -26,6 +26,8 @@ from app.db import get_session as get_db
 from app.models.user import User, UserRole
 from app.schemas.ai import (
     AdvisorReportRead,
+    AIScheduleRead,
+    AIScheduleUpsert,
     AIStatusRead,
     AITestResult,
     CsvColumnMapping,
@@ -460,3 +462,67 @@ async def suggest_csv_mapping(
         prompt_tokens=result.prompt_tokens,
         completion_tokens=result.completion_tokens,
     )
+
+
+# --- Scheduled AI runs -----------------------------------------------------
+
+
+_SCHEDULABLE_KINDS = {"advisor", "suggest_links"}
+
+
+@router.get(
+    "/schedules",
+    response_model=list[AIScheduleRead],
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[AIScheduleRead]:
+    """List configured schedules. UI tolerates an empty list — kinds without
+    a row have never been configured and default to disabled."""
+    from sqlalchemy import select
+
+    from app.models.ai import AISchedule
+
+    rows = (
+        (await db.execute(select(AISchedule).order_by(AISchedule.kind.asc())))
+        .scalars()
+        .all()
+    )
+    return [AIScheduleRead.model_validate(r) for r in rows]
+
+
+@router.put(
+    "/schedules/{kind}",
+    response_model=AIScheduleRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def upsert_schedule(
+    kind: str,
+    payload: AIScheduleUpsert,
+    db: AsyncSession = Depends(get_db),
+) -> AIScheduleRead:
+    """Create or update the schedule row for `kind`. Bounds enforced by the
+    DB check constraint + pydantic; we just route the call."""
+    if kind not in _SCHEDULABLE_KINDS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"kind must be one of {sorted(_SCHEDULABLE_KINDS)}",
+        )
+
+    from sqlalchemy import select
+
+    from app.models.ai import AIRunKind, AISchedule, InsightSeverity
+
+    kind_enum = AIRunKind(kind)
+    row = (
+        await db.execute(select(AISchedule).where(AISchedule.kind == kind_enum))
+    ).scalar_one_or_none()
+    if row is None:
+        row = AISchedule(kind=kind_enum)
+        db.add(row)
+    row.enabled = payload.enabled
+    row.interval_minutes = payload.interval_minutes
+    row.webhook_url = (payload.webhook_url or "").strip() or None
+    row.webhook_severity_threshold = InsightSeverity(payload.webhook_severity_threshold)
+    await db.commit()
+    await db.refresh(row)
+    return AIScheduleRead.model_validate(row)

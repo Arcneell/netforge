@@ -257,3 +257,35 @@ class CsvMappingResponse(BaseModel):
     latency_ms: int
     prompt_tokens: int
     completion_tokens: int
+
+
+# --- Scheduled AI runs -----------------------------------------------------
+
+
+class AIScheduleRead(BaseModel):
+    """Configuration of one recurring AI task."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str  # "advisor" | "suggest_links"
+    enabled: bool
+    interval_minutes: int
+    webhook_url: str | None
+    webhook_severity_threshold: str
+    last_run_at: datetime | None
+    last_run_id: int | None
+
+
+class AIScheduleUpsert(BaseModel):
+    """Body of PUT /api/ai/schedules/{kind}.
+
+    `enabled` may be flipped without touching the other fields. The bounds
+    on `interval_minutes` mirror the DB check constraint."""
+
+    enabled: bool = False
+    interval_minutes: int = Field(ge=15, le=10080, default=1440)
+    webhook_url: str | None = Field(default=None, max_length=2000)
+    webhook_severity_threshold: str = Field(
+        default="warning", pattern="^(info|warning|critical)$"
+    )

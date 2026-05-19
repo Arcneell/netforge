@@ -622,6 +622,25 @@
       "cleanTitle": "Tout est en ordre",
       "cleanDescription": "Aucune incohérence détectée dans votre inventaire."
     },
+    "schedules": {
+      "title": "Exécutions planifiées",
+      "description": "Lance automatiquement l'advisor ou le scan de liens à intervalle régulier. Pour l'advisor, configure aussi un webhook (Slack, Mattermost, Teams, …) qui sera notifié dès qu'une nouvelle alerte au seuil défini apparaît.",
+      "kinds": {
+        "advisor": "Conseiller infra",
+        "suggestLinks": "Suggestion de liens"
+      },
+      "fieldEnabled": "Activé",
+      "fieldInterval": "Intervalle",
+      "fieldThreshold": "Seuil webhook",
+      "fieldWebhook": "URL du webhook",
+      "webhookHint": "Optionnel. POSTé avec un JSON {source, event, run_id, findings[]} dès qu'une nouvelle alerte au seuil apparaît.",
+      "intervalMinutes": "{n} min",
+      "intervalHours": "{n} h",
+      "intervalDays": "{n} j",
+      "neverRun": "Jamais exécuté",
+      "lastRunAt": "Dernière exécution : {at}",
+      "savedToast": "Planning enregistré."
+    },
     "csvMapping": {
       "openButton": "Aide au mapping",
       "title": "Assistant de mapping CSV",
