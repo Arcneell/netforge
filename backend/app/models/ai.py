@@ -149,6 +149,55 @@ class InsightCategory(str, Enum):
     other = "other"
 
 
+class AISchedule(Base):
+    """Recurring AI task. At most one row per `kind`.
+
+    The scheduler loop wakes up every minute, checks every enabled row,
+    and runs the matching feature when `last_run_at + interval_minutes <=
+    now()`. When a new run produces an `InfraInsight` at or above
+    `webhook_severity_threshold` that wasn't in the previous run, the
+    webhook fires.
+    """
+
+    __tablename__ = "ai_schedules"
+    __table_args__ = (
+        UniqueConstraint("kind", name="ai_schedules_kind_uniq"),
+        CheckConstraint(
+            "interval_minutes >= 15 AND interval_minutes <= 10080",
+            name="ai_schedules_interval_bounds",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[AIRunKind] = mapped_column(
+        SAEnum(AIRunKind, name="ai_run_kind", native_enum=True, create_type=False),
+        nullable=False,
+    )
+    enabled: Mapped[bool] = mapped_column(nullable=False, default=False)
+    interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=1440)
+    webhook_url: Mapped[str | None] = mapped_column(Text)
+    webhook_severity_threshold: Mapped[InsightSeverity] = mapped_column(
+        SAEnum(InsightSeverity, name="insight_severity", native_enum=True, create_type=False),
+        nullable=False,
+        default=InsightSeverity.warning,
+    )
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ai_run_logs.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class InfraInsight(Base):
     """One AI-generated infrastructure recommendation.
 
