@@ -113,6 +113,11 @@ export interface QueryAnswer {
   completion_tokens: number
 }
 
+export interface QueryHistoryTurn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
 // --- AI Usage dashboard ----------------------------------------------------
 
 export interface UsageTotal {
@@ -179,11 +184,17 @@ export const aiApi = {
       timeout: AI_TIMEOUT_MS,
     })
   },
-  ask(question: string): Promise<QueryAnswer> {
+  /**
+   * One-shot NL question. `history` is replayed by the server on each call
+   * (the server is stateless); pass an empty array to start a fresh chat.
+   * The server caps history at 10 turns — the client should already trim
+   * before sending to keep tokens down.
+   */
+  ask(question: string, history: QueryHistoryTurn[] = []): Promise<QueryAnswer> {
     return request<QueryAnswer>({
       method: 'POST',
       url: '/ai/query',
-      data: { question },
+      data: { question, history },
       timeout: AI_TIMEOUT_MS,
     })
   },
