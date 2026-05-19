@@ -5,6 +5,11 @@ export interface AIStatus {
   enabled: boolean
   provider: string
   model: string
+  /** Per-feature toggles. `enabled` is the master switch; these sub-flags
+   *  reflect `AI_DRAFTS_ENABLED` / `AI_SCHEDULER_ENABLED` envs ANDed with
+   *  the master. UI hides the matching sections when false. */
+  drafts_enabled: boolean
+  scheduler_enabled: boolean
 }
 
 export type LinkSuggestionStatus = 'pending' | 'accepted' | 'rejected' | 'superseded'

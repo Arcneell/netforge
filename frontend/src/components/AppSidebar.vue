@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { aiApi, type AIStatus } from '@/api'
 import {
   ClipboardList,
   LayoutDashboard,
@@ -25,6 +26,10 @@ interface NavItem {
   to: string
   icon: typeof LayoutDashboard
   labelKey: string
+  /** Hide this item if the matching AI sub-feature is disabled (per
+   *  /api/ai/status). Used to keep the "Drafted actions" entry out of the
+   *  sidebar when the operator has opted out of NL-to-action. */
+  requiresAiFeature?: 'drafts'
 }
 
 interface NavSection {
@@ -64,7 +69,12 @@ const sections: NavSection[] = [
     items: [
       { to: '/insights', icon: Lightbulb, labelKey: 'nav.insights' },
       { to: '/ask', icon: MessageCircle, labelKey: 'nav.ask' },
-      { to: '/drafts', icon: ClipboardList, labelKey: 'nav.drafts' },
+      {
+        to: '/drafts',
+        icon: ClipboardList,
+        labelKey: 'nav.drafts',
+        requiresAiFeature: 'drafts',
+      },
       { to: '/import', icon: Upload, labelKey: 'nav.import' },
       { to: '/audit', icon: History, labelKey: 'nav.audit' },
       { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
@@ -77,7 +87,35 @@ const { sidebarCollapsed, mobileNavOpen } = storeToRefs(ui)
 const { isAdmin } = useAuth()
 const route = useRoute()
 
-const visibleSections = computed(() => sections.filter((s) => !s.adminOnly || isAdmin.value))
+// Lazily fetch AI status for the admin sidebar — the call is cheap (200,
+// public to authed users) and only triggered for admins because the items
+// gated by it live in the admin-only section. Falls back to "everything
+// enabled" on error so an outage of the AI endpoint can't lock the sidebar.
+const aiStatus = ref<AIStatus | null>(null)
+onMounted(async () => {
+  if (!isAdmin.value) return
+  try {
+    aiStatus.value = await aiApi.status()
+  } catch {
+    aiStatus.value = null
+  }
+})
+
+function itemAllowed(item: NavItem): boolean {
+  if (item.requiresAiFeature === 'drafts') {
+    // Hide until we know better; once status loaded, gate on the flag.
+    if (!aiStatus.value) return false
+    return aiStatus.value.drafts_enabled
+  }
+  return true
+}
+
+const visibleSections = computed(() => {
+  return sections
+    .filter((s) => !s.adminOnly || isAdmin.value)
+    .map((s) => ({ ...s, items: s.items.filter(itemAllowed) }))
+    .filter((s) => s.items.length > 0)
+})
 
 // Close the mobile drawer whenever the user navigates — otherwise tapping a
 // nav item just toggles the route under a still-open overlay.

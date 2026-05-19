@@ -102,6 +102,24 @@ class Settings(BaseSettings):
     # log please" prompt from running away to 100k tokens of output.
     ai_max_output_tokens: int = 2048
 
+    # ------------------------------------------------------------------
+    # Granular feature toggles. All default to True, gated by the master
+    # `ai_enabled` flag above. Flip individual flags to False to keep some
+    # AI features but disable others — useful when a compliance or risk
+    # review only signs off on a subset.
+    #
+    # Features always-available (no toggle) regardless of `ai_enabled`:
+    #   - GET /api/ai/integrity-checks (deterministic SQL, no LLM call)
+    # ------------------------------------------------------------------
+    # NL-to-action drafts (`POST /api/ai/drafts` + apply / reject). Highest
+    # risk surface because applying a draft mutates inventory rows. Disable
+    # if your org wants to keep the LLM read-only.
+    ai_drafts_enabled: bool = True
+    # Background scheduler (periodic advisor / suggest-links + webhook
+    # notification). Disable to keep the AI features available manually but
+    # never auto-fire.
+    ai_scheduler_enabled: bool = True
+
     # Observability
     log_level: str = "info"
 

@@ -50,11 +50,17 @@ class ScanReportRead(BaseModel):
 
 
 class AIStatusRead(BaseModel):
-    """Light status response so the UI can hide AI features when disabled."""
+    """Light status response so the UI can hide AI features when disabled.
+
+    `enabled` is the master switch; the granular sub-flags let the operator
+    keep some AI features but disable others (e.g. read-only mode that
+    keeps the advisor but kills the NL-to-action drafts surface)."""
 
     enabled: bool
     provider: str
     model: str
+    drafts_enabled: bool = True
+    scheduler_enabled: bool = True
 
 
 class AITestResult(BaseModel):
