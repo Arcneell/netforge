@@ -24,6 +24,60 @@ from app.services.ai.types import (
     ToolDef,
 )
 
+# Gemini's function-declaration schema only accepts a subset of JSON Schema.
+# Anthropic / OpenAI happily eat `additionalProperties`, `$schema`, `title`,
+# etc. — Gemini rejects the request with a 400 INVALID_ARGUMENT the moment it
+# sees one. Keep this list narrow: only the keys actually used by our prompts.
+# Source: https://ai.google.dev/api/caching#Schema
+_GEMINI_SCHEMA_KEYS = {
+    "type",
+    "format",
+    "description",
+    "nullable",
+    "enum",
+    "maxItems",
+    "minItems",
+    "properties",
+    "required",
+    "items",
+    "minimum",
+    "maximum",
+    "maxLength",
+    "minLength",
+}
+
+
+def _clean_schema_for_gemini(schema: Any) -> Any:
+    """Strip keys Gemini doesn't recognise from a JSON-Schema fragment.
+
+    Two recursion shapes to handle:
+    - A *schema node* is a dict whose keys are JSON-Schema keywords (type,
+      properties, items, …). We keep only the keywords in `_GEMINI_SCHEMA_KEYS`
+      and recurse into the values.
+    - A *properties map* is a dict whose keys are field names mapping to
+      schemas. The keys are arbitrary identifiers — we must NOT filter them,
+      only clean the schema values they point to. Same goes for any future
+      keyword whose value is "map of name → schema".
+
+    `items` is itself a schema (or list of schemas in 2020-12, but we don't
+    use that here) so it gets the keyword-filter treatment too.
+    """
+    if isinstance(schema, dict):
+        cleaned: dict[str, Any] = {}
+        for key, value in schema.items():
+            if key not in _GEMINI_SCHEMA_KEYS:
+                continue
+            if key == "properties" and isinstance(value, dict):
+                # Field names are arbitrary identifiers — keep them all,
+                # clean each value (which IS a schema).
+                cleaned[key] = {fname: _clean_schema_for_gemini(fval) for fname, fval in value.items()}
+            else:
+                cleaned[key] = _clean_schema_for_gemini(value)
+        return cleaned
+    if isinstance(schema, list):
+        return [_clean_schema_for_gemini(v) for v in schema]
+    return schema
+
 
 class GeminiProvider:
     name = "gemini"
@@ -67,9 +121,12 @@ class GeminiProvider:
                         gtypes.FunctionDeclaration(
                             name=t.name,
                             description=t.description,
-                            # Gemini accepts JSON Schema directly here, same as
-                            # OpenAI's `parameters`.
-                            parameters=t.input_schema,
+                            # Gemini accepts a strict subset of JSON Schema —
+                            # strip the keys it doesn't know (additionalProperties,
+                            # $schema, …) before sending. Anthropic/OpenAI take
+                            # the full schema, so we keep `input_schema` rich on
+                            # the ToolDef and only narrow it down here.
+                            parameters=_clean_schema_for_gemini(t.input_schema),
                         )
                     ]
                 )
