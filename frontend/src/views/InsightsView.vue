@@ -10,6 +10,7 @@ import {
   Network,
   RefreshCw,
   Server,
+  ShieldCheck,
   Sparkles,
   Tags,
   Router as RouterIcon,
@@ -27,6 +28,7 @@ import {
   type InsightCategory,
   type InsightEntityRef,
   type InsightSeverity,
+  type IntegrityIssue,
 } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
@@ -42,6 +44,33 @@ const runCreatedAt = ref<string | null>(null)
 const loading = ref(true)
 const refreshing = ref(false)
 const lastReport = ref<AdvisorReport | null>(null)
+
+const tab = ref<'advisor' | 'integrity'>('advisor')
+const integrityIssues = ref<IntegrityIssue[]>([])
+const integrityLoading = ref(false)
+const integrityLoaded = ref(false)
+
+async function loadIntegrity() {
+  integrityLoading.value = true
+  try {
+    const r = await aiApi.integrityChecks()
+    integrityIssues.value = r.issues
+    integrityLoaded.value = true
+  } catch (err) {
+    toastError(describe(err))
+  } finally {
+    integrityLoading.value = false
+  }
+}
+
+function selectTab(t: 'advisor' | 'integrity') {
+  tab.value = t
+  // Lazy-load integrity on first visit — the deterministic check is cheap,
+  // but avoids running it for users who only ever look at the LLM advisor.
+  if (t === 'integrity' && !integrityLoaded.value) {
+    loadIntegrity()
+  }
+}
 
 async function loadAll() {
   loading.value = true
@@ -187,7 +216,7 @@ function entityLabel(e: InsightEntityRef): string {
     <PageHeader :title="t('nav.insights')" :subtitle="t('ai.advisor.subtitle')">
       <template #actions>
         <Button
-          v-if="status?.enabled"
+          v-if="tab === 'advisor' && status?.enabled"
           variant="primary"
           shape="pill"
           :loading="refreshing"
@@ -196,9 +225,59 @@ function entityLabel(e: InsightEntityRef): string {
           <RefreshCw class="w-4 h-4" aria-hidden="true" />
           {{ runId === null ? t('ai.advisor.runFirst') : t('ai.advisor.refresh') }}
         </Button>
+        <Button
+          v-if="tab === 'integrity'"
+          variant="ghost"
+          size="sm"
+          shape="pill"
+          :loading="integrityLoading"
+          @click="loadIntegrity"
+        >
+          <RefreshCw class="w-4 h-4" aria-hidden="true" />
+          {{ t('common.refresh') }}
+        </Button>
       </template>
     </PageHeader>
 
+    <!-- Tabs — switch between LLM advisor and deterministic integrity checks. -->
+    <div
+      class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface mb-4"
+      role="tablist"
+    >
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'advisor'"
+        :class="[
+          'px-3 h-8 rounded text-sm font-medium transition flex items-center gap-1.5',
+          tab === 'advisor'
+            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+        ]"
+        @click="selectTab('advisor')"
+      >
+        <Sparkles class="w-3.5 h-3.5" aria-hidden="true" />
+        {{ t('ai.advisor.tab') }}
+      </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'integrity'"
+        :class="[
+          'px-3 h-8 rounded text-sm font-medium transition flex items-center gap-1.5',
+          tab === 'integrity'
+            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+        ]"
+        @click="selectTab('integrity')"
+      >
+        <ShieldCheck class="w-3.5 h-3.5" aria-hidden="true" />
+        {{ t('ai.integrity.tab') }}
+      </button>
+    </div>
+
+    <!-- ============================== ADVISOR TAB ============================== -->
+    <div v-if="tab === 'advisor'">
     <!-- Run freshness banner — surfaces the age of the latest run and nudges
          the operator to re-run when older than a week. -->
     <p
@@ -352,5 +431,73 @@ function entityLabel(e: InsightEntityRef): string {
         </div>
       </section>
     </template>
+    </div>
+
+    <!-- ============================ INTEGRITY TAB ============================ -->
+    <div v-else-if="tab === 'integrity'">
+      <p class="text-xs text-fg-muted -mt-2 mb-6 leading-relaxed">
+        {{ t('ai.integrity.description') }}
+      </p>
+
+      <div v-if="integrityLoading && !integrityIssues.length" class="space-y-3" aria-busy="true">
+        <div v-for="i in 3" :key="i" class="nf-card p-5 space-y-2">
+          <Skeleton width="40%" height="1rem" />
+          <Skeleton width="80%" height="0.75rem" />
+        </div>
+      </div>
+
+      <EmptyState
+        v-else-if="integrityLoaded && integrityIssues.length === 0"
+        :icon="ShieldCheck"
+        :title="t('ai.integrity.cleanTitle')"
+        :description="t('ai.integrity.cleanDescription')"
+      />
+
+      <ul v-else-if="integrityIssues.length" class="space-y-3">
+        <li v-for="(iss, idx) in integrityIssues" :key="idx" class="nf-card p-5">
+          <div class="flex items-center gap-2 flex-wrap">
+            <Badge :tone="severityTone[iss.severity]">{{ severityLabel(iss.severity) }}</Badge>
+            <Badge tone="muted">{{ t(categoryLabelKey[iss.category] ?? '') }}</Badge>
+          </div>
+          <h3 class="text-base font-semibold tracking-tight mt-2">{{ iss.title }}</h3>
+          <p class="text-sm text-fg-muted leading-relaxed mt-1">{{ iss.description }}</p>
+          <p
+            v-if="iss.recommendation"
+            class="text-sm text-fg mt-3 p-3 rounded-lg bg-muted/60 border-l-2 border-primary-500"
+          >
+            <span class="font-medium text-primary-700 dark:text-primary-300 mr-1">
+              {{ t('ai.advisor.recommendation') }}:
+            </span>
+            {{ iss.recommendation }}
+          </p>
+          <div
+            v-if="iss.affected_entities && iss.affected_entities.length"
+            class="mt-3 flex flex-wrap gap-1.5"
+          >
+            <RouterLink
+              v-for="(e, eIdx) in iss.affected_entities"
+              :key="`${e.type}-${e.id}-${eIdx}`"
+              v-slot="{ href, navigate }"
+              :to="entityRoute(e) ?? ''"
+              custom
+            >
+              <a
+                :href="entityRoute(e) ? href : undefined"
+                :class="[
+                  'nf-pill bg-muted/70',
+                  entityRoute(e)
+                    ? 'hover:bg-primary-50 hover:text-primary-700 cursor-pointer'
+                    : 'cursor-default text-fg-muted',
+                ]"
+                @click="entityRoute(e) ? navigate($event) : null"
+              >
+                <component :is="entityIcon[e.type] ?? Server" class="w-3 h-3" aria-hidden="true" />
+                {{ entityLabel(e) }}
+              </a>
+            </RouterLink>
+          </div>
+        </li>
+      </ul>
+    </div>
   </div>
 </template>

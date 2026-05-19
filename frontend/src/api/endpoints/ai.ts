@@ -144,6 +144,19 @@ export interface UsageReport {
   by_provider: UsageBucket[]
 }
 
+export interface IntegrityIssue {
+  severity: InsightSeverity
+  category: InsightCategory
+  title: string
+  description: string
+  recommendation: string
+  affected_entities: InsightEntityRef[]
+}
+
+export interface IntegrityReport {
+  issues: IntegrityIssue[]
+}
+
 // LLM calls routinely take 20–60 s on a real inventory snapshot; the default
 // axios 20 s timeout was aborting valid responses mid-flight ("Impossible de
 // joindre le serveur"). Bump the AI-specific endpoints to 120 s — generous
@@ -205,5 +218,10 @@ export const aiApi = {
       url: '/ai/usage',
       params: days !== undefined ? { days } : undefined,
     })
+  },
+  /** Deterministic integrity checks (no LLM call). Always available, even
+   *  when AI is otherwise disabled. */
+  integrityChecks(): Promise<IntegrityReport> {
+    return request<IntegrityReport>({ method: 'GET', url: '/ai/integrity-checks' })
   },
 }

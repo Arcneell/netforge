@@ -23,6 +23,7 @@
     "error": "Error",
     "success": "Success",
     "back": "Back",
+    "refresh": "Refresh",
     "comingSoon": "Coming soon",
     "all": "All",
     "none": "None",
@@ -583,6 +584,7 @@
       "newChat": "New conversation"
     },
     "advisor": {
+      "tab": "AI advisor",
       "subtitle": "The AI scans your inventory for SPOFs, capacity pressure, segmentation gaps and other weak points.",
       "refresh": "Re-run analysis",
       "runFirst": "Run analysis",
@@ -613,6 +615,12 @@
         "redundancy": "Redundancy",
         "other": "Other"
       }
+    },
+    "integrity": {
+      "tab": "Data integrity",
+      "description": "Deterministic checks against your inventory — no AI call, no cost. Surfaces duplicate MACs, orphan IPs, switches with no ports, and similar data-entry issues.",
+      "cleanTitle": "Everything is clean",
+      "cleanDescription": "No integrity issues detected in your inventory."
     },
     "settings": {
       "title": "AI assistant",
