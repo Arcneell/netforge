@@ -197,3 +197,25 @@ class UsageReportRead(BaseModel):
     by_day: list[UsageBucketRead]
     by_kind: list[UsageBucketRead]
     by_provider: list[UsageBucketRead]
+
+
+# --- Integrity checks ------------------------------------------------------
+
+
+class IntegrityIssueRead(BaseModel):
+    """A deterministic check finding. Same surface as `InsightRead` so the
+    frontend re-uses the existing card components without branching."""
+
+    severity: str
+    category: str
+    title: str
+    description: str
+    recommendation: str
+    affected_entities: list[InsightEntityRef]
+
+
+class IntegrityReportRead(BaseModel):
+    """Wrapper for the integrity-checks endpoint. Empty list when nothing
+    is wrong — the UI renders the "all clear" state."""
+
+    issues: list[IntegrityIssueRead]

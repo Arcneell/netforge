@@ -57,6 +57,8 @@ export {
   type InsightsResponse,
   type LinkSuggestion,
   type LinkSuggestionStatus,
+  type IntegrityIssue,
+  type IntegrityReport,
   type QueryAnswer,
   type QueryEntityRef,
   type QueryHistoryTurn,
