@@ -57,7 +57,11 @@ async def test_empty_window_returns_zeroed_report() -> None:
     assert report.window_days == 7
     assert report.total.calls == 0
     assert report.total.cost_usd == 0.0
-    assert report.by_day == []
+    # `by_day` is backfilled with zero-call buckets for every day in the
+    # window — that's what lets the sparkline render the dead-flat line
+    # instead of skipping days. Today + 7 days back = 8 buckets.
+    assert len(report.by_day) == 8
+    assert all(b.totals.calls == 0 for b in report.by_day)
     assert report.by_kind == []
     assert report.by_provider == []
 
@@ -84,7 +88,10 @@ async def test_totals_accumulate_across_rows() -> None:
 
 @pytest.mark.asyncio
 async def test_by_day_bucket_is_sorted_ascending() -> None:
-    """The UI draws a sparkline directly from `by_day` — order matters."""
+    """The UI draws a sparkline directly from `by_day` — order matters.
+    With zero-day backfill we now also expect a contiguous run between
+    `started_at` and today, so we assert the three days with traffic appear
+    in ascending order rather than as the entire list."""
     base = datetime(2026, 5, 17, 12, tzinfo=UTC)
     rows = [
         _row(when=base + timedelta(days=2), kind=AIRunKind.advisor, provider="anthropic",
@@ -95,8 +102,11 @@ async def test_by_day_bucket_is_sorted_ascending() -> None:
              model="claude-sonnet-4-6"),
     ]
     report = await build_usage_report(_mock_db(rows), days=7)
+    busy = {b.key: b.totals.calls for b in report.by_day if b.totals.calls > 0}
+    assert busy == {"2026-05-17": 1, "2026-05-18": 1, "2026-05-19": 1}
+    # Whole list must still be monotonically ascending on the date key.
     keys = [b.key for b in report.by_day]
-    assert keys == ["2026-05-17", "2026-05-18", "2026-05-19"]
+    assert keys == sorted(keys)
 
 
 @pytest.mark.asyncio

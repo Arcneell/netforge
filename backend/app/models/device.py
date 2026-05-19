@@ -9,7 +9,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.ip import Ip
@@ -28,7 +28,7 @@ class DeviceType(str, Enum):
     other = "other"
 
 
-class Device(Base):
+class Device(Base, TimestampMixin):
     __tablename__ = "devices"
 
     id: Mapped[int] = mapped_column(primary_key=True)

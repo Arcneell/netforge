@@ -111,11 +111,17 @@ async def _check_duplicate_macs(db: AsyncSession) -> list[IntegrityIssue]:
 
 
 async def _check_orphan_assigned_ips(db: AsyncSession) -> list[IntegrityIssue]:
-    """An IP in `assigned` status without a `device_id` is a mistake — either
-    it's actually `reserved`, or somebody forgot to link the device."""
+    """An IP in `assigned` status without a `device_id` AND not bound to any
+    port is a mistake — either it's actually `reserved`, or somebody forgot
+    to link the device. An IP that lives on a port (mgmt-IPs on switches,
+    typically) is a valid assignment without a device record."""
+    # Sub-select: every IP referenced by any port.connected_ip_id. Excluding
+    # them keeps switch management IPs out of the orphan report.
+    port_linked_ips = select(Port.connected_ip_id).where(Port.connected_ip_id.is_not(None))
     stmt = select(Ip).where(
         Ip.status == IpStatus.assigned,
         Ip.device_id.is_(None),
+        Ip.id.notin_(port_linked_ips),
     )
     ips = (await db.execute(stmt)).scalars().all()
     if not ips:

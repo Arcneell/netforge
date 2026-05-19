@@ -136,7 +136,11 @@ async def run_suggest_links(
     try:
         completion = await provider.call(
             system=system,
-            prompt=f"Network snapshot:\n```json\n{payload}\n```",
+            # See `services/ai/nl_query.py` for the cache_prefix rationale —
+            # the snapshot is identical between back-to-back scans, so it
+            # gets the breakpoint.
+            prompt="",
+            cache_prefix=f"Network snapshot:\n```json\n{payload}\n```",
             tools=[SUGGEST_TOOL],
             max_tokens=settings.ai_max_output_tokens,
             temperature=0.2,

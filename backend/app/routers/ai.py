@@ -676,10 +676,12 @@ async def export_insights_pdf(
 ) -> Response:
     """Render the latest advisor report as a PDF.
 
-    Returns a 404 when no advisor run has ever succeeded (matches the empty
-    state the UI already handles). The PDF is rendered in the operator's UI
-    language — FR/EN, falls back to EN.
+    Gated on `AI_ENABLED` — same pattern as the rest of the advisor surface.
+    Returns 404 when AI is disabled or when no advisor run has ever
+    succeeded (matches the empty state the UI already handles). The PDF is
+    rendered in the operator's UI language — FR/EN, falls back to EN.
     """
+    _require_ai_enabled()
     run_id, run_created_at, items = await list_latest_insights(db)
     if run_id is None:
         raise HTTPException(

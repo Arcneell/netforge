@@ -60,15 +60,21 @@ class OpenAIProvider:
         tools: list[ToolDef] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.2,
+        cache_prefix: str = "",
     ) -> AICompletion:
         client = self._get_client()
+        # OpenAI auto-caches identical prefixes transparently — we just
+        # concatenate `cache_prefix` ahead of the prompt and let the API
+        # do its thing. Keeping the join character set predictable helps
+        # the prefix-matching across calls.
+        user_content = (cache_prefix + ("\n\n" if cache_prefix and prompt else "") + prompt) or prompt
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": user_content},
             ],
         }
         if tools:

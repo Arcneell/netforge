@@ -136,6 +136,16 @@ async def build_usage_report(db: AsyncSession, *, days: int) -> UsageReport:
         lat_prov.append(row.latency_ms or 0)
 
     _finalise(total, total_latencies)
+    # Fill every day in the window with a zero bucket before sorting — the
+    # sparkline must not skip quiet days, otherwise a window with calls on
+    # day 1 and day 30 only would render those two points as adjacent.
+    today = datetime.now(UTC).date()
+    cursor = started_at.astimezone(UTC).date()
+    while cursor <= today:
+        key = cursor.isoformat()
+        if key not in by_day:
+            by_day[key] = (_zero_total(), [])
+        cursor += timedelta(days=1)
     # Sort day buckets ascending so the UI can draw a sparkline directly.
     day_items = sorted(by_day.items(), key=lambda kv: kv[0])
     return UsageReport(

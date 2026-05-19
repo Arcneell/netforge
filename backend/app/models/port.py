@@ -9,7 +9,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.device import Device
@@ -30,7 +30,7 @@ class PortAdminStatus(str, Enum):
     down = "down"
 
 
-class Port(Base):
+class Port(Base, TimestampMixin):
     __tablename__ = "ports"
     __table_args__ = (
         UniqueConstraint("switch_id", "number", name="ports_switch_number_uniq"),

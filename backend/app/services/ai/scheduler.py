@@ -80,10 +80,11 @@ async def _run_one(db: AsyncSession, schedule: AISchedule) -> None:
     """
     settings = get_settings()
     if not settings.ai_enabled:
-        # Admin disabled AI globally — we still bump `last_run_at` so we
-        # don't busy-loop checking the same schedule every minute.
-        schedule.last_run_at = datetime.now(UTC)
-        await db.commit()
+        # Admin disabled AI globally — leave `last_run_at` untouched so the
+        # settings UI doesn't claim a run that never happened and the first
+        # real run after re-enabling fires immediately instead of waiting
+        # for the next interval. The outer loop already paces itself via
+        # the minute-tick sleep, so we don't busy-loop on this branch.
         return
 
     previous_run_id = schedule.last_run_id
@@ -203,15 +204,59 @@ def _build_webhook_payload(
     }
 
 
+def _format_for_chat_provider(url: str, generic: dict[str, Any]) -> dict[str, Any]:
+    """Translate the generic envelope into the shape the receiver expects.
+
+    Slack / Mattermost / Teams reject a bare `{event, findings}` payload —
+    they all need a top-level `text` (Slack/Mattermost) or `{title, sections}`
+    (Teams). We detect the URL host and rewrite accordingly; an unknown URL
+    gets the generic envelope as-is, which works for relays / custom HTTP
+    endpoints that expect it.
+    """
+    findings = generic.get("findings") or []
+    lines = [
+        f"*[{f['severity'].upper()}]* {f['title']} ({f['category']})"
+        for f in findings[:10]
+    ]
+    summary = (
+        f"NetForge AI advisor: {len(findings)} new finding(s) at or above "
+        f"`{generic.get('threshold', 'warning')}`"
+    )
+    body_md = summary + ("\n" + "\n".join(lines) if lines else "")
+    host = url.lower()
+    if "hooks.slack.com" in host or "mattermost" in host:
+        # Slack/Mattermost both accept the legacy `text` shape — Mattermost
+        # adopted it for compatibility with Slack integrations.
+        return {"text": body_md}
+    if "office.com" in host or "outlook.com" in host or "webhook.office" in host:
+        # Microsoft Teams "MessageCard" — minimal viable schema.
+        return {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "summary": summary,
+            "themeColor": "C81E1E",
+            "title": "NetForge AI advisor",
+            "text": body_md,
+        }
+    if "discord.com" in host or "discordapp.com" in host:
+        return {"content": body_md[:1900]}  # Discord caps `content` at 2000.
+    # Unknown URL — assume a generic relay that consumes our envelope.
+    return generic
+
+
 async def _send_webhook(url: str, payload: dict[str, Any]) -> None:
     """Fire-and-log POST. We don't retry — webhook receivers are typically
     idempotent enough on title+category, and a transient failure surfaces
-    in the logs for the operator to dig into."""
+    in the logs for the operator to dig into.
+
+    The body is reshaped per receiver via `_format_for_chat_provider` so
+    pasting a Slack / Mattermost / Teams / Discord URL Just Works."""
     if not url:
         return
+    body = _format_for_chat_provider(url, payload)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
+            resp = await client.post(url, json=body)
             resp.raise_for_status()
     except Exception:
         logger.exception("webhook post failed url=%s", url)
