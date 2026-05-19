@@ -283,6 +283,26 @@ export const aiApi = {
       timeout: AI_TIMEOUT_MS,
     })
   },
+  /**
+   * Streaming variant of `ask()`. Returns the raw `Response` so the caller
+   * can read the SSE body via `getReader()`. We POST so the question +
+   * history fit cleanly in the body — `EventSource` only supports GET.
+   *
+   * The route is admin-only and rate-limited; transport errors raise as
+   * usual, but the SSE body itself may also carry `event: error` frames
+   * mid-stream (e.g. when the provider hiccups halfway through).
+   */
+  askStream(question: string, history: QueryHistoryTurn[] = []): Promise<Response> {
+    return fetch('/api/ai/query/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ question, history }),
+    })
+  },
   /** Aggregate AI usage over `days` days (1–365, default 30 server-side). */
   usage(days?: number): Promise<UsageReport> {
     return request<UsageReport>({

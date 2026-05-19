@@ -14,11 +14,15 @@ output side, not the candidates array).
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from app.services.ai.types import (
     AICompletion,
     AIProviderError,
+    StreamChunk,
+    StreamDelta,
+    StreamDone,
     TokenUsage,
     ToolCall,
     ToolDef,
@@ -198,3 +202,32 @@ class GeminiProvider:
             usage=usage,
             raw={"latency_ms": elapsed_ms},
         )
+
+    async def stream_call(
+        self,
+        *,
+        system: str,
+        prompt: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.2,
+        cache_prefix: str = "",
+    ) -> AsyncIterator[StreamChunk]:
+        """Fallback streaming for Gemini.
+
+        `google-genai` exposes `aio.models.generate_content_stream(...)` but
+        its semantics for usage aggregation are still in flux at the time
+        of writing — keep the fallback path simple: do a non-streaming call
+        and yield the whole text as a single delta. The UX is the same as
+        the non-streaming endpoint, only the protocol envelope changes."""
+        completion = await self.call(
+            system=system,
+            prompt=prompt,
+            tools=None,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            cache_prefix=cache_prefix,
+        )
+        text = completion.text or ""
+        if text:
+            yield StreamDelta(text=text)
+        yield StreamDone(text=text, usage=completion.usage)

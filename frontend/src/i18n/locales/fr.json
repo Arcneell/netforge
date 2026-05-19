@@ -582,7 +582,8 @@
       "example4": "Quels ports sont en mode trunk dans la salle R-101 ?",
       "latency": "Réponse en {ms} ms",
       "disabledHint": "L'assistant IA est désactivé. Activez-le dans Réglages → IA pour poser des questions.",
-      "newChat": "Nouvelle conversation"
+      "newChat": "Nouvelle conversation",
+      "emptyAnswer": "(Réponse vide — relancez la question si nécessaire.)"
     },
     "advisor": {
       "tab": "Conseiller IA",

@@ -8,6 +8,7 @@ in later phases without touching anything upstream.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from threading import Lock
 from typing import Protocol
 
@@ -16,6 +17,7 @@ from app.services.ai.types import (
     AICompletion,
     AIProviderError,
     AIUnsupportedFeatureError,
+    StreamChunk,
     ToolDef,
 )
 
@@ -55,6 +57,25 @@ class AIProvider(Protocol):
         temperature: float = 0.2,
         cache_prefix: str = "",
     ) -> AICompletion: ...
+
+    def stream_call(
+        self,
+        *,
+        system: str,
+        prompt: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.2,
+        cache_prefix: str = "",
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream the model's text response chunk-by-chunk.
+
+        Yields zero or more `StreamDelta` followed by exactly one
+        `StreamDone` carrying the aggregated text + token usage. Tool calls
+        are intentionally NOT supported in the streaming path — the route
+        only uses this for free-text Q&A where progressive rendering is
+        the point. Errors raise `AIProviderError`.
+        """
+        ...
 
 
 # Lazy import inside the factory so missing optional deps (anthropic /
