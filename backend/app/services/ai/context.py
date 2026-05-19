@@ -57,6 +57,20 @@ def _sanitize_freetext(value: str | None) -> str | None:
     return cleaned
 
 
+async def build_topology_context_cached(db: AsyncSession) -> tuple[dict[str, Any], bool]:
+    """Cached variant of `build_topology_context`. Returns `(context, was_cached)`.
+
+    The cache (`services.ai.snapshot_cache`) fingerprints the DB cheaply and
+    only re-fetches the full inventory when something has actually changed.
+    Use this in any AI feature that doesn't *need* a brand-new read every
+    call — the only reason to bypass it would be a debug command."""
+    # Local import to avoid an import cycle: snapshot_cache wants to live
+    # next to context but conceptually depends on the builder below.
+    from app.services.ai.snapshot_cache import get_or_build_context
+
+    return await get_or_build_context(db, builder=build_topology_context)
+
+
 async def build_topology_context(db: AsyncSession) -> dict[str, Any]:
     """Compact snapshot of every entity the AI features (suggest_links,
     advisor, nl_query) need."""

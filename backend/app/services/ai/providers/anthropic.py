@@ -64,6 +64,18 @@ class AnthropicProvider:
         temperature: float = 0.2,
     ) -> AICompletion:
         client = self._get_client()
+        # Anthropic's prompt cache requires a content block of ≥ 1024 tokens
+        # (~4 KB of text). Below that, `cache_control` is a no-op. The system
+        # prompt is always large enough; the user message only is when it
+        # contains the topology snapshot — guard the marker so we don't ship
+        # a useless `cache_control` on a short ping.
+        user_block: list[dict[str, Any]] | str = prompt
+        if len(prompt) >= 4096:
+            # Cache the bulky snapshot+conversation prefix. Anthropic accepts
+            # up to 4 cache breakpoints per request, well above the two we use.
+            user_block = [
+                {"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}},
+            ]
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": max_tokens,
@@ -74,7 +86,7 @@ class AnthropicProvider:
             "system": [
                 {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}},
             ],
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [{"role": "user", "content": user_block}],
         }
         if tools:
             kwargs["tools"] = [
