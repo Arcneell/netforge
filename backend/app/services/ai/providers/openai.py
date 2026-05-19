@@ -36,6 +36,21 @@ class OpenAIProvider:
             )
         self._api_key = api_key
         self.model = model
+        # Lazily-built AsyncOpenAI client, reused across calls — same rationale
+        # as the Anthropic provider: keep the underlying httpx pool warm.
+        self._client: Any = None
+
+    def _get_client(self) -> Any:
+        if self._client is not None:
+            return self._client
+        try:
+            from openai import AsyncOpenAI
+        except ImportError as exc:  # pragma: no cover - env-dependent
+            raise AIProviderError(
+                "openai SDK not installed (`pip install openai`)"
+            ) from exc
+        self._client = AsyncOpenAI(api_key=self._api_key)
+        return self._client
 
     async def call(
         self,
@@ -46,14 +61,7 @@ class OpenAIProvider:
         max_tokens: int = 2048,
         temperature: float = 0.2,
     ) -> AICompletion:
-        try:
-            from openai import AsyncOpenAI
-        except ImportError as exc:  # pragma: no cover - env-dependent
-            raise AIProviderError(
-                "openai SDK not installed (`pip install openai`)"
-            ) from exc
-
-        client = AsyncOpenAI(api_key=self._api_key)
+        client = self._get_client()
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": max_tokens,
@@ -85,7 +93,7 @@ class OpenAIProvider:
             t0 = time.monotonic()
             resp = await client.chat.completions.create(**kwargs)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise AIProviderError(f"openai API call failed: {exc}") from exc
 
         choice = resp.choices[0] if resp.choices else None

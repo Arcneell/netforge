@@ -111,9 +111,13 @@ class InsightsResponse(BaseModel):
 
     `run_id` is None when no advisor has ever been run successfully — the
     UI uses that to show the empty state ("Run the advisor to get started").
+    `run_created_at` is the timestamp of that run, so the UI can render a
+    "generated 3 days ago" hint and nudge the operator to re-run when the
+    report is stale.
     """
 
     run_id: int | None
+    run_created_at: datetime | None = None
     insights: list[InsightRead]
 
 

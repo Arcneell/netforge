@@ -8,6 +8,7 @@ in later phases without touching anything upstream.
 
 from __future__ import annotations
 
+from threading import Lock
 from typing import Protocol
 
 from app.config import get_settings
@@ -17,6 +18,20 @@ from app.services.ai.types import (
     AIUnsupportedFeatureError,
     ToolDef,
 )
+
+# Per-process cache: provider instances are reusable across requests so that
+# their internal SDK client (and its httpx pool) is built once. Keyed by
+# `(provider_name, model)` — the api key never changes at runtime so it does
+# not need to be part of the key. `get_settings()` is itself lru_cached so the
+# key derivation stays consistent.
+_PROVIDER_CACHE: dict[tuple[str, str], AIProvider] = {}
+_PROVIDER_CACHE_LOCK = Lock()
+
+
+def reset_provider_cache() -> None:
+    """Drop cached provider instances. Used by tests; not exposed via API."""
+    with _PROVIDER_CACHE_LOCK:
+        _PROVIDER_CACHE.clear()
 
 
 class AIProvider(Protocol):
@@ -47,8 +62,9 @@ class AIProvider(Protocol):
 def get_provider(name: str | None = None) -> AIProvider:
     """Return a configured provider. Defaults to `settings.ai_provider`.
 
-    Raises `AIProviderError` if the provider is unknown or its SDK is
-    missing — never returns a half-built object.
+    Instances are cached per (name, model) — see `_PROVIDER_CACHE`. Raises
+    `AIProviderError` if the provider is unknown or its SDK is missing —
+    never returns a half-built object.
     """
     settings = get_settings()
     chosen = (name or settings.ai_provider).lower()
@@ -56,26 +72,47 @@ def get_provider(name: str | None = None) -> AIProvider:
     if chosen == "anthropic":
         from app.services.ai.providers.anthropic import AnthropicProvider
 
-        return AnthropicProvider(
-            api_key=settings.ai_anthropic_api_key,
-            model=settings.ai_model or "claude-sonnet-4-6",
-        )
+        model = settings.ai_model or "claude-sonnet-4-6"
+        key = (chosen, model)
+        with _PROVIDER_CACHE_LOCK:
+            cached = _PROVIDER_CACHE.get(key)
+            if cached is None:
+                cached = AnthropicProvider(
+                    api_key=settings.ai_anthropic_api_key,
+                    model=model,
+                )
+                _PROVIDER_CACHE[key] = cached
+        return cached
 
     if chosen == "openai":
         from app.services.ai.providers.openai import OpenAIProvider
 
-        return OpenAIProvider(
-            api_key=settings.ai_openai_api_key,
-            model=settings.ai_model or "gpt-4o",
-        )
+        model = settings.ai_model or "gpt-4o"
+        key = (chosen, model)
+        with _PROVIDER_CACHE_LOCK:
+            cached = _PROVIDER_CACHE.get(key)
+            if cached is None:
+                cached = OpenAIProvider(
+                    api_key=settings.ai_openai_api_key,
+                    model=model,
+                )
+                _PROVIDER_CACHE[key] = cached
+        return cached
 
     if chosen == "gemini":
         from app.services.ai.providers.gemini import GeminiProvider
 
-        return GeminiProvider(
-            api_key=settings.ai_gemini_api_key,
-            model=settings.ai_model or "gemini-2.5-pro",
-        )
+        model = settings.ai_model or "gemini-2.5-pro"
+        key = (chosen, model)
+        with _PROVIDER_CACHE_LOCK:
+            cached = _PROVIDER_CACHE.get(key)
+            if cached is None:
+                cached = GeminiProvider(
+                    api_key=settings.ai_gemini_api_key,
+                    model=model,
+                )
+                _PROVIDER_CACHE[key] = cached
+        return cached
 
     raise AIProviderError(f"unknown AI provider: {chosen!r}")
 
@@ -87,4 +124,5 @@ __all__ = [
     "AIUnsupportedFeatureError",
     "ToolDef",
     "get_provider",
+    "reset_provider_cache",
 ]

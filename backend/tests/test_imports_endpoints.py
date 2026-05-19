@@ -14,8 +14,8 @@ service-level query is brittle; the focused tests above are what matters.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -38,8 +38,8 @@ def _admin() -> User:
 def _session() -> Session:
     return Session(
         id="sess", user_id=1,
-        created_at=datetime.now(timezone.utc),
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=4),
+        created_at=datetime.now(UTC),
+        expires_at=datetime.now(UTC) + timedelta(hours=4),
     )
 
 
@@ -145,7 +145,7 @@ async def test_import_admin_dry_run_returns_report(client: AsyncClient) -> None:
 
     r = await client.post(
         "/api/imports/sites",
-        files={"file": ("sites.csv", "﻿code;name\nHQ;Headquarters\n".encode("utf-8"), "text/csv")},
+        files={"file": ("sites.csv", "﻿code;name\nHQ;Headquarters\n".encode(), "text/csv")},
         data={"dry_run": "true"},
         cookies={"netforge_session": "sess"},
     )
@@ -186,7 +186,7 @@ async def test_detect_routes_sites_csv(client: AsyncClient) -> None:
     _install_db(user=_admin())
     r = await client.post(
         "/api/imports/detect",
-        files={"file": ("sites.csv", "code;name\nHQ;Headquarters\n".encode("utf-8"), "text/csv")},
+        files={"file": ("sites.csv", b"code;name\nHQ;Headquarters\n", "text/csv")},
         cookies={"netforge_session": "sess"},
     )
     assert r.status_code == 200
@@ -221,7 +221,7 @@ async def test_detect_disambiguates_switches_vs_devices(client: AsyncClient) -> 
         files={
             "file": (
                 "x.csv",
-                "name;type\ncore-01;router\n".encode("utf-8"),
+                b"name;type\ncore-01;router\n",
                 "text/csv",
             )
         },
@@ -234,7 +234,7 @@ async def test_detect_disambiguates_switches_vs_devices(client: AsyncClient) -> 
         files={
             "file": (
                 "x.csv",
-                "name;port_count\ncore-01;48\n".encode("utf-8"),
+                b"name;port_count\ncore-01;48\n",
                 "text/csv",
             )
         },
@@ -264,8 +264,8 @@ async def test_bulk_dry_run_routes_two_files(client: AsyncClient) -> None:
     new_row.scalar_one_or_none = MagicMock(return_value=None)
     _install_db(user=_admin(), execute_returns=[new_row, new_row])
 
-    site_csv = "code;name\nHQ;Headquarters\n".encode("utf-8")
-    vlan_csv = "vlan_id;name\n10;Office\n".encode("utf-8")
+    site_csv = b"code;name\nHQ;Headquarters\n"
+    vlan_csv = b"vlan_id;name\n10;Office\n"
 
     r = await client.post(
         "/api/imports/bulk",

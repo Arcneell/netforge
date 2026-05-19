@@ -79,6 +79,10 @@ export interface Insight {
 
 export interface InsightsResponse {
   run_id: number | null
+  /** ISO-8601 timestamp of the run that produced these insights, or null when
+   *  no advisor run has ever succeeded. Used by the UI to render a "generated
+   *  X days ago" hint. */
+  run_created_at: string | null
   insights: Insight[]
 }
 

@@ -95,6 +95,25 @@ class GeminiProvider:
             )
         self._api_key = api_key
         self.model = model
+        # Lazily-built genai client + the types module — same rationale as the
+        # Anthropic / OpenAI providers: avoid rebuilding the client (and its
+        # httpx pool) for every advisor / nl_query call.
+        self._client: Any = None
+        self._gtypes: Any = None
+
+    def _get_client(self) -> tuple[Any, Any]:
+        if self._client is not None and self._gtypes is not None:
+            return self._client, self._gtypes
+        try:
+            from google import genai
+            from google.genai import types as gtypes
+        except ImportError as exc:  # pragma: no cover - env-dependent
+            raise AIProviderError(
+                "google-genai SDK not installed (`pip install google-genai`)"
+            ) from exc
+        self._client = genai.Client(api_key=self._api_key)
+        self._gtypes = gtypes
+        return self._client, self._gtypes
 
     async def call(
         self,
@@ -105,15 +124,7 @@ class GeminiProvider:
         max_tokens: int = 2048,
         temperature: float = 0.2,
     ) -> AICompletion:
-        try:
-            from google import genai
-            from google.genai import types as gtypes
-        except ImportError as exc:  # pragma: no cover - env-dependent
-            raise AIProviderError(
-                "google-genai SDK not installed (`pip install google-genai`)"
-            ) from exc
-
-        client = genai.Client(api_key=self._api_key)
+        client, gtypes = self._get_client()
 
         config_kwargs: dict[str, Any] = {
             "system_instruction": system,
@@ -154,7 +165,7 @@ class GeminiProvider:
                 config=gtypes.GenerateContentConfig(**config_kwargs),
             )
             elapsed_ms = int((time.monotonic() - t0) * 1000)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise AIProviderError(f"gemini API call failed: {exc}") from exc
 
         tool_call: ToolCall | None = None

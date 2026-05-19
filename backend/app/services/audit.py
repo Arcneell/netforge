@@ -147,7 +147,7 @@ def register_audit_listeners() -> None:
 
 def _attach_listeners(model: type, entity: str) -> None:
     @event.listens_for(model, "after_insert")
-    def _on_insert(mapper, connection, target) -> None:  # noqa: ARG001
+    def _on_insert(mapper, connection, target) -> None:
         _write_audit_row(
             connection,
             AuditAction.create,
@@ -157,7 +157,7 @@ def _attach_listeners(model: type, entity: str) -> None:
         )
 
     @event.listens_for(model, "after_update")
-    def _on_update(mapper, connection, target) -> None:  # noqa: ARG001
+    def _on_update(mapper, connection, target) -> None:
         before, after = _diff_changed_columns(target)
         # Skip no-op UPDATEs (e.g. server-side updated_at refresh only).
         if not before and not after:
@@ -171,7 +171,7 @@ def _attach_listeners(model: type, entity: str) -> None:
         )
 
     @event.listens_for(model, "after_delete")
-    def _on_delete(mapper, connection, target) -> None:  # noqa: ARG001
+    def _on_delete(mapper, connection, target) -> None:
         _write_audit_row(
             connection,
             AuditAction.delete,
