@@ -61,144 +61,91 @@ function layoutOpts(name: LayoutName): LayoutOptions {
   }
 }
 
-// Each node renders a 1U rack-mount switch chassis. The SVG is generated
-// inline and fed to cytoscape via `background-image` as a URL-encoded data
-// URI — no extra deps, theme-aware, regenerated when dark mode flips.
+// Node rendering — Linear/Stripe-flavoured "device card" instead of a
+// drawn-port chassis. Trying to draw a literal rack-mount switch at
+// 150 px wide reads as cluttered in a flat-design app; a clean card
+// with a brand accent stripe lets the hostname be the hero and lets
+// the graph as a whole feel like a Notion / Figma flow diagram.
 //
-// Two density tiers: a denser chassis for distribution-grade switches
-// (≥48 physical ports). The 16-port row reads as "this thing's bigger"
-// even when the graph is dezoomed, which the previous plain-rectangle
-// nodes couldn't do.
-//
-// Choices made to survive low-zoom rasterisation (the layouts that fit-
-// to-screen with many switches end up rendering each node at maybe
-// 40 px wide):
-// - Solid chassis colour, not a gradient — gradients in SVG-as-image
-//   often fall apart at small sizes / on some renderers.
-// - A bright accent stripe along the top edge so the node still "reads"
-//   as a card even at thumbnail size.
-// - Larger ports (8×16 vs the old 6×12) with high contrast against the
-//   chassis: the port row is what makes the icon recognisable as a
-//   switch, so giving it pixel weight is non-negotiable.
-type SwitchTheme = {
-  chassis: string
-  stripe: string
-  port: string
-  led: string
-  ledDim: string
-  vent: string
-}
-
-function buildSwitchSvg(width: number, height: number, ports: number, theme: SwitchTheme): string {
-  const portWidth = 8
-  const portGap = 2
-  const portRowWidth = ports * portWidth + (ports - 1) * portGap
-  const leftPad = 22
-  const rightPad = 26
-  const usable = width - leftPad - rightPad
-  const portStart = leftPad + Math.max(0, (usable - portRowWidth) / 2)
-  const portY = Math.round((height - 16) / 2 + 1)
-
-  let portsSvg = ''
-  for (let i = 0; i < ports; i++) {
-    const x = portStart + i * (portWidth + portGap)
-    portsSvg += `<rect x="${x.toFixed(1)}" y="${portY}" width="${portWidth}" height="16" rx="1.5" fill="${theme.port}"/>`
-  }
-
-  const ledX = width - 14
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
-<rect width="${width}" height="${height}" fill="${theme.chassis}"/>
-<rect width="${width}" height="3" fill="${theme.stripe}"/>
-<g fill="${theme.vent}" opacity="0.55"><circle cx="7" cy="12" r="1.3"/><circle cx="7" cy="${height - 12}" r="1.3"/><circle cx="${width - 7}" cy="12" r="1.3"/><circle cx="${width - 7}" cy="${height - 12}" r="1.3"/></g>
-<g stroke="${theme.vent}" stroke-width="1" opacity="0.45"><line x1="13" y1="11" x2="13" y2="${height - 8}"/><line x1="16" y1="11" x2="16" y2="${height - 8}"/><line x1="19" y1="11" x2="19" y2="${height - 8}"/></g>
-${portsSvg}
-<circle cx="${ledX}" cy="${portY + 2}" r="2" fill="${theme.led}"/>
-<circle cx="${ledX}" cy="${portY + 9}" r="2" fill="${theme.ledDim}"/>
-<circle cx="${ledX}" cy="${portY + 16}" r="2" fill="${theme.ledDim}"/>
-</svg>`
+// The card is built from two rects in an inline SVG so cytoscape can
+// paint it via `background-image`. The hostname is rendered by
+// cytoscape's own canvas labeller (centered inside the node) — that
+// way Geist Sans actually applies and text stays crisp at every zoom
+// level.
+function buildCardSvg(width: number, height: number, theme: { card: string; accent: string }): string {
+  // Two stacked rects: full-size card body, then a 4-px-wide left
+  // stripe in the accent colour. The cytoscape round-rectangle clip
+  // takes care of rounding the corners — including the stripe's top-
+  // -left / bottom-left, which gives it that "card edge tab" feel.
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><rect width="${width}" height="${height}" fill="${theme.card}"/><rect width="4" height="${height}" fill="${theme.accent}"/></svg>`
 }
 
 function svgDataUri(svg: string): string {
-  // URL-encoded data URIs render more reliably than base64 across
-  // browsers when the SVG is loaded as a background image — we keep
-  // the markup ASCII (hex colours, no entity refs) so the only chars
-  // that actually need escaping are `#`, `"` and `<`/`>`.
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
-// Node sizes match SVG viewBoxes exactly so `background-fit: cover` is a
-// 1:1 paint, no scaling artefacts.
-const NODE_SMALL = { w: 140, h: 48, ports: 8 }
-const NODE_LARGE = { w: 188, h: 48, ports: 16 }
+// Two card widths: access switches feel compact, distribution-grade
+// (≥48 ports) gets visual heft so density still reads at a glance.
+const CARD_SMALL = { w: 156, h: 48 }
+const CARD_LARGE = { w: 196, h: 48 }
 
 function buildStyles(isDark: boolean) {
   const accent = isDark ? '#818cf8' : '#6366f1' // indigo-400 / indigo-500
-  const text = isDark ? '#e4e4e7' : '#111111'
+  const cardBg = isDark ? '#1f1f23' : '#ffffff' // soft lift off the page bg
+  const cardBorder = isDark ? '#3f3f46' : '#e4e4e7' // zinc-700 / zinc-200
+  const text = isDark ? '#fafafa' : '#111111'
   const subText = isDark ? '#a1a1aa' : '#71717a'
 
-  const theme: SwitchTheme = isDark
-    ? {
-        chassis: '#1f1f23', // a hair lighter than zinc-900 page bg so the chassis pops
-        stripe: '#818cf8', // indigo-400 — brand colour accent stripe
-        port: '#a5b4fc', // indigo-300 — bright against the dark chassis
-        led: '#22c55e', // green-500 — "active" LED
-        ledDim: '#3f3f46', // zinc-700 — unlit LED
-        vent: '#0a0a0c', // near-black for grille / mount holes
-      }
-    : {
-        chassis: '#f4f4f5', // zinc-100 — gentle lift off the page bg
-        stripe: '#6366f1', // indigo-500
-        port: '#312e81', // indigo-950 — dark ink so ports stay legible on a light chassis even at thumbnail size
-        led: '#15803d', // green-700 — darker LED for light-mode contrast
-        ledDim: '#d4d4d8', // zinc-300
-        vent: '#52525b', // zinc-600
-      }
-
-  const iconSmall = svgDataUri(buildSwitchSvg(NODE_SMALL.w, NODE_SMALL.h, NODE_SMALL.ports, theme))
-  const iconLarge = svgDataUri(buildSwitchSvg(NODE_LARGE.w, NODE_LARGE.h, NODE_LARGE.ports, theme))
+  const cardSmall = svgDataUri(buildCardSvg(CARD_SMALL.w, CARD_SMALL.h, { card: cardBg, accent }))
+  const cardLarge = svgDataUri(buildCardSvg(CARD_LARGE.w, CARD_LARGE.h, { card: cardBg, accent }))
 
   return [
     {
       selector: 'node',
       style: {
-        // background-color is the fallback that shows if the SVG ever
-        // fails to load — same hue as the chassis so the node still
-        // reads as "card-shaped" not "missing image".
-        'background-color': theme.chassis,
-        'background-image': iconSmall,
+        // background-color is the safety net behind the SVG and also
+        // what cytoscape uses to compose anti-aliased rounded corners
+        // — same hue as the card body so any sub-pixel gap blends.
+        'background-color': cardBg,
+        'background-image': cardSmall,
         'background-fit': 'cover',
         'background-image-opacity': 1,
         'background-clip': 'node',
-        'border-color': isDark ? '#3f3f46' : '#d4d4d8',
+        'border-color': cardBorder,
         'border-width': 1,
+        // Hostname rendered inside the card, past the left stripe.
         label: 'data(label)',
         color: text,
-        'font-size': 11,
+        'font-size': 12,
         'font-family': 'Geist Sans, Inter, system-ui, sans-serif',
         'font-weight': 600,
-        'text-valign': 'bottom',
-        'text-margin-y': 8,
+        'text-valign': 'center',
+        'text-halign': 'center',
+        // Nudge the label slightly right so it visually centers in the
+        // card's content area (past the 4-px accent stripe) rather than
+        // in the geometric center.
+        'text-margin-x': 3,
         'text-wrap': 'ellipsis',
-        'text-max-width': '180px',
+        'text-max-width': '136px',
         shape: 'round-rectangle',
-        width: NODE_SMALL.w,
-        height: NODE_SMALL.h,
+        width: CARD_SMALL.w,
+        height: CARD_SMALL.h,
       },
     },
     {
       selector: 'node[ports_total >= 48]',
       style: {
-        'background-image': iconLarge,
-        width: NODE_LARGE.w,
-        height: NODE_LARGE.h,
+        'background-image': cardLarge,
+        width: CARD_LARGE.w,
+        height: CARD_LARGE.h,
+        'text-max-width': '172px',
       },
     },
     {
       selector: 'node:selected',
       style: {
         'border-color': accent,
-        'border-width': 2.5,
-        color: accent,
+        'border-width': 2,
       },
     },
     {
