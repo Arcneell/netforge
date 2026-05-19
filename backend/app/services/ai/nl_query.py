@@ -29,13 +29,17 @@ from app.services.ai.types import AIProviderError, ToolDef
 SYSTEM_PROMPT = """You are NetForge's answer-the-network-question assistant.
 
 You receive a compact JSON snapshot of the operator's network (sites, rooms,
-switches, ports, vlans, subnets, devices, existing links). You also receive
-ONE question from the operator.
+switches, ports, vlans, subnets, devices, existing links), optionally the
+prior turns of the current conversation, and ONE new question from the
+operator.
 
 How to answer:
 - Stick strictly to information present in the snapshot. If the answer
   isn't derivable, say so explicitly ("the snapshot doesn't contain X").
   Never make up port counts, IPs, vendors, etc.
+- When prior turns are present, use them to resolve "it" / "this switch" /
+  "the same room" etc. — but ALWAYS re-check the live snapshot for current
+  values (entities may have changed since the earlier reply).
 - Be concise. Two paragraphs max. Bullet lists for enumerations.
 - When you reference an entity, also include it in `referenced_entities`
   so the UI can render a clickable chip. Use the entity's real `id` and
@@ -48,6 +52,39 @@ How to answer:
 
 Return your output via the `answer_question` tool.
 """
+
+
+def _render_history(history: list[dict]) -> str:
+    """Stringify the conversation history into the user prompt.
+
+    Each provider supports a real multi-turn `messages` array, but our
+    `AIProvider` interface only exposes a single `prompt` string today.
+    Encoding the history into the prompt keeps that contract intact while
+    still giving the model the context it needs to resolve pronouns and
+    follow-ups. The capped length (≤ 10 turns, ≤ 4 KB each — see the
+    pydantic schema) makes the resulting prompt bounded.
+    """
+    if not history:
+        return ""
+    lines: list[str] = ["Conversation so far:"]
+    for turn in history:
+        raw_role = (turn.get("role") or "user").lower()
+        # Whitelist: anything that isn't a known role is treated as USER. The
+        # schema already enforces this for HTTP callers, but defending in the
+        # service layer keeps a future internal caller from injecting a fake
+        # "system" turn through the prompt.
+        role = "ASSISTANT" if raw_role == "assistant" else "USER"
+        text = (turn.get("text") or "").strip()
+        if not text:
+            continue
+        # Truncate any single turn one more time defensively — the schema
+        # caps at 4000 chars but the prompt prefers tight context.
+        if len(text) > 2000:
+            text = text[:2000] + "…"
+        lines.append(f"{role}: {text}")
+    if len(lines) == 1:
+        return ""
+    return "\n".join(lines) + "\n\n"
 
 QUERY_TOOL = ToolDef(
     name="answer_question",
@@ -108,17 +145,22 @@ async def run_query(
     user_id: int | None,
     question: str,
     language_instruction: str | None = None,
+    history: list[dict] | None = None,
 ) -> QueryAnswer:
     """Answer one natural-language question grounded in the live inventory.
 
     `language_instruction` carries the user's UI locale so the markdown
-    answer comes back in the same language the user is reading.
+    answer comes back in the same language the user is reading. `history`
+    is an optional list of past `{role, text}` dicts (server-stateless —
+    the client replays the conversation each turn).
     """
     settings = get_settings()
     provider = get_provider()
     context = await build_topology_context(db)
     payload = json.dumps(context, separators=(",", ":"), default=str)
     system = SYSTEM_PROMPT + (f"\n\n{language_instruction}" if language_instruction else "")
+
+    rendered_history = _render_history(history or [])
 
     t0 = time.monotonic()
     error: str | None = None
@@ -127,6 +169,7 @@ async def run_query(
             system=system,
             prompt=(
                 f"Network snapshot:\n```json\n{payload}\n```\n\n"
+                f"{rendered_history}"
                 f"Question: {question}"
             ),
             tools=[QUERY_TOOL],

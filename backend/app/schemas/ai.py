@@ -121,10 +121,25 @@ class InsightsResponse(BaseModel):
     insights: list[InsightRead]
 
 
+class QueryHistoryTurn(BaseModel):
+    """One past turn the client wants the model to remember. The server is
+    stateless — the frontend owns the conversation, replays the last few
+    turns on each request, and decides when to "start a new chat" (i.e. send
+    an empty `history`)."""
+
+    role: str = Field(pattern="^(user|assistant)$")
+    text: str = Field(min_length=1, max_length=4000)
+
+
 class QueryRequest(BaseModel):
-    """Body of POST /api/ai/query."""
+    """Body of POST /api/ai/query.
+
+    `history` lets the operator have a follow-up conversation — capped at 10
+    turns (≈ 5 user/assistant pairs) so the prompt doesn't balloon. Older
+    turns are dropped client-side."""
 
     question: str = Field(min_length=2, max_length=1000)
+    history: list[QueryHistoryTurn] = Field(default_factory=list, max_length=10)
 
 
 class QueryEntityRef(BaseModel):
