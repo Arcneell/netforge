@@ -132,13 +132,55 @@ Host-side, done at install time (out of repo):
 
 **~38 to 54 half-days**, i.e. **4 to 7 weeks** part-time. Adjust based on actual availability.
 
-## Phase 12+ — v2
+## Phase 12 — AI (shipped 2026-05)
+
+A provider-agnostic AI surface — Anthropic Claude, OpenAI, Google Gemini.
+All features are admin-only, rate-limited per-user, and gated by
+`AI_ENABLED` (off by default for fresh installs). Privacy-sensitive
+deployments can disable individual features via `AI_DRAFTS_ENABLED` and
+`AI_SCHEDULER_ENABLED`.
+
+- [x] **Suggest links** — scan that proposes missing port-to-port
+      topology links from port labels / notes / VLAN profiles. Workflow:
+      accept / reject each suggestion.
+- [x] **Infra advisor** — full-snapshot review surfacing SPOF / capacity /
+      security / segmentation / naming / redundancy / other findings,
+      each with a concrete recommendation. Cached run, re-run on demand.
+- [x] **Ask AI** — multi-turn natural-language Q&A on the live inventory,
+      reply rendered as Markdown with clickable entity chips.
+- [x] **Integrity checks** — zero-LLM deterministic detectors (duplicate
+      MACs, orphan IPs, switches without ports, …), shown alongside the
+      advisor findings.
+- [x] **CSV mapping assistant** — paste foreign headers + sample rows;
+      the model proposes the canonical NetForge column mapping with
+      confidence scores.
+- [x] **Scheduled runs + webhook** — opt-in periodic advisor /
+      suggest-links scan; advisor schedule can fire a Slack / Mattermost /
+      Teams webhook on **new** findings above a chosen severity.
+- [x] **NL-to-action drafts** — free-text request →
+      LLM-drafted CRUD payload (create site / room / VLAN / subnet) that
+      an admin reviews and explicitly applies. Never auto-applied.
+- [x] **AI Usage dashboard** — per-day / per-feature / per-provider
+      token + USD cost estimate from public list prices.
+- [x] **PDF export** of the advisor report.
+- [x] Performance & UX: per-user rate limiter, prompt-injection
+      sanitisation of free-text fields, topology snapshot cache,
+      Anthropic prompt caching on system + large user blocks, SDK client
+      reuse across requests.
+
+Deferred:
+- [ ] SSE streaming on Ask AI — needs a provider-interface refactor to
+      expose chunks while still capturing the final tool-use payload.
+- [ ] Automatic CSV column rename based on the mapping assistant's
+      proposal (today the operator copies the suggestion manually).
+
+## Phase 13+ — v2
 
 In order of perceived value, no dates:
 
 1. **Aruba SNMP polling**: a cron that reads `BRIDGE-MIB`, `IF-MIB`, `LLDP-MIB` tables and pre-fills `port.connected_device`, discovers LLDP links automatically. Requires a dedicated Python worker (additional `netforge-poller` container).
 2. **Zabbix sync**: read the Zabbix API (hosts, interfaces) → auto-enrichment of `devices`.
-3. **Alerts**: subnet > 90% full, port down, link dropping → configurable webhook (Slack, Telegram, Mattermost, email, etc.).
+3. **Alerts (non-AI)**: subnet > 90% full, port down, link dropping → configurable webhook (Slack, Telegram, Mattermost, email, etc.). The AI advisor + scheduler webhook shipped in Phase 12 covers the *insight*-driven case; this addition is for deterministic Zabbix-style thresholds.
 4. **Extended inventory**: full device records (contract, warranty, serial, purchase).
 5. **API token** for external integrations (PowerShell scripts, automations).
 

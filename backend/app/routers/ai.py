@@ -78,6 +78,14 @@ def _require_ai_enabled() -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="AI not enabled")
 
 
+def _require_drafts_enabled() -> None:
+    """NL-to-action is the riskiest AI surface (apply mutates inventory).
+    Returns 404 — same fingerprint-safe pattern as the master switch."""
+    settings = get_settings()
+    if not settings.ai_enabled or not settings.ai_drafts_enabled:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="AI drafts not enabled")
+
+
 @router.get("/status", response_model=AIStatusRead, dependencies=[Depends(get_current_user)])
 async def get_status() -> AIStatusRead:
     """Reports current AI configuration. Never raises — even when disabled
@@ -87,6 +95,8 @@ async def get_status() -> AIStatusRead:
         enabled=settings.ai_enabled,
         provider=settings.ai_provider,
         model=settings.ai_model or "(default for provider)",
+        drafts_enabled=settings.ai_enabled and settings.ai_drafts_enabled,
+        scheduler_enabled=settings.ai_enabled and settings.ai_scheduler_enabled,
     )
 
 
@@ -551,7 +561,7 @@ async def create_draft(
 
     NEVER executes the action — the resulting row sits at `status=pending`
     until an admin POSTs to `/drafts/{id}/apply`."""
-    _require_ai_enabled()
+    _require_drafts_enabled()
     try:
         check_and_consume(user.id)
     except AIRateLimitExceeded as exc:
@@ -621,7 +631,7 @@ async def apply_draft_route(
     """Execute the draft against the inventory. Idempotent in the sense
     that the second call returns 409 — the first apply marks the row
     `applied`."""
-    _require_ai_enabled()
+    _require_drafts_enabled()
     try:
         draft = await apply_draft(db, draft_id=draft_id, user_id=user.id)
     except LookupError as exc:
@@ -642,7 +652,7 @@ async def reject_draft_route(
     db: AsyncSession = Depends(get_db),
 ) -> ActionDraftRead:
     """Mark the draft as rejected — the operator declined to apply it."""
-    _require_ai_enabled()
+    _require_drafts_enabled()
     try:
         draft = await reject_draft(db, draft_id=draft_id, user_id=user.id)
     except LookupError as exc:

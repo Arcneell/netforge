@@ -238,8 +238,16 @@ async def _loop() -> None:
 
 def start_scheduler() -> None:
     """Spawn the background loop. Safe to call multiple times — the second
-    call is a no-op once the first task is alive."""
+    call is a no-op once the first task is alive.
+
+    No-op when `ai_scheduler_enabled` is False — the admin opted out of the
+    auto-fire loop at the settings level. Manual `/insights/refresh` and
+    `/suggestions/links/scan` calls still work."""
     global _TASK
+    settings = get_settings()
+    if not settings.ai_scheduler_enabled:
+        logger.info("AI scheduler disabled by AI_SCHEDULER_ENABLED=false")
+        return
     if _TASK is not None and not _TASK.done():
         return
     _TASK = asyncio.create_task(_loop(), name="ai-scheduler")
