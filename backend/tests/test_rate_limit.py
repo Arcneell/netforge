@@ -108,3 +108,48 @@ async def test_x_forwarded_for_is_not_trusted_for_key() -> None:
     assert r1.status_code == 200
     assert r2.status_code == 200
     assert r3.status_code == 429  # would be 200 if XFF still keyed the bucket
+
+
+@pytest.mark.asyncio
+async def test_middleware_does_not_buffer_streaming_responses() -> None:
+    """Regression: the middleware used to inherit from `BaseHTTPMiddleware`,
+    which bridges the response through an anyio memory stream and breaks
+    `text/event-stream` streaming (Ask AI rendered the answer all at once
+    instead of token-by-token).
+
+    Drive the ASGI app directly and assert that each `http.response.body`
+    chunk emitted by the inner app reaches the outer `send` as a distinct
+    frame, not coalesced into one big buffer.
+    """
+    chunks_received: list[bytes] = []
+
+    async def streaming_app(scope, receive, send):
+        # Three separate body chunks with `more_body=True` until the last.
+        await send(
+            {"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/event-stream")]}
+        )
+        await send({"type": "http.response.body", "body": b"chunk-1", "more_body": True})
+        await send({"type": "http.response.body", "body": b"chunk-2", "more_body": True})
+        await send({"type": "http.response.body", "body": b"chunk-3", "more_body": False})
+
+    middleware = WriteRateLimitMiddleware(
+        streaming_app, max_per_window=10, window_seconds=60
+    )
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        if message["type"] == "http.response.body":
+            chunks_received.append(message["body"])
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/things",
+        "headers": [],
+        "client": ("127.0.0.1", 0),
+    }
+    await middleware(scope, receive, send)
+    # If the middleware buffered, we'd see one b"chunk-1chunk-2chunk-3".
+    assert chunks_received == [b"chunk-1", b"chunk-2", b"chunk-3"]

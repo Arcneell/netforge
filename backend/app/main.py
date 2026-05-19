@@ -3,12 +3,13 @@
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import __version__
 from app.config import get_settings
@@ -66,6 +67,70 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
         await stop_scheduler()
 
 
+class _RequestLogMiddleware:
+    """Raw ASGI request logger.
+
+    Why not `@app.middleware("http")`: that decorator wraps the callable in
+    Starlette's `BaseHTTPMiddleware`, which bridges the response through an
+    anyio memory stream. The bridge silently breaks `text/event-stream`
+    streaming on `/api/ai/query/stream` — SSE chunks pile up until the
+    response ends, so the Ask AI page renders the answer all at once
+    instead of token-by-token. Operating at the raw ASGI layer pipes
+    `(scope, receive, send)` straight through, preserving streaming.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
+        request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+        start = time.monotonic()
+
+        # Make request metadata visible to the audit-log SQLAlchemy listeners,
+        # which fire deep inside the ORM session and have no Request handle.
+        # See app/utils/request.py for the trust-order rationale (TL;DR: we
+        # rely on nginx's X-Real-IP, never on the client-spoofable XFF chain).
+        current_request_ip_var.set(client_ip(request))
+        current_request_ua_var.set(request.headers.get("user-agent"))
+
+        status_holder = {"code": 0}
+
+        async def send_with_request_id(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                status_holder["code"] = int(message.get("status", 0))
+                headers = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode("latin-1")))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_request_id)
+        except Exception:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            logger.exception(
+                "request.error rid=%s %s %s duration_ms=%d",
+                request_id,
+                scope.get("method"),
+                scope.get("path"),
+                duration_ms,
+            )
+            raise
+        duration_ms = int((time.monotonic() - start) * 1000)
+        logger.info(
+            "request rid=%s %s %s status=%d duration_ms=%d",
+            request_id,
+            scope.get("method"),
+            scope.get("path"),
+            status_holder["code"],
+            duration_ms,
+        )
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     _configure_logging(settings.log_level)
@@ -108,44 +173,7 @@ def create_app() -> FastAPI:
         window_seconds=settings.rate_limit_window_seconds,
     )
 
-    @app.middleware("http")
-    async def log_requests(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
-        start = time.monotonic()
-
-        # Make request metadata visible to the audit-log SQLAlchemy listeners,
-        # which fire deep inside the ORM session and have no Request handle.
-        # See app/utils/request.py for the trust-order rationale (TL;DR: we
-        # rely on nginx's X-Real-IP, never on the client-spoofable XFF chain).
-        current_request_ip_var.set(client_ip(request))
-        current_request_ua_var.set(request.headers.get("user-agent"))
-
-        response: Response
-        try:
-            response = await call_next(request)
-        except Exception:
-            duration_ms = int((time.monotonic() - start) * 1000)
-            logger.exception(
-                "request.error rid=%s %s %s duration_ms=%d",
-                request_id,
-                request.method,
-                request.url.path,
-                duration_ms,
-            )
-            raise
-        duration_ms = int((time.monotonic() - start) * 1000)
-        logger.info(
-            "request rid=%s %s %s status=%d duration_ms=%d",
-            request_id,
-            request.method,
-            request.url.path,
-            response.status_code,
-            duration_ms,
-        )
-        response.headers["x-request-id"] = request_id
-        return response
+    app.add_middleware(_RequestLogMiddleware)
 
     # Wire ORM event listeners so every mutation produces an audit_log row.
     # Idempotent: safe to call multiple times in tests / reloads.
