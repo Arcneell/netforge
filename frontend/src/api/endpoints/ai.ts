@@ -109,15 +109,26 @@ export interface QueryAnswer {
   completion_tokens: number
 }
 
+// LLM calls routinely take 20–60 s on a real inventory snapshot; the default
+// axios 20 s timeout was aborting valid responses mid-flight ("Impossible de
+// joindre le serveur"). Bump the AI-specific endpoints to 120 s — generous
+// enough for the slowest provider/advisor combo we've seen, still short
+// enough to fail fast when a key is invalid or the network is down.
+const AI_TIMEOUT_MS = 120_000
+
 export const aiApi = {
   status(): Promise<AIStatus> {
     return request<AIStatus>({ method: 'GET', url: '/ai/status' })
   },
   test(): Promise<AITestResult> {
-    return request<AITestResult>({ method: 'POST', url: '/ai/test' })
+    return request<AITestResult>({ method: 'POST', url: '/ai/test', timeout: AI_TIMEOUT_MS })
   },
   scanLinks(): Promise<ScanReport> {
-    return request<ScanReport>({ method: 'POST', url: '/ai/suggestions/links/scan' })
+    return request<ScanReport>({
+      method: 'POST',
+      url: '/ai/suggestions/links/scan',
+      timeout: AI_TIMEOUT_MS,
+    })
   },
   listSuggestions(): Promise<LinkSuggestion[]> {
     return request<LinkSuggestion[]>({ method: 'GET', url: '/ai/suggestions/links' })
@@ -132,9 +143,18 @@ export const aiApi = {
     return request<InsightsResponse>({ method: 'GET', url: '/ai/insights' })
   },
   refreshInsights(): Promise<AdvisorReport> {
-    return request<AdvisorReport>({ method: 'POST', url: '/ai/insights/refresh' })
+    return request<AdvisorReport>({
+      method: 'POST',
+      url: '/ai/insights/refresh',
+      timeout: AI_TIMEOUT_MS,
+    })
   },
   ask(question: string): Promise<QueryAnswer> {
-    return request<QueryAnswer>({ method: 'POST', url: '/ai/query', data: { question } })
+    return request<QueryAnswer>({
+      method: 'POST',
+      url: '/ai/query',
+      data: { question },
+      timeout: AI_TIMEOUT_MS,
+    })
   },
 }
