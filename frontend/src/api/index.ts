@@ -60,6 +60,9 @@ export {
   type QueryAnswer,
   type QueryEntityRef,
   type ScanReport,
+  type UsageBucket,
+  type UsageReport,
+  type UsageTotal,
 } from './endpoints/ai'
 
 export type * from './types'
