@@ -583,7 +583,8 @@
       "latency": "Réponse en {ms} ms",
       "disabledHint": "L'assistant IA est désactivé. Activez-le dans Réglages → IA pour poser des questions.",
       "newChat": "Nouvelle conversation",
-      "emptyAnswer": "(Réponse vide — relancez la question si nécessaire.)"
+      "emptyAnswer": "(Réponse vide — relancez la question si nécessaire.)",
+      "incompleteAnswer": "(Réponse interrompue — le modèle s'est arrêté en cours de route.)"
     },
     "advisor": {
       "tab": "Conseiller IA",

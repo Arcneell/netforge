@@ -170,6 +170,7 @@ class OpenAIProvider:
             stream = await client.chat.completions.create(**kwargs)
             full_text: list[str] = []
             usage = TokenUsage()
+            terminal_reason: str | None = None
             async for event in stream:
                 if event.choices:
                     delta = event.choices[0].delta
@@ -177,6 +178,16 @@ class OpenAIProvider:
                     if chunk:
                         full_text.append(chunk)
                         yield StreamDelta(text=chunk)
+                        # Cooperative yield so the StreamingResponse writer
+                        # drains the chunk to the socket before we wait on
+                        # the next OpenAI delta — mirrors the Anthropic /
+                        # Gemini providers.
+                        import asyncio as _asyncio
+
+                        await _asyncio.sleep(0)
+                    fr = getattr(event.choices[0], "finish_reason", None)
+                    if fr:
+                        terminal_reason = fr
                 # Usage is attached to the final chunk (which may carry an
                 # empty `choices` list).
                 if getattr(event, "usage", None):
@@ -184,6 +195,16 @@ class OpenAIProvider:
                         prompt_tokens=getattr(event.usage, "prompt_tokens", 0) or 0,
                         completion_tokens=getattr(event.usage, "completion_tokens", 0) or 0,
                     )
+            # `stop` is the normal completion. `length` means we hit
+            # max_tokens; `content_filter` means moderation interrupted —
+            # both leave the UI sitting on a half answer unless we surface
+            # them.
+            if terminal_reason and terminal_reason not in {"stop", "function_call", "tool_calls"}:
+                raise AIProviderError(
+                    f"openai stopped mid-response (finish_reason={terminal_reason})"
+                )
             yield StreamDone(text="".join(full_text), usage=usage)
+        except AIProviderError:
+            raise
         except Exception as exc:
             raise AIProviderError(f"openai stream failed: {exc}") from exc

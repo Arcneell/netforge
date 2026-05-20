@@ -57,6 +57,20 @@ _GEMINI_SCHEMA_KEYS = {
 }
 
 
+def _enum_name(value: Any) -> str:
+    """Best-effort rendering of a Gemini enum value as its human name.
+
+    The SDK historically returned plain `Enum` members (`FinishReason.SAFETY`)
+    but newer versions sometimes hand back the raw protobuf int or the
+    string form. We try `.name`, then `str()`, so the surfaced error is
+    always intelligible regardless of which shape the SDK uses.
+    """
+    name = getattr(value, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    return str(value)
+
+
 def _clean_schema_for_gemini(schema: Any) -> Any:
     """Strip keys Gemini doesn't recognise from a JSON-Schema fragment.
 
@@ -227,6 +241,15 @@ class GeminiProvider:
         (`/api/ai/query/stream`) renders Markdown progressively, which is
         incompatible with the all-or-nothing tool_use validation we do on
         the non-streaming endpoint.
+
+        Mid-stream interruptions (SAFETY, RECITATION, BLOCKLIST,
+        PROHIBITED_CONTENT, MAX_TOKENS, …) are surfaced as
+        `AIProviderError` instead of swallowed: the SDK iterator naturally
+        terminates when one of these trips, which historically left the
+        Ask AI page sitting on a half-written answer with no indication
+        why it stopped. We also catch `prompt_feedback.block_reason` for
+        the whole-prompt block case (the model never produces any
+        candidates at all).
         """
         import asyncio
 
@@ -240,6 +263,9 @@ class GeminiProvider:
 
         full_text: list[str] = []
         usage = TokenUsage()
+        terminal_reason: str | None = None
+        terminal_message: str | None = None
+        block_reason: str | None = None
         try:
             stream = await client.aio.models.generate_content_stream(
                 model=self.model,
@@ -249,8 +275,17 @@ class GeminiProvider:
             async for chunk in stream:
                 # `chunk.text` is the convenience accessor that returns the
                 # concatenation of every text part in this chunk's first
-                # candidate. Falls back to walking parts if absent.
-                text = getattr(chunk, "text", None)
+                # candidate. It RAISES (ValueError) on multi-candidate
+                # responses or chunks containing function_call/response
+                # parts — we never use either, but guard anyway so a one-off
+                # malformed chunk doesn't kill the whole stream.
+                text: str | None = None
+                try:
+                    text = getattr(chunk, "text", None)
+                except Exception:
+                    # SDK's `text` property raises on multi-part / multi-candidate
+                    # chunks. Catch broadly and fall back to walking parts below.
+                    text = None
                 if text is None:
                     parts_text: list[str] = []
                     for candidate in getattr(chunk, "candidates", []) or []:
@@ -266,6 +301,32 @@ class GeminiProvider:
                     full_text.append(text)
                     yield StreamDelta(text=text)
                     await asyncio.sleep(0)
+
+                # The whole *prompt* was rejected — the response carries
+                # zero candidates, only `prompt_feedback.block_reason`. We
+                # capture it so the final raise has the actual cause.
+                pf = getattr(chunk, "prompt_feedback", None)
+                pf_block = getattr(pf, "block_reason", None) if pf is not None else None
+                if pf_block is not None:
+                    block_reason = _enum_name(pf_block)
+
+                # Per-candidate `finish_reason` — set only on the last chunk
+                # of that candidate's stream. STOP / FINISH_REASON_UNSPECIFIED
+                # are normal terminations; anything else is an interruption
+                # the operator needs to see (SAFETY mid-answer is the common
+                # one — Gemini's filters trip more often than Anthropic's).
+                for candidate in getattr(chunk, "candidates", []) or []:
+                    fr = getattr(candidate, "finish_reason", None)
+                    if fr is None:
+                        continue
+                    fr_name = _enum_name(fr)
+                    if fr_name in {"STOP", "FINISH_REASON_UNSPECIFIED"}:
+                        continue
+                    terminal_reason = fr_name
+                    terminal_message = (
+                        getattr(candidate, "finish_message", None) or None
+                    )
+
                 # Usage metadata is cumulative; the last non-None reading
                 # wins. Reading it on every chunk keeps the code simple.
                 meta = getattr(chunk, "usage_metadata", None)
@@ -276,5 +337,15 @@ class GeminiProvider:
                     )
         except Exception as exc:
             raise AIProviderError(f"gemini stream failed: {exc}") from exc
+
+        if block_reason is not None:
+            raise AIProviderError(
+                f"gemini blocked the prompt (reason: {block_reason})"
+            )
+        if terminal_reason is not None:
+            detail = f" — {terminal_message}" if terminal_message else ""
+            raise AIProviderError(
+                f"gemini stopped mid-response (finish_reason={terminal_reason}{detail})"
+            )
 
         yield StreamDone(text="".join(full_text), usage=usage)
