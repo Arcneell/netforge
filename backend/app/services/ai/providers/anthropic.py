@@ -218,6 +218,19 @@ class AnthropicProvider:
                     prompt_tokens=getattr(final.usage, "input_tokens", 0) or 0,
                     completion_tokens=getattr(final.usage, "output_tokens", 0) or 0,
                 )
+                # Surface non-normal stop reasons — `max_tokens` truncates
+                # the answer, `refusal` means the model declined mid-reply.
+                # Without this the UI sits on a half-written response with
+                # no indication it was cut short. `end_turn` and
+                # `stop_sequence` are the regular completions; everything
+                # else is worth raising.
+                stop_reason = getattr(final, "stop_reason", None) or ""
+                if stop_reason and stop_reason not in {"end_turn", "stop_sequence"}:
+                    raise AIProviderError(
+                        f"anthropic stopped mid-response (stop_reason={stop_reason})"
+                    )
                 yield StreamDone(text="".join(full_text), usage=usage)
+        except AIProviderError:
+            raise
         except Exception as exc:
             raise AIProviderError(f"anthropic stream failed: {exc}") from exc

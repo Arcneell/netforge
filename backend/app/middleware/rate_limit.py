@@ -102,4 +102,4 @@ class WriteRateLimitMiddleware:
         await self.app(scope, receive, send)
 
 
-__all__ = ["WriteRateLimitMiddleware", "WRITE_METHODS"]
+__all__ = ["WRITE_METHODS", "WriteRateLimitMiddleware"]

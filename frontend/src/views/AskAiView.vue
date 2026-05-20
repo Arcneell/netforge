@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -79,11 +79,22 @@ async function send() {
   // "thinking" indicator (three bouncing dots) stays visible until the
   // model actually starts emitting tokens. After that it's replaced by the
   // typed bubble, which grows in place.
+  //
+  // The turn MUST be wrapped in `reactive()` before we mutate its `text`
+  // per-delta. Plain object refs pushed into `turns.value` are not the
+  // same identity as the proxied element Vue returns from `turns.value[i]`,
+  // so `obj.text += delta` would go straight to the raw target and skip
+  // the reactivity system — only the first delta would render (because the
+  // initial `push` + `pending = false` happened to trigger a re-render in
+  // the same microtask). Wrapping in `reactive()` makes our local handle
+  // the proxy itself, so every subsequent token append re-renders the
+  // bubble. Regression for the "Cette infrastructure / et puis plus rien"
+  // bug on Ask AI with fast providers (Gemini flash, Anthropic Haiku).
   let assistantTurn: Turn | null = null
   try {
-    await streamAnswer(question, history, (delta, meta) => {
+    const outcome = await streamAnswer(question, history, (delta, meta) => {
       if (!assistantTurn) {
-        assistantTurn = { id: nextId++, role: 'assistant', text: '' }
+        assistantTurn = reactive<Turn>({ id: nextId++, role: 'assistant', text: '' })
         turns.value.push(assistantTurn)
         pending.value = false
       }
@@ -91,11 +102,28 @@ async function send() {
       if (meta?.latency_ms !== undefined) {
         assistantTurn.latency_ms = meta.latency_ms
       }
+      // Keep the transcript pinned to the bottom while text streams in —
+      // without this, long answers scroll off-screen and the operator has
+      // to chase them by hand. Fire-and-forget the nextTick so we don't
+      // block the next delta.
+      void scrollToBottom()
     })
-    if (!assistantTurn) {
+    // TS's control-flow analysis narrows `assistantTurn` back to its
+    // initial `null` after the await — it can't see the closure mutation.
+    // Re-widen explicitly so the post-stream branches type-check.
+    const settled = assistantTurn as Turn | null
+    if (!settled) {
       // Stream completed with zero deltas — surface as a one-liner so the
       // operator doesn't sit on an empty chat.
-      turns.value.push({ id: nextId++, role: 'assistant', text: t('ai.askView.emptyAnswer') })
+      turns.value.push(
+        reactive<Turn>({ id: nextId++, role: 'assistant', text: t('ai.askView.emptyAnswer') }),
+      )
+    } else if (!outcome.completed) {
+      // We got deltas but the server never sent the `done` frame — most
+      // commonly the model hit a non-STOP finish_reason (Gemini SAFETY,
+      // OpenAI content_filter, Anthropic refusal). Append a marker so the
+      // operator knows the bubble is partial, not the model's final word.
+      settled.text += `\n\n${t('ai.askView.incompleteAnswer')}`
     }
   } catch (err) {
     toastError(describe(err))
@@ -110,18 +138,30 @@ interface DeltaMeta {
 }
 type DeltaCallback = (delta: string, meta?: DeltaMeta) => void
 
+interface StreamOutcome {
+  deltas: number
+  /** True when the server emitted a terminal `done` frame. False if the
+   *  stream closed after deltas but before `done` — caller surfaces this
+   *  as "interrupted answer" so the operator knows the bubble is partial. */
+  completed: boolean
+}
+
 /**
  * Consume the SSE stream from `/api/ai/query/stream`. We parse the wire
  * format inline — there's no standard "event source for POST" in the
  * browser yet, so a tiny reader over the response body is the simplest
  * option. The callback receives one chunk at a time; the `done` frame
  * arrives as an empty-string delta carrying the latency metadata.
+ *
+ * Returns an outcome so the caller can tell a clean completion from a
+ * mid-stream disconnect (the server closes the socket without `done`
+ * when, e.g., uvicorn is killed or the upstream proxy times out).
  */
 async function streamAnswer(
   question: string,
   history: QueryHistoryTurn[],
   onDelta: DeltaCallback,
-) {
+): Promise<StreamOutcome> {
   const resp = await aiApi.askStream(question, history)
   if (!resp.ok || !resp.body) {
     throw new Error(`stream rejected: HTTP ${resp.status}`)
@@ -130,6 +170,7 @@ async function streamAnswer(
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
   let streamError: string | null = null
+  const outcome: StreamOutcome = { deltas: 0, completed: false }
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
@@ -140,18 +181,28 @@ async function streamAnswer(
     while ((separator = buffer.indexOf('\n\n')) !== -1) {
       const rawFrame = buffer.slice(0, separator)
       buffer = buffer.slice(separator + 2)
-      const result = handleFrame(rawFrame, onDelta)
+      const result = handleFrame(rawFrame, onDelta, outcome)
       if (result?.error) {
         streamError = result.error
       }
     }
   }
+  // Flush any trailing bytes — the server always terminates each frame
+  // with \n\n, but a buggy/missing terminator on the very last one would
+  // otherwise silently drop the `done` payload.
+  buffer += decoder.decode()
+  if (buffer.trim().length > 0) {
+    const result = handleFrame(buffer.trim(), onDelta, outcome)
+    if (result?.error) streamError = result.error
+  }
   if (streamError) throw new Error(streamError)
+  return outcome
 }
 
 function handleFrame(
   rawFrame: string,
   onDelta: DeltaCallback,
+  outcome: StreamOutcome,
 ): { error?: string } | undefined {
   let eventName = 'message'
   let dataLine = ''
@@ -167,8 +218,10 @@ function handleFrame(
     return undefined
   }
   if (eventName === 'delta' && payload.text) {
+    outcome.deltas += 1
     onDelta(payload.text)
   } else if (eventName === 'done') {
+    outcome.completed = true
     onDelta('', { latency_ms: payload.latency_ms })
   } else if (eventName === 'error') {
     return { error: payload.message || 'stream error' }
