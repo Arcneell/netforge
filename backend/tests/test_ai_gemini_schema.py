@@ -318,14 +318,15 @@ async def test_gemini_stream_recovers_when_chunk_text_raises() -> None:
         carry usable text — mirrors a malformed Gemini response we observed
         in the wild."""
 
-        usage_metadata = None
-        candidates = [
-            SimpleNamespace(
-                content=SimpleNamespace(parts=[SimpleNamespace(text="rescued")]),
-                finish_reason=None,
-            )
-        ]
-        prompt_feedback = None
+        def __init__(self) -> None:
+            self.usage_metadata = None
+            self.candidates = [
+                SimpleNamespace(
+                    content=SimpleNamespace(parts=[SimpleNamespace(text="rescued")]),
+                    finish_reason=None,
+                )
+            ]
+            self.prompt_feedback = None
 
         @property
         def text(self):

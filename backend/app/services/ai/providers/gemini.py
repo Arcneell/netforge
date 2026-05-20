@@ -282,7 +282,9 @@ class GeminiProvider:
                 text: str | None = None
                 try:
                     text = getattr(chunk, "text", None)
-                except Exception:  # noqa: BLE001 - SDK property raises on edge cases
+                except Exception:
+                    # SDK's `text` property raises on multi-part / multi-candidate
+                    # chunks. Catch broadly and fall back to walking parts below.
                     text = None
                 if text is None:
                     parts_text: list[str] = []
