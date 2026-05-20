@@ -57,17 +57,43 @@ _GEMINI_SCHEMA_KEYS = {
 }
 
 
+_FINISH_REASON_INT_TO_NAME = {
+    0: "FINISH_REASON_UNSPECIFIED",
+    1: "STOP",
+    2: "MAX_TOKENS",
+    3: "SAFETY",
+    4: "RECITATION",
+    5: "LANGUAGE",
+    6: "OTHER",
+    7: "BLOCKLIST",
+    8: "PROHIBITED_CONTENT",
+    9: "SPII",
+    10: "MALFORMED_FUNCTION_CALL",
+    11: "IMAGE_SAFETY",
+    12: "IMAGE_PROHIBITED_CONTENT",
+    13: "UNEXPECTED_TOOL_CALL",
+}
+
+
 def _enum_name(value: Any) -> str:
     """Best-effort rendering of a Gemini enum value as its human name.
 
     The SDK historically returned plain `Enum` members (`FinishReason.SAFETY`)
     but newer versions sometimes hand back the raw protobuf int or the
-    string form. We try `.name`, then `str()`, so the surfaced error is
-    always intelligible regardless of which shape the SDK uses.
+    string form. We try `.name`, then a known protobuf int mapping, then
+    `str()`, so the surfaced reason is always intelligible regardless of
+    which shape the SDK uses — and a STOP completion served as int 1 isn't
+    misclassified as an interruption (Codex P1 from PR #55).
     """
     name = getattr(value, "name", None)
     if isinstance(name, str) and name:
         return name
+    # Plain int — bool is a subclass of int, exclude it so a stray True/False
+    # doesn't map to STOP/UNSPECIFIED.
+    if isinstance(value, int) and not isinstance(value, bool):
+        mapped = _FINISH_REASON_INT_TO_NAME.get(value)
+        if mapped:
+            return mapped
     return str(value)
 
 
