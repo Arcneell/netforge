@@ -583,7 +583,8 @@
       "latency": "Answered in {ms} ms",
       "disabledHint": "The AI assistant is disabled. Enable it in Settings → AI to ask questions.",
       "newChat": "New conversation",
-      "emptyAnswer": "(Empty answer — try re-asking if needed.)"
+      "emptyAnswer": "(Empty answer — try re-asking if needed.)",
+      "incompleteAnswer": "(Answer interrupted — the model stopped before finishing.)"
     },
     "advisor": {
       "tab": "AI advisor",
