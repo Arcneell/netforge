@@ -306,6 +306,66 @@ async def test_gemini_stream_accepts_stop_finish_reason() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gemini_stream_accepts_numeric_stop_finish_reason() -> None:
+    """The google-genai SDK has shipped versions where `finish_reason` is the
+    raw protobuf int (`1` for STOP, `0` for FINISH_REASON_UNSPECIFIED) instead
+    of an `Enum` member. The provider must treat int 1 / 0 the same as their
+    symbolic forms — otherwise a normal completion is reported as a failure.
+    Regression for the Codex P1 on PR #55."""
+    from types import SimpleNamespace
+
+    chunks = [
+        SimpleNamespace(text="Done.", usage_metadata=None, candidates=[]),
+        SimpleNamespace(
+            text=None,
+            usage_metadata=SimpleNamespace(prompt_token_count=5, candidates_token_count=2),
+            candidates=[
+                SimpleNamespace(
+                    content=SimpleNamespace(parts=[]),
+                    finish_reason=1,  # protobuf int form of STOP
+                    finish_message=None,
+                )
+            ],
+        ),
+    ]
+    provider = _build_fake_provider(chunks)
+
+    events = [ev async for ev in provider.stream_call(system="sys", prompt="hi")]
+    assert isinstance(events[-1], StreamDone)
+    assert events[-1].text == "Done."
+
+
+@pytest.mark.asyncio
+async def test_gemini_stream_raises_on_numeric_safety_finish_reason() -> None:
+    """Same int-form regression on the other side: protobuf `3` is SAFETY.
+    Should raise with the SYMBOLIC name in the message, not the bare digit,
+    so the operator sees a useful error."""
+    from types import SimpleNamespace
+
+    from app.services.ai.types import AIProviderError
+
+    chunks = [
+        SimpleNamespace(text="Half answer", usage_metadata=None, candidates=[]),
+        SimpleNamespace(
+            text=None,
+            usage_metadata=None,
+            candidates=[
+                SimpleNamespace(
+                    content=SimpleNamespace(parts=[]),
+                    finish_reason=3,  # protobuf int form of SAFETY
+                    finish_message=None,
+                )
+            ],
+        ),
+    ]
+    provider = _build_fake_provider(chunks)
+
+    with pytest.raises(AIProviderError, match="SAFETY"):
+        async for _ in provider.stream_call(system="sys", prompt="hi"):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_gemini_stream_recovers_when_chunk_text_raises() -> None:
     """Some SDK versions expose `chunk.text` as a property that raises
     (multi-candidate, non-text parts). The provider must NOT die on a
