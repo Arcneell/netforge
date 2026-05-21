@@ -80,6 +80,10 @@ export interface Insight {
   recommendation: string
   affected_entities: InsightEntityRef[] | null
   created_at: string
+  /** How many consecutive recent advisor runs this finding has appeared
+   *  in (including the current one). 1 = brand-new, ≥ 2 = recurring.
+   *  Backend computes at query time — `compute_insight_streaks`. */
+  streak_count: number
 }
 
 export interface InsightsResponse {

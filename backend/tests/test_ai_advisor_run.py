@@ -15,6 +15,7 @@ import pytest
 
 from app.services.ai.advisor import (
     _persist_insights,
+    compute_insight_streaks,
     latest_run,
     list_latest_insights,
 )
@@ -149,3 +150,83 @@ async def test_list_latest_insights_returns_triple_with_timestamp() -> None:
     assert run_id == 7
     assert run_created_at == now
     assert items == fake_insights
+
+
+# --- compute_insight_streaks ------------------------------------------------
+
+
+def _insight(id: int, category: str, title: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=id,
+        category=SimpleNamespace(value=category),
+        title=title,
+    )
+
+
+def _result_with(rows: list) -> MagicMock:
+    r = MagicMock()
+    r.all = MagicMock(return_value=rows)
+    return r
+
+
+@pytest.mark.asyncio
+async def test_streaks_default_to_one_when_no_prior_runs() -> None:
+    """First-ever advisor run: every finding is brand-new, so every streak
+    is 1. Sanity check that the helper doesn't crash on the empty-prior-runs
+    branch."""
+    items = [_insight(1, "spof", "SPOF on SW-CORE-01"), _insight(2, "naming", "VLAN name typo")]
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_result_with([]))  # no prior runs
+    streaks = await compute_insight_streaks(db, current_run_id=10, current_items=items)
+    assert streaks == {1: 1, 2: 1}
+
+
+@pytest.mark.asyncio
+async def test_streaks_count_consecutive_matches() -> None:
+    """A finding present in the current run AND the 3 most recent prior
+    runs → streak 4. The match key is `(category, lowercased title)` —
+    we lowercase both sides defensively so a casing tweak in a re-run
+    doesn't reset the streak."""
+    items = [
+        _insight(100, "spof", "SPOF on SW-CORE-01"),
+        _insight(101, "naming", "fresh finding"),
+    ]
+    # prior_run_rows: 3 prior runs, newest first
+    prior_run_rows = _result_with([(9,), (8,), (7,)])
+    # For the SPOF item: present in runs 9 + 8 + 7 (streak grows to 4).
+    # For the "fresh finding": not in any prior run (streak stays 1).
+    prior_keys_rows = _result_with(
+        [
+            (9, SimpleNamespace(value="spof"), "SPOF on SW-CORE-01"),
+            (8, SimpleNamespace(value="spof"), "spof on sw-core-01"),  # casing-tolerant
+            (7, SimpleNamespace(value="spof"), "SPOF on SW-CORE-01"),
+        ]
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[prior_run_rows, prior_keys_rows])
+    streaks = await compute_insight_streaks(db, current_run_id=10, current_items=items)
+    assert streaks == {100: 4, 101: 1}
+
+
+@pytest.mark.asyncio
+async def test_streak_breaks_on_gap() -> None:
+    """If a finding was present in run N and N-2 but NOT N-1, the streak
+    must stop counting at the gap — the operator presumably fixed it
+    between runs and the issue regressed. We report `2` (current + N
+    only), not `3`, so the badge doesn't lie about persistence."""
+    items = [_insight(1, "spof", "SPOF on X")]
+    prior_run_rows = _result_with([(9,), (8,), (7,)])
+    prior_keys_rows = _result_with(
+        [
+            # Present in 9 ...
+            (9, SimpleNamespace(value="spof"), "SPOF on X"),
+            # ... absent from 8 ...
+            (8, SimpleNamespace(value="capacity"), "Unrelated"),
+            # ... present again in 7 (but shouldn't extend the streak).
+            (7, SimpleNamespace(value="spof"), "SPOF on X"),
+        ]
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[prior_run_rows, prior_keys_rows])
+    streaks = await compute_insight_streaks(db, current_run_id=10, current_items=items)
+    assert streaks == {1: 2}  # current + run 9 only
