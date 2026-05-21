@@ -516,20 +516,24 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
           </span>
         </div>
 
-        <label class="flex items-start gap-2 cursor-pointer">
-          <input
-            v-model="bulkDryRun"
-            type="checkbox"
-            class="mt-0.5 h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
-          />
-          <span class="text-sm flex-1">
-            <span class="inline-flex items-center gap-1">
+        <!-- HelpTooltip lives OUTSIDE the <label> so clicking `?` doesn't also
+             toggle the checkbox via the label's default activation behaviour
+             (which would silently flip a validation-only run into a write
+             run, or vice versa). Codex P1 on #71. -->
+        <div class="flex items-start gap-2">
+          <label class="flex items-start gap-2 cursor-pointer flex-1">
+            <input
+              v-model="bulkDryRun"
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
+            />
+            <span class="text-sm">
               <span class="text-fg font-medium">{{ t('import.dryRun') }}</span>
-              <HelpTooltip :text="t('import.helpDryRun')" />
+              <span class="block text-xs text-fg-muted">{{ t('import.bulk.dryRunHint') }}</span>
             </span>
-            <span class="block text-xs text-fg-muted">{{ t('import.bulk.dryRunHint') }}</span>
-          </span>
-        </label>
+          </label>
+          <HelpTooltip :text="t('import.helpDryRun')" class="mt-0.5" />
+        </div>
 
         <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
           <Button
@@ -593,20 +597,20 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
           />
         </div>
 
-        <label class="flex items-start gap-2 cursor-pointer">
-          <input
-            v-model="dryRun"
-            type="checkbox"
-            class="mt-0.5 h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
-          />
-          <span class="text-sm flex-1">
-            <span class="inline-flex items-center gap-1">
+        <div class="flex items-start gap-2">
+          <label class="flex items-start gap-2 cursor-pointer flex-1">
+            <input
+              v-model="dryRun"
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
+            />
+            <span class="text-sm">
               <span class="text-fg font-medium">{{ t('import.dryRun') }}</span>
-              <HelpTooltip :text="t('import.helpDryRun')" />
+              <span class="block text-xs text-fg-muted">{{ t('import.dryRunHint') }}</span>
             </span>
-            <span class="block text-xs text-fg-muted">{{ t('import.dryRunHint') }}</span>
-          </span>
-        </label>
+          </label>
+          <HelpTooltip :text="t('import.helpDryRun')" class="mt-0.5" />
+        </div>
 
         <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
           <Button variant="primary" :loading="submitting" :disabled="!file" @click="submit">

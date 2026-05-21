@@ -77,16 +77,32 @@ async def list_subnets(
     # carries `used` so the UI can render a fill bar without hitting the
     # utilisation endpoint N times. Skipped when the page is empty so the
     # IN-clause never receives an empty tuple.
+    #
+    # Counts use the SAME accounting as `compute_utilization`: boundary
+    # IPs (network / broadcast) on /≤30 are excluded. Without this, an
+    # operator who recorded e.g. .0 or .255 would see `used > usable` on
+    # the list bar — disagreeing with the per-subnet utilisation page
+    # and making capacity triage misleading. Codex P2 on #74.
     ip_counts: dict[int, int] = {}
     if items:
-        counts_rows = (
+        ids = [s.id for s in items]
+        boundary_pairs: set[tuple[int, str]] = set()
+        for s in items:
+            net = IPv4Network(str(s.cidr), strict=False)
+            if net.prefixlen < 31:
+                boundary_pairs.add((s.id, str(net.network_address)))
+                boundary_pairs.add((s.id, str(net.broadcast_address)))
+
+        rows = (
             await db.execute(
-                select(Ip.subnet_id, func.count(Ip.id))
-                .where(Ip.subnet_id.in_(s.id for s in items))
-                .group_by(Ip.subnet_id)
+                select(Ip.subnet_id, Ip.address)
+                .where(Ip.subnet_id.in_(ids))
             )
         ).all()
-        ip_counts = {int(sid): int(c) for sid, c in counts_rows}
+        for sid, addr in rows:
+            if (int(sid), str(addr)) in boundary_pairs:
+                continue
+            ip_counts[int(sid)] = ip_counts.get(int(sid), 0) + 1
 
     return items, int(total), ip_counts
 
@@ -358,8 +374,70 @@ async def compute_utilization(
     }
 
 
+def _auto_group_roots(roots: list[dict], supernet_prefix: int) -> list[dict]:
+    """Wrap flat root subnets under synthetic supernet parents so the tree
+    view shows meaningful hierarchy even when no `parent_subnet_id` is
+    set anywhere. Roots that are already shorter than `supernet_prefix`
+    pass through as-is; singletons stay at the root level (no point in
+    wrapping a single child).
+
+    Synthetic nodes carry `synthetic=True` and a negative id derived from
+    the supernet CIDR so the frontend can render them differently and
+    refuse navigation (there's no DB row to open).
+    """
+    if not roots or supernet_prefix <= 0 or supernet_prefix >= 32:
+        return roots
+
+    buckets: dict[str, list[dict]] = {}
+    passthrough: list[dict] = []
+    for r in roots:
+        net = IPv4Network(r["cidr"], strict=False)
+        # Already a supernet at or above the grouping prefix — nothing to
+        # fold it under.
+        if net.prefixlen <= supernet_prefix:
+            passthrough.append(r)
+            continue
+        super_cidr = str(net.supernet(new_prefix=supernet_prefix))
+        buckets.setdefault(super_cidr, []).append(r)
+
+    grouped: list[dict] = list(passthrough)
+    for super_cidr, members in buckets.items():
+        if len(members) <= 1:
+            grouped.extend(members)
+            continue
+        members.sort(key=lambda m: m["cidr"])
+        super_net = IPv4Network(super_cidr, strict=False)
+        super_usable = (
+            super_net.num_addresses
+            if super_net.prefixlen >= 31
+            else max(0, super_net.num_addresses - 2)
+        )
+        grouped.append(
+            {
+                # Negative id keeps these out of any URL-based lookup —
+                # the frontend treats them as not-navigable.
+                "id": -(abs(hash(("autogroup", super_cidr))) % 100_000_000) - 1,
+                "cidr": super_cidr,
+                "site_id": members[0]["site_id"],
+                "vrf_id": members[0]["vrf_id"],
+                "vlan_id": None,
+                "parent_subnet_id": None,
+                "description": None,
+                "gateway": None,
+                "usable": super_usable,
+                "used": sum(m["used"] for m in members),
+                "synthetic": True,
+                "children": members,
+            }
+        )
+    grouped.sort(key=lambda x: x["cidr"])
+    return grouped
+
+
 async def build_subnet_tree(
-    db: AsyncSession, vrf_id: int | None
+    db: AsyncSession,
+    vrf_id: int | None,
+    auto_group_prefix: int | None = 16,
 ) -> list[dict]:
     """Return the subnet hierarchy as a list of root nodes.
 
@@ -367,6 +445,12 @@ async def build_subnet_tree(
     a specific id returns that VRF's tree. We always fetch every subnet
     in scope in one query and assemble in Python — Postgres recursive
     CTEs are overkill for a tree that's at most a few hundred nodes.
+
+    `auto_group_prefix` (default 16) wraps groups of root subnets that
+    share a common /N supernet under a synthetic virtual parent, so the
+    tree view shows real hierarchy even on flat deployments that don't
+    use `parent_subnet_id`. Pass `None` (or 0) to disable and get a true
+    flat-root list.
 
     A "root" is a subnet whose `parent_subnet_id` is either NULL or
     points outside the current scope (e.g. a deleted parent that hasn't
@@ -397,19 +481,29 @@ async def build_subnet_tree(
     for siblings in children_of.values():
         siblings.sort(key=lambda s: str(s.cidr))
 
-    # Fetch the per-subnet IP counts in one query so the tree row can show
-    # a fill-rate badge without going back to the server N times. Counted
-    # over `Ip` rows only — DHCP-range slots that have no DB row stay
-    # invisible here (consistent with how `compute_utilization` works for
-    # subnets too big to enumerate).
-    counts_q = (
-        select(Ip.subnet_id, func.count(Ip.id))
-        .where(Ip.subnet_id.in_(by_id.keys()))
-        .group_by(Ip.subnet_id)
-    )
-    ip_counts: dict[int, int] = (
-        dict((await db.execute(counts_q)).all()) if by_id else {}
-    )
+    # Per-subnet IP counts so each tree row can show a fill bar without
+    # extra round-trips. Same boundary-aware accounting as the list view
+    # and `compute_utilization`: network/broadcast addresses on /≤30
+    # don't count toward `used`, so the bar can't read > 100%. DHCP-range
+    # slots without a DB row stay invisible (consistent with how
+    # `compute_utilization` aggregates).
+    ip_counts: dict[int, int] = {}
+    if by_id:
+        boundary_pairs: set[tuple[int, str]] = set()
+        for sid, s in by_id.items():
+            net = IPv4Network(str(s.cidr), strict=False)
+            if net.prefixlen < 31:
+                boundary_pairs.add((sid, str(net.network_address)))
+                boundary_pairs.add((sid, str(net.broadcast_address)))
+        rows = (
+            await db.execute(
+                select(Ip.subnet_id, Ip.address).where(Ip.subnet_id.in_(by_id.keys()))
+            )
+        ).all()
+        for sid, addr in rows:
+            if (int(sid), str(addr)) in boundary_pairs:
+                continue
+            ip_counts[int(sid)] = ip_counts.get(int(sid), 0) + 1
 
     def node_for(s: Subnet) -> dict:
         return {
@@ -426,7 +520,10 @@ async def build_subnet_tree(
             "children": [node_for(c) for c in children_of.get(s.id, [])],
         }
 
-    return [node_for(s) for s in children_of.get(None, [])]
+    roots = [node_for(s) for s in children_of.get(None, [])]
+    if auto_group_prefix and auto_group_prefix > 0:
+        roots = _auto_group_roots(roots, supernet_prefix=auto_group_prefix)
+    return roots
 
 
 async def list_subnet_ips(

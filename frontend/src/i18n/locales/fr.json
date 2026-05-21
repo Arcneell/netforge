@@ -241,6 +241,10 @@
     "vrfFilterAll": "Tous les scopes",
     "vrfFilterGlobal": "Global",
     "treeEmpty": "Aucun subnet dans ce scope — créez-en un pour commencer.",
+    "tree": {
+      "autoGroup": "Auto",
+      "containedCount": "{n} subnet(s) dans cette plage"
+    },
     "exportCsv": "Exporter CSV",
     "nextFree": "Prochaine IP libre",
     "nextFreeFound": "Prochaine adresse libre : {address}",
