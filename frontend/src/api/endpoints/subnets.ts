@@ -22,8 +22,14 @@ export interface SubnetTreeNode {
   cidr: string
   site_id: number
   vrf_id: number | null
+  vlan_id: number | null
   parent_subnet_id: number | null
   description: string | null
+  gateway: string | null
+  /** Total host-usable addresses in the CIDR (excludes network/broadcast on /≤30). */
+  usable: number
+  /** Number of `Ip` rows actually recorded in this subnet. */
+  used: number
   children: SubnetTreeNode[]
 }
 

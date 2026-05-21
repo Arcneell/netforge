@@ -13,11 +13,28 @@ const { t } = useI18n()
 
 type StatusKey = 'assigned' | 'reserved' | 'dhcp' | 'free'
 
+// Cell classes (used on the clickable IP buttons in the grid). They share
+// the `bg-*` token with the legend so the swatch under each label matches
+// what an IP of that status looks like on the grid.
 const statusClass: Record<StatusKey, string> = {
   assigned: 'bg-primary-500 hover:bg-primary-600 text-white border-primary-600',
   reserved: 'bg-warning/90 hover:bg-warning text-white border-warning',
   dhcp: 'bg-success/80 hover:bg-success text-white border-success',
-  free: 'bg-surface hover:bg-surface-hover text-fg-muted border-border',
+  // Free cells: muted fill on a slightly darker border so the empty
+  // addresses stay distinguishable from the white card background in
+  // light mode and from the elevated surface in dark mode.
+  free: 'bg-muted/60 hover:bg-surface-hover text-fg-muted border-border',
+}
+
+// Legend swatches — same fill as the cell, plus an explicit 1-px border so
+// every chip stays visible against `bg-surface` (the card it sits on). The
+// cells themselves already get `border` via the button class, but the
+// legend swatch is a plain `<span>` and would otherwise be borderless.
+const legendSwatchClass: Record<StatusKey, string> = {
+  assigned: 'bg-primary-500 border border-primary-600',
+  reserved: 'bg-warning border border-warning',
+  dhcp: 'bg-success border border-success',
+  free: 'bg-muted/60 border border-border',
 }
 
 const statusLabel = computed<Record<StatusKey, string>>(() => ({
@@ -38,17 +55,17 @@ const sorted = computed(() => props.ips)
 
 <template>
   <div>
-    <div class="flex flex-wrap items-center gap-3 mb-3 text-xs text-fg-muted">
+    <div class="flex flex-wrap items-center gap-4 mb-3 text-xs text-fg-muted">
       <span
         v-for="status in ['assigned', 'reserved', 'dhcp', 'free'] as const"
         :key="status"
-        class="flex items-center gap-1.5"
+        class="inline-flex items-center gap-1.5"
       >
         <span
-          :class="['inline-block w-3 h-3 rounded-sm', statusClass[status]]"
+          :class="['inline-block w-3.5 h-3.5 rounded-sm flex-shrink-0', legendSwatchClass[status]]"
           aria-hidden="true"
         />
-        {{ statusLabel[status] }}
+        <span>{{ statusLabel[status] }}</span>
       </span>
     </div>
     <div

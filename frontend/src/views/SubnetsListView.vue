@@ -268,6 +268,7 @@ const columns: DataTableColumn[] = [
           :node="node"
           :collapsed="collapsed"
           :depth="0"
+          :vlans-by-id="vlansById"
           @toggle="toggleNode"
           @open="openSubnet"
         />
