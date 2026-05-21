@@ -87,6 +87,12 @@ const routes: RouteRecordRaw[] = [
         meta: { minRole: 'admin', titleKey: 'nav.audit' },
       },
       {
+        path: 'snapshots/compare',
+        name: 'snapshots-compare',
+        component: () => import('@/views/SnapshotCompareView.vue'),
+        meta: { minRole: 'admin', titleKey: 'nav.snapshots' },
+      },
+      {
         path: 'insights',
         name: 'insights',
         component: () => import('@/views/InsightsView.vue'),

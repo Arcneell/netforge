@@ -29,6 +29,7 @@ from app.routers import (
     rooms,
     search,
     sites,
+    snapshots,
     subnets,
     switches,
     topology,
@@ -223,6 +224,7 @@ def create_app() -> FastAPI:
     app.include_router(cables.router, prefix="/api")
     app.include_router(cables.nested_router, prefix="/api")
     app.include_router(audit.router, prefix="/api")
+    app.include_router(snapshots.router, prefix="/api")
     app.include_router(search.router, prefix="/api")
     app.include_router(topology.router, prefix="/api")
     app.include_router(imports.router, prefix="/api")
