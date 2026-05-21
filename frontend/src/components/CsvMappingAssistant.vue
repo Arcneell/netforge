@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Sparkles, Wand2 } from 'lucide-vue-next'
+import { AlertTriangle, Sparkles, Wand2 } from 'lucide-vue-next'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -107,6 +107,10 @@ function confidenceTone(c: number): 'success' | 'primary' | 'warning' {
   if (c >= 0.8) return 'success'
   if (c >= 0.5) return 'primary'
   return 'warning'
+}
+
+function severityTone(s: 'info' | 'warning' | 'critical'): 'danger' | 'warning' | 'primary' {
+  return s === 'critical' ? 'danger' : s === 'warning' ? 'warning' : 'primary'
 }
 
 /**
@@ -241,6 +245,53 @@ function applyMapping() {
             })
           }}
         </p>
+
+        <!-- Data-quality observations: deterministic checks + LLM hints -->
+        <div
+          v-if="result.data_quality.length"
+          class="border-t border-border/50 pt-3 space-y-2"
+        >
+          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+            {{ t('ai.csvMapping.dataQualityTitle') }}
+          </p>
+          <ul class="space-y-2">
+            <li
+              v-for="(issue, idx) in result.data_quality"
+              :key="idx"
+              class="p-2.5 rounded border border-border bg-surface flex items-start gap-2"
+            >
+              <AlertTriangle
+                class="w-4 h-4 mt-0.5 flex-shrink-0"
+                :class="
+                  issue.severity === 'critical'
+                    ? 'text-danger'
+                    : issue.severity === 'warning'
+                      ? 'text-warning'
+                      : 'text-primary-500'
+                "
+                aria-hidden="true"
+              />
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <Badge :tone="severityTone(issue.severity)">{{ issue.severity }}</Badge>
+                  <span v-if="issue.column" class="font-mono text-xs">{{ issue.column }}</span>
+                  <span class="text-sm font-medium">{{ issue.issue }}</span>
+                  <span class="text-[10px] text-fg-muted uppercase tracking-wider">
+                    {{ issue.source }}
+                  </span>
+                </div>
+                <p class="text-xs text-fg-muted mt-1">{{ issue.details }}</p>
+                <p
+                  v-if="issue.sample_values.length"
+                  class="text-[11px] text-fg-muted mt-1 font-mono truncate"
+                >
+                  {{ t('ai.csvMapping.dataQualitySample') }}:
+                  {{ issue.sample_values.join(' · ') }}
+                </p>
+              </div>
+            </li>
+          </ul>
+        </div>
 
         <!-- Apply: send the mapping back to ImportView; it will be passed
              as `column_map` on the next CSV upload (server rewrites the

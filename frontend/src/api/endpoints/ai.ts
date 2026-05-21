@@ -182,10 +182,22 @@ export interface CsvColumnMapping {
   notes: string
 }
 
+export interface CsvDataQualityIssue {
+  severity: 'info' | 'warning' | 'critical'
+  column: string | null
+  issue: string
+  details: string
+  sample_values: string[]
+  affected_row_count: number
+  /** "local" = deterministic check, "llm" = model observation. */
+  source: 'local' | 'llm'
+}
+
 export interface CsvMappingResponse {
   entity: string
   columns: CsvColumnMapping[]
   missing_required_fields: string[]
+  data_quality: CsvDataQualityIssue[]
   provider: string
   model: string
   latency_ms: number
