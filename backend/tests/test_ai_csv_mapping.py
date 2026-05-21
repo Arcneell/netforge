@@ -150,3 +150,146 @@ async def test_run_mapping_dedup_targets(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     assert result.columns[0].suggested_field == "cidr"
     assert result.columns[1].suggested_field is None
+
+
+# --- Deterministic data-quality checks --------------------------------------
+
+
+def test_local_dq_flags_empty_required_cells() -> None:
+    issues = cm.run_local_data_quality(
+        entity="sites",
+        csv_columns=["Code", "Name"],
+        sample_rows=[
+            ["HQ", "Headquarters"],
+            ["", "Branch"],
+            ["", ""],
+        ],
+        column_mapping={"Code": "code", "Name": "name"},
+    )
+    # Both `code` and `name` are required for sites.
+    cols = {(i.column, i.issue) for i in issues}
+    assert ("Code", "empty required value") in cols
+    assert ("Name", "empty required value") in cols
+    # Counts only sample rows.
+    code_issue = next(i for i in issues if i.column == "Code")
+    assert code_issue.affected_row_count == 2
+    assert code_issue.source == "local"
+    assert code_issue.severity == "critical"
+
+
+def test_local_dq_flags_invalid_cidr() -> None:
+    issues = cm.run_local_data_quality(
+        entity="subnets",
+        csv_columns=["Subnet"],
+        sample_rows=[["10.0.0.0/24"], ["not-a-network"], ["10.0.0.1"]],
+        column_mapping={"Subnet": "cidr"},
+    )
+    # 10.0.0.0/24 → valid; not-a-network + 10.0.0.1 (missing /prefix) → flagged.
+    cidr_issue = next(
+        (i for i in issues if i.column == "Subnet" and "cidr" in i.issue),
+        None,
+    )
+    assert cidr_issue is not None
+    assert cidr_issue.affected_row_count == 2
+    assert "not-a-network" in cidr_issue.sample_values
+
+
+def test_local_dq_flags_invalid_mac() -> None:
+    issues = cm.run_local_data_quality(
+        entity="ips",
+        csv_columns=["IP", "MAC"],
+        sample_rows=[
+            ["10.0.0.1", "aa:bb:cc:dd:ee:ff"],
+            ["10.0.0.2", "not-a-mac"],
+        ],
+        column_mapping={"IP": "address", "MAC": "mac"},
+    )
+    mac_issue = next(i for i in issues if i.column == "MAC")
+    assert "not-a-mac" in mac_issue.sample_values
+
+
+def test_local_dq_flags_invalid_vlan_id() -> None:
+    issues = cm.run_local_data_quality(
+        entity="vlans",
+        csv_columns=["ID", "Name"],
+        sample_rows=[["10", "user"], ["99999", "broken"], ["abc", "alpha"]],
+        column_mapping={"ID": "vlan_id", "Name": "name"},
+    )
+    vlan_issue = next(i for i in issues if i.column == "ID")
+    assert vlan_issue.affected_row_count == 2
+    assert vlan_issue.severity == "warning"
+
+
+def test_local_dq_flags_duplicates_in_unique_columns() -> None:
+    issues = cm.run_local_data_quality(
+        entity="subnets",
+        csv_columns=["CIDR"],
+        sample_rows=[["10.0.0.0/24"], ["10.0.0.0/24"], ["10.0.1.0/24"]],
+        column_mapping={"CIDR": "cidr"},
+    )
+    dup_issue = next(i for i in issues if "duplicate" in i.issue)
+    assert dup_issue.severity == "warning"
+    assert "10.0.0.0/24" in dup_issue.sample_values
+
+
+def test_local_dq_skips_unmapped_columns() -> None:
+    """Columns the operator hasn't mapped to a canonical field should be
+    invisible to the local checks — we can't validate something whose
+    expected shape we don't know."""
+    issues = cm.run_local_data_quality(
+        entity="subnets",
+        csv_columns=["Mystery"],
+        sample_rows=[["nonsense"], [""]],
+        column_mapping={"Mystery": None},
+    )
+    assert issues == []
+
+
+@pytest.mark.asyncio
+async def test_run_mapping_includes_local_data_quality(monkeypatch: pytest.MonkeyPatch) -> None:
+    """End-to-end: the local check should pad the LLM's data_quality list."""
+    fake_provider = SimpleNamespace(name="anthropic", model="claude-sonnet-4-6")
+
+    async def fake_call(**kwargs):
+        return AICompletion(
+            text=None,
+            tool_call=ToolCall(
+                name="submit_mapping",
+                input={
+                    "columns": [
+                        {"csv_column": "CIDR", "suggested_field": "cidr", "confidence": 0.95},
+                    ],
+                    "missing_required_fields": [],
+                    "data_quality": [
+                        {
+                            "severity": "info",
+                            "column": "CIDR",
+                            "issue": "mixed casing in headers",
+                            "details": "Some CIDR values use uppercase.",
+                            "affected_row_count": 1,
+                        },
+                    ],
+                },
+            ),
+            usage=TokenUsage(prompt_tokens=10, completion_tokens=5),
+        )
+
+    fake_provider.call = fake_call  # type: ignore[attr-defined]
+    monkeypatch.setattr(cm, "get_provider", lambda: fake_provider)
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+
+    result = await cm.run_mapping_suggestion(
+        db,
+        user_id=1,
+        entity="subnets",
+        csv_columns=["CIDR"],
+        sample_rows=[["not-a-cidr"]],  # local check should fire on this
+    )
+    sources = {i.source for i in result.data_quality}
+    assert sources == {"local", "llm"}
+    # Local check produced exactly one entry — invalid CIDR.
+    local_issues = [i for i in result.data_quality if i.source == "local"]
+    assert len(local_issues) == 1
+    assert "not-a-cidr" in local_issues[0].sample_values
