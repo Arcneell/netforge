@@ -758,7 +758,9 @@
       "unmapped": "unmapped",
       "missingFields": "Required fields missing: {fields}",
       "applyButton": "Use this mapping for import",
-      "pendingNotice": "AI mapping queued — applied on the next import."
+      "pendingNotice": "AI mapping queued — applied on the next import.",
+      "dataQualityTitle": "Data-quality observations",
+      "dataQualitySample": "Sample"
     },
     "settings": {
       "title": "AI assistant",
