@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { vrfsApi } from '@/api/endpoints/vrfs'
@@ -116,7 +117,10 @@ async function confirmDelete() {
 <template>
   <section>
     <div class="flex items-start justify-between gap-3 mb-3">
-      <p class="text-xs text-fg-muted max-w-2xl">{{ t('vrf.subtitle') }}</p>
+      <p class="text-xs text-fg-muted max-w-2xl inline-flex items-center gap-1.5">
+        {{ t('vrf.subtitle') }}
+        <HelpTooltip :text="t('vrf.help.section')" placement="bottom" />
+      </p>
       <Button variant="primary" @click="openCreate">
         <Plus class="w-4 h-4" aria-hidden="true" />
         {{ t('vrf.new') }}
@@ -178,6 +182,9 @@ async function confirmDelete() {
         </FormField>
 
         <FormField :label="t('vrf.fields.rd')">
+          <template #help>
+            <HelpTooltip :text="t('vrf.help.rd')" />
+          </template>
           <template #default="{ id }">
             <Input
               :id="id"

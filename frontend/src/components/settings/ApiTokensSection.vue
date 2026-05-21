@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { authApi } from '@/api'
@@ -196,7 +197,10 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
     </div>
 
     <div class="flex items-start justify-between gap-3 mb-3">
-      <p class="text-xs text-fg-muted max-w-2xl">{{ t('apiTokens.subtitle') }}</p>
+      <p class="text-xs text-fg-muted max-w-2xl inline-flex items-center gap-1.5">
+        {{ t('apiTokens.subtitle') }}
+        <HelpTooltip :text="t('apiTokens.help.section')" placement="bottom" />
+      </p>
       <Button variant="primary" @click="openCreate">
         <Plus class="w-4 h-4" aria-hidden="true" />
         {{ t('apiTokens.new') }}
@@ -253,6 +257,9 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
         <p class="text-xs text-fg-muted -mt-2">{{ t('apiTokens.nameHint') }}</p>
 
         <FormField :label="t('apiTokens.fields.expiresAt')">
+          <template #help>
+            <HelpTooltip :text="t('apiTokens.help.expiry')" />
+          </template>
           <template #default="{ id }">
             <Input
               :id="id"

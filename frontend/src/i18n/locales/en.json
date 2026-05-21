@@ -189,7 +189,7 @@
   "vlan": {
     "label": "VLAN",
     "labelPlural": "VLANs",
-    "subtitle": "Tag-aware VLANs and their colors.",
+    "subtitle": "VLANs and their colours.",
     "fields": {
       "vlanId": "VLAN ID",
       "name": "Name",
@@ -203,7 +203,7 @@
   "subnet": {
     "label": "Subnet",
     "labelPlural": "Subnets",
-    "subtitle": "IPv4 subnets with overlap prevention and usage stats.",
+    "subtitle": "Your IP ranges and how full they are.",
     "fields": {
       "cidr": "CIDR",
       "gateway": "Gateway",
@@ -264,7 +264,7 @@
   "device": {
     "label": "Device",
     "labelPlural": "Devices",
-    "subtitle": "Servers, workstations, access points, printers…",
+    "subtitle": "Everything that isn't a switch.",
     "fields": {
       "name": "Name",
       "type": "Type",
@@ -296,7 +296,7 @@
   "switch": {
     "label": "Switch",
     "labelPlural": "Switches",
-    "subtitle": "Switches, their port maps and inter-switch links.",
+    "subtitle": "Switches, their ports and links.",
     "fields": {
       "name": "Name",
       "vendor": "Vendor",
@@ -353,7 +353,7 @@
     "noTaggedVlans": "No tagged VLANs."
   },
   "audit": {
-    "subtitle": "Every create, update, and delete is recorded here.",
+    "subtitle": "Who changed what, and when.",
     "exportCsv": "Export as CSV",
     "fields": {
       "when": "When",
@@ -385,7 +385,8 @@
   "snapshots": {
     "compare": {
       "title": "Snapshot diff",
-      "subtitle": "Inventory changes between two timestamps, derived from the audit log.",
+      "subtitle": "What changed between two moments in time.",
+      "help": "Pick a start and end date, then click Run diff. The page lists every entity that was created, updated, or deleted in that window — based on the audit log.",
       "from": "From",
       "to": "To",
       "entity": "Entity",
@@ -396,7 +397,7 @@
       "noChangesTitle": "No changes",
       "noChangesDescription": "Try widening the time window or removing the entity filter.",
       "pickTitle": "Pick a window",
-      "pickDescription": "Choose a start and end time, then click Run diff to aggregate the audit log.",
+      "pickDescription": "Choose a start and end time, then click Run diff.",
       "colEntity": "Entity",
       "colCreated": "Created",
       "colUpdated": "Updated",
@@ -409,7 +410,7 @@
     }
   },
   "settings": {
-    "subtitle": "Manage sites, rooms and access tokens. Only administrators can edit.",
+    "subtitle": "Sites, rooms, integrations and access.",
     "sitesTab": "Sites",
     "roomsTab": "Rooms",
     "tokensTab": "API tokens",
@@ -418,15 +419,22 @@
     "vrfsTab": "VRFs"
   },
   "webhooks": {
-    "subtitle": "POST inventory mutations to your own systems. Each event is signed with HMAC-SHA256 over the body (header X-Netforge-Signature).",
+    "subtitle": "Notify your own systems when inventory changes.",
+    "help": {
+      "section": "Webhooks let an external system (Slack bridge, ticketing tool, custom script) react in real time to changes in your inventory. Each delivery is signed so the receiver can verify it really came from NetForge.",
+      "url": "The full HTTPS URL that should receive the POST. Test with services like webhook.site if you're unsure.",
+      "events": "Which changes to send. Use * for every event, or filter with patterns like port.* (all port changes) or site.create.",
+      "secret": "A long random string the receiver uses to verify the signature in the X-Netforge-Signature header. Shown only once — store it safely.",
+      "test": "Sends a synthetic event so you can confirm the receiver is reachable before relying on real changes."
+    },
     "new": "New webhook",
     "edit": "Edit webhook",
     "namePlaceholder": "e.g. itsm-bridge",
-    "eventsHint": "Comma-separated patterns. Use \"*\" for everything, or \"port.*\", \"site.create\", ...",
+    "eventsHint": "Comma-separated. Use * for everything, port.* for one type, or port.create for a specific one.",
     "secretTitle": "Copy your signing secret now — it will never be shown again.",
-    "secretHint": "Store it in your subscriber to verify the X-Netforge-Signature header on each delivery.",
+    "secretHint": "Use it on the receiver side to verify each delivery.",
     "secretCopied": "Secret copied to clipboard.",
-    "secretRotated": "Secret rotated — update your subscriber.",
+    "secretRotated": "Secret rotated — update your receiver.",
     "copyFailed": "Could not access the clipboard.",
     "viewDeliveries": "View recent deliveries",
     "sendTest": "Send a test event",
@@ -436,7 +444,7 @@
     "failuresShort": "fails",
     "deliveriesTitle": "Deliveries — {name}",
     "confirmDeleteTitle": "Delete webhook \"{name}\"?",
-    "confirmDeleteMessage": "Subscribers will stop receiving events immediately. Past delivery history is also removed.",
+    "confirmDeleteMessage": "The receiver will stop getting events immediately. Past delivery history is also removed.",
     "errors": {
       "eventsRequired": "Provide at least one event pattern."
     },
@@ -463,16 +471,20 @@
     },
     "empty": {
       "title": "No webhooks",
-      "description": "Configure HTTP subscribers to receive entity-change events in real time."
+      "description": "Add one to notify external systems when your inventory changes."
     }
   },
   "vrf": {
     "label": "VRF",
     "labelPlural": "VRFs",
-    "subtitle": "Routing-table isolation. Subnets in different VRFs may overlap; subnets inside one VRF can't.",
+    "subtitle": "Group subnets that share the same routing space.",
+    "help": {
+      "section": "A VRF (Virtual Routing and Forwarding) is a separate routing world. Most installations don't need them — leave subnets in the default Global scope. Create a VRF only when you have to reuse the same IP range in two isolated contexts (e.g. two tenants, prod vs dev).",
+      "rd": "Optional identifier used in BGP/MPLS setups, format \"AS:nn\" like \"65000:42\". Leave blank if you don't run BGP."
+    },
     "new": "New VRF",
     "edit": "Edit VRF",
-    "rdHint": "Optional BGP route distinguisher, e.g. 65000:42 — leave blank if you don't run BGP.",
+    "rdHint": "Leave blank if you're not running BGP.",
     "confirmDeleteTitle": "Delete VRF \"{name}\"?",
     "confirmDeleteMessage": "Subnets still assigned to this VRF will block the delete — clear them first.",
     "fields": {
@@ -482,17 +494,21 @@
     },
     "empty": {
       "title": "No VRFs",
-      "description": "Create a VRF when you need overlapping CIDRs for tenant or env isolation."
+      "description": "Add one only if you need to reuse the same IP range in two isolated contexts."
     }
   },
   "apiTokens": {
-    "subtitle": "Create personal access tokens for scripts and automations. Tokens inherit your role, so issue them sparingly.",
+    "subtitle": "Personal keys to call the API from a script.",
+    "help": {
+      "section": "API tokens let an external script or CI job call NetForge as you. They inherit your permissions, so treat them like a password — don't share them, and revoke any you stop using.",
+      "expiry": "Pick a date when the token should stop working. Leave empty for a token that never expires (you can always revoke it manually)."
+    },
     "new": "New token",
     "generate": "Generate",
     "revoke": "Revoke",
     "namePlaceholder": "e.g. ansible-prod",
     "nameHint": "A short label to help you recognise the token later.",
-    "expiresAtHint": "Optional expiry date. Leave blank for a token that never expires (still revocable manually).",
+    "expiresAtHint": "Leave blank to never expire (you can revoke manually).",
     "invalidExpiry": "Invalid date format.",
     "expiryInPast": "Expiry must be in the future.",
     "copied": "Token copied to clipboard.",
@@ -521,7 +537,7 @@
     }
   },
   "topology": {
-    "subtitle": "Inter-switch links rendered as a graph.",
+    "subtitle": "Visual map of your switches and how they're cabled.",
     "layout": "Layout",
     "layouts": {
       "dagre": "Hierarchical",
@@ -602,7 +618,8 @@
     }
   },
   "import": {
-    "subtitle": "Bulk-load entities from CSV files. Run a dry-run first to preview validation errors without writing anything.",
+    "subtitle": "Load data in bulk from CSV files.",
+    "help": "Tip: always start with a dry-run — it validates the file without changing anything. Once the dry-run is clean, re-run without the dry-run option to actually import.",
     "modeAria": "Import mode",
     "tabs": {
       "bulk": "All at once (auto)",
@@ -626,7 +643,7 @@
     "orderHint": "Dependencies between entities — import in this order on a fresh install.",
     "bulk": {
       "title": "Import multiple files at once",
-      "subtitle": "Drop all your CSVs (or a .zip) — entity is detected from the headers and dependency order is honoured automatically.",
+      "subtitle": "Drop all your CSVs (or a .zip) — file type is detected from the headers.",
       "dropPrompt": "Drop .csv files or a .zip here",
       "dropHint": "Multiple files accepted in one shot — up to 50 files, 50 MiB total.",
       "removeFile": "Remove this file",
@@ -702,7 +719,7 @@
     "scanDoneToast": "{persisted} new suggestion(s) added out of {raw} returned.",
     "askView": {
       "title": "Ask AI",
-      "subtitle": "Natural-language questions about your inventory.",
+      "subtitle": "Ask questions about your inventory in plain English.",
       "you": "You",
       "assistant": "Assistant",
       "placeholder": "Ask a question (e.g. how many free ports does SW-CORE-01 have?)",
@@ -718,14 +735,14 @@
       "newChat": "New conversation",
       "emptyAnswer": "(Empty answer — try re-asking if needed.)",
       "incompleteAnswer": "(Answer interrupted — the model stopped before finishing.)",
-      "liteContextLabel": "Lite-context mode (fewer tokens, no free-text fields)",
-      "liteContextHint": "Sends only identifiers (sites, rooms, switches, vlans, subnets) to the model — no descriptions, notes, MACs, vendor/model, or addresses. Great for structural questions. Turn off if the question is about content in those fields."
+      "liteContextLabel": "Lite mode — faster, structure only",
+      "liteContextHint": "Sends only identifiers (names, IDs) to the AI. Faster and cheaper, but it won't see descriptions, notes, MACs or vendor info. Turn it off when your question is about that kind of content."
     },
     "advisor": {
       "recurringBadge": "Recurring ×{n}",
       "streakTooltip": "This finding has appeared in {n} consecutive runs — a fix or an explicit acknowledgement is overdue.",
       "tab": "AI advisor",
-      "subtitle": "Infrastructure review: SPOF, capacity, security, segmentation.",
+      "subtitle": "Automated review of your infrastructure.",
       "refresh": "Re-run analysis",
       "runFirst": "Run analysis",
       "refreshedToast": "{count} insight(s) generated · {latency} ms",
@@ -765,7 +782,7 @@
     },
     "drafts": {
       "title": "Drafted actions",
-      "subtitle": "Describe what you want — the AI prepares a draft for you to apply.",
+      "subtitle": "Describe what you want — the AI prepares it for you to review.",
       "composerLabel": "Request",
       "composerPlaceholder": "Create a VLAN 50 named IoT on site PAR…",
       "safetyHint": "Drafts are only prepared — nothing runs without an explicit click.",

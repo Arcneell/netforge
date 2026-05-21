@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { webhooksApi } from '@/api'
@@ -241,7 +242,10 @@ const editorTitle = computed(() =>
     </div>
 
     <div class="flex items-start justify-between gap-3 mb-3">
-      <p class="text-xs text-fg-muted max-w-2xl">{{ t('webhooks.subtitle') }}</p>
+      <p class="text-xs text-fg-muted max-w-2xl inline-flex items-center gap-1.5">
+        {{ t('webhooks.subtitle') }}
+        <HelpTooltip :text="t('webhooks.help.section')" placement="bottom" />
+      </p>
       <Button variant="primary" @click="openCreate">
         <Plus class="w-4 h-4" aria-hidden="true" />
         {{ t('webhooks.new') }}
@@ -338,6 +342,9 @@ const editorTitle = computed(() =>
         </FormField>
 
         <FormField :label="t('webhooks.fields.url')" required>
+          <template #help>
+            <HelpTooltip :text="t('webhooks.help.url')" />
+          </template>
           <template #default="{ id }">
             <Input
               :id="id"
@@ -351,6 +358,9 @@ const editorTitle = computed(() =>
         </FormField>
 
         <FormField :label="t('webhooks.fields.events')" required>
+          <template #help>
+            <HelpTooltip :text="t('webhooks.help.events')" />
+          </template>
           <template #default="{ id }">
             <Input
               :id="id"
