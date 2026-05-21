@@ -172,7 +172,10 @@
     },
     "new": "New site",
     "edit": "Edit site",
-    "empty": "No sites yet — create one to start tracking inventory."
+    "empty": "No sites yet — create one to start tracking inventory.",
+    "help": {
+      "code": "Short identifier (e.g. PAR-DC1). Letters, numbers, dashes and underscores only — used as a prefix everywhere in exports and IPAM."
+    }
   },
   "room": {
     "label": "Room",
@@ -184,7 +187,10 @@
     },
     "new": "New room",
     "edit": "Edit room",
-    "empty": "No rooms yet."
+    "empty": "No rooms yet.",
+    "help": {
+      "code": "Short room code (e.g. MDF-01, R-101). Must be unique within the site."
+    }
   },
   "vlan": {
     "label": "VLAN",
@@ -198,7 +204,11 @@
     },
     "new": "New VLAN",
     "edit": "Edit VLAN",
-    "empty": "No VLANs yet — create one to assign to subnets and switch ports."
+    "empty": "No VLANs yet — create one to assign to subnets and switch ports.",
+    "help": {
+      "vlanId": "VLAN tag, between 1 and 4094. Must be unique. IDs 1, 1002–1005 are usually reserved on Cisco gear.",
+      "color": "Display color for VLAN badges in the UI. No impact on the network — purely cosmetic."
+    }
   },
   "subnet": {
     "label": "Subnet",
@@ -239,7 +249,18 @@
       "used": "{count} used",
       "free": "{count} free",
       "total": "of {count}"
-    }
+    },
+    "help": {
+      "cidr": "CIDR notation (e.g. 10.0.30.0/24). The prefix length (/24) sets how many addresses the range covers. Immutable once created.",
+      "gateway": "Default gateway IPv4 for this subnet. Often the first usable address (e.g. .1). Leave empty if there's no gateway.",
+      "vlan": "VLAN this subnet sits on. Leave empty for an untagged subnet.",
+      "site": "Physical location this subnet belongs to. Used for filtering and reporting.",
+      "vrf": "Routing scope. Leave Global unless you reuse the same IP range in another isolated context (multi-tenant, prod vs dev).",
+      "parent": "Optional: file this subnet under a larger one for hierarchical IPAM. Only shows subnets in the same VRF.",
+      "dhcp": "Marks part of the range as a DHCP pool. NetForge tags these addresses as DHCP and excludes them from manual assignment.",
+      "dhcpRange": "First and last IP of the DHCP pool. Both must belong to this subnet."
+    },
+    "pageHelp": "Each card shows fill rate, VLAN and gateway. Use the search to filter by CIDR, description, gateway or VLAN. The tree view groups subnets by parent."
   },
   "ip": {
     "label": "IP",
@@ -259,6 +280,13 @@
       "assigned": "Assigned",
       "dhcp": "DHCP",
       "free": "Free"
+    },
+    "help": {
+      "address": "IPv4 address to assign. Must belong to this subnet and not already be in use. Immutable after creation.",
+      "status": "Reserved = held but inactive (no live device). Assigned = active device. DHCP = address came from the DHCP pool.",
+      "hostname": "DNS name or internal label (e.g. srv-app-01). Optional but very helpful to find the IP later.",
+      "mac": "MAC of the device using this IP. Accepted formats: aa:bb:cc:dd:ee:ff, aa-bb-cc-dd-ee-ff, aabb.ccdd.eeff (Cisco).",
+      "device": "Optional link to a device in the inventory. Lets you jump from the IP to its full record."
     }
   },
   "device": {
@@ -281,6 +309,13 @@
     "edit": "Edit device",
     "empty": "No devices yet.",
     "eolHint": "Vendor end-of-support date — the advisor will surface devices approaching EOL.",
+    "help": {
+      "type": "Device category. Used for filtering, dashboard stats and the topology icons.",
+      "assetTag": "Internal code from your inventory or CMDB (e.g. NF-001234). Optional but handy for cross-referencing.",
+      "warranty": "Vendor warranty expiration date. Helps plan replacements before support runs out.",
+      "eol": "Vendor end-of-support date. The advisor flags devices approaching EOL as a risk."
+    },
+    "pageHelp": "Catalogue every device that uses an IP — servers, printers, phones, access points, cameras, UPS. Switches live on their own page.",
     "types": {
       "server": "Server",
       "desktop": "Desktop",
@@ -322,7 +357,19 @@
     "links": "Links",
     "portStats": "{used} of {total} ports in use",
     "snmpCommunityHint": "Stored as-is in the database. Only visible to administrators.",
-    "eolHint": "Vendor end-of-support date — the advisor will surface switches approaching EOL."
+    "eolHint": "Vendor end-of-support date — the advisor will surface switches approaching EOL.",
+    "help": {
+      "name": "Short unique identifier (e.g. sw-core-01). Used as the anchor in exports, the topology and link endpoints.",
+      "managementIp": "Management IPv4 used for SSH, SNMP or telemetry. Must be reachable from the NetForge server.",
+      "rackPosition": "U-position in the rack (e.g. U22 or 1-3 for a multi-U chassis). Helps physical inventory.",
+      "portCount": "Total number of physical ports. NetForge auto-creates the matching port rows. Cannot be changed after creation.",
+      "snmpCommunity": "SNMPv2c read-only community string. Stored as-is. Admin-visible only.",
+      "firmware": "Currently running firmware version (e.g. 17.09.04). Helps track security patches and feature levels.",
+      "assetTag": "Internal code from your inventory or CMDB (e.g. NF-001234). Optional but handy for cross-referencing.",
+      "warranty": "Vendor warranty expiration date. Helps plan replacements before support runs out.",
+      "eol": "Vendor end-of-support date. The advisor flags switches approaching EOL as a risk."
+    },
+    "pageHelp": "Every managed switch. Click one to see its ports, links, rack view and connected devices."
   },
   "port": {
     "label": "Port",
@@ -350,7 +397,15 @@
       "down": "Down"
     },
     "addTaggedVlan": "Add tagged VLAN",
-    "noTaggedVlans": "No tagged VLANs."
+    "noTaggedVlans": "No tagged VLANs.",
+    "help": {
+      "label": "Short label (e.g. uplink-core). Helps spot the port's role at a glance — appears in lists and the topology.",
+      "mode": "Access = single VLAN (one end device). Trunk = several tagged VLANs (switch-to-switch uplink). Hybrid = both. Disabled = administratively shut.",
+      "nativeVlan": "Untagged VLAN on this port. In access mode it's the device's VLAN; in trunk it's the VLAN used for untagged frames.",
+      "taggedVlans": "Extra (tagged) VLANs carried by this port. Mostly relevant in trunk and hybrid modes — managed via the dedicated endpoints, separate from the main Save.",
+      "adminStatus": "Desired port state. Down = port has been administratively shut.",
+      "connectedDevice": "Physical device on the other end (e.g. a server). Optional — leave empty for switch-to-switch links, which are described as Links instead."
+    }
   },
   "audit": {
     "subtitle": "Who changed what, and when.",
@@ -380,7 +435,8 @@
     "viewDiff": "View diff",
     "before": "Before",
     "after": "After",
-    "noChanges": "No field changes recorded."
+    "noChanges": "No field changes recorded.",
+    "help": "Every write is logged with the author, timestamp, origin IP and full field-level diff. Kept indefinitely — use this to investigate \"who changed what, and when\"."
   },
   "snapshots": {
     "compare": {
@@ -406,7 +462,10 @@
       "colStatus": "Status",
       "colWhen": "Last change",
       "colActions": "Actions",
-      "colFields": "Fields changed"
+      "colFields": "Fields changed",
+      "helpFrom": "Start of the window. Date and time in your local timezone — converted to UTC before sending.",
+      "helpEntity": "Restrict the comparison to a single entity type. Leave on All for an overview across the whole inventory.",
+      "helpRun": "Walks the audit log between the two dates and lists every entity that was created, updated, deleted or briefly created-then-deleted (transient)."
     }
   },
   "settings": {
@@ -555,7 +614,8 @@
     "empty": {
       "title": "No topology to display",
       "description": "Create switches and inter-switch links to see them appear here."
-    }
+    },
+    "help": "Each node is a switch, each edge is an inter-switch link. Click an element to see its details on the right. Use the layout dropdown to try different arrangements when the graph gets crowded."
   },
   "cable": {
     "label": "Cable",
@@ -572,6 +632,12 @@
       "installedOn": "Installed on",
       "lastTestedOn": "Last tested on",
       "notes": "Notes"
+    },
+    "help": {
+      "section": "Physical cable metadata: part number, length, install and test dates. Optional — fill in only if you keep cable records.",
+      "length": "Cable length in meters. Useful when diagnosing attenuation on long runs (especially copper > 100m or single-mode > 10km).",
+      "installedOn": "Date the cable was put in. Helps estimate cable age when troubleshooting old runs.",
+      "lastTestedOn": "Date of the last test (Fluke certification, light meter, etc.)."
     }
   },
   "link": {
@@ -597,6 +663,11 @@
       "fiber": "Fiber",
       "dac": "DAC",
       "virtual": "Virtual"
+    },
+    "help": {
+      "endpoints": "Pick the two ports on each side of the link. Both must be free (a port can only belong to one link at a time). Endpoints are immutable after creation.",
+      "type": "Copper = UTP/RJ45. Fiber = SFP / SFP+ / QSFP. DAC = Twinax direct attach. Virtual = logical link with no physical medium (LAG member, VRF stitching).",
+      "speed": "Negotiated rate in megabits per second (1000 = 1 Gbps, 10000 = 10 Gbps, 100000 = 100 Gbps). Match what the ports actually negotiated."
     }
   },
   "shortcuts": {
@@ -633,6 +704,11 @@
     "fileReset": "Choose another file",
     "dryRun": "Dry-run (validate only, never writes)",
     "dryRunHint": "Recommended for the first pass — the database is rolled back even if everything parses cleanly.",
+    "helpDryRun": "When ticked, NetForge parses and validates every row but rolls back the transaction at the end. Untick to actually write.",
+    "helpEntity": "Pick the entity this CSV describes. The header row must match the columns shown in the template — download it if unsure.",
+    "helpExportTemplate": "Downloads the entity as a CSV with exactly the column names the importer expects. The easiest way to start a new file.",
+    "helpDownloadAll": "ZIP archive containing one CSV per entity — a logical backup of the whole inventory you can re-import as-is.",
+    "helpMapping": "Headers don't match? The AI assistant proposes a mapping from your column names to NetForge fields, so you don't have to rename them by hand.",
     "submit": "Run import",
     "submitDryRun": "Validate (dry-run)",
     "exportTemplate": "Download current data as template",
@@ -736,7 +812,8 @@
       "emptyAnswer": "(Empty answer — try re-asking if needed.)",
       "incompleteAnswer": "(Answer interrupted — the model stopped before finishing.)",
       "liteContextLabel": "Lite mode — faster, structure only",
-      "liteContextHint": "Sends only identifiers (names, IDs) to the AI. Faster and cheaper, but it won't see descriptions, notes, MACs or vendor info. Turn it off when your question is about that kind of content."
+      "liteContextHint": "Sends only identifiers (names, IDs) to the AI. Faster and cheaper, but it won't see descriptions, notes, MACs or vendor info. Turn it off when your question is about that kind of content.",
+      "help": "The assistant reads your live inventory to answer. Your questions and the data sent are tracked in Settings → AI usage. Don't include credentials or external secrets in your prompts."
     },
     "advisor": {
       "recurringBadge": "Recurring ×{n}",
@@ -772,13 +849,15 @@
         "naming": "Naming",
         "redundancy": "Redundancy",
         "other": "Other"
-      }
+      },
+      "help": "The AI scans your inventory looking for single points of failure, capacity overruns, security weaknesses, segmentation gaps and naming inconsistencies. Each finding suggests a fix."
     },
     "integrity": {
       "tab": "Data integrity",
       "description": "Inventory consistency checks.",
       "cleanTitle": "Everything is clean",
-      "cleanDescription": "No integrity issues detected."
+      "cleanDescription": "No integrity issues detected.",
+      "help": "Deterministic, AI-free checks: orphaned references, broken constraints, contradictory states. Pure database queries — no provider call, no cost."
     },
     "drafts": {
       "title": "Drafted actions",
@@ -805,7 +884,8 @@
         "createRoom": "Create room",
         "createVlan": "Create VLAN",
         "createSubnet": "Create subnet"
-      }
+      },
+      "help": "The AI turns your prompt into a structured draft action (create VLAN, subnet, site or room). Nothing runs until you click Apply — you stay in control."
     },
     "schedules": {
       "title": "Scheduled runs",
@@ -863,7 +943,11 @@
       "testOk": "Connection succeeded.",
       "testKo": "Connection failed.",
       "howToChange": "Switch provider",
-      "envHint": "Update your .env file then restart the backend. Only the key matching AI_PROVIDER is required."
+      "envHint": "Update your .env file then restart the backend. Only the key matching AI_PROVIDER is required.",
+      "help": {
+        "section": "Central provider configuration. Every AI feature (advisor, drafts, Ask AI, link suggestions, CSV mapping) uses this. If it's disabled, the buttons that need it stay hidden.",
+        "test": "Sends a one-token completion to the provider — confirms the API key, model and network path before a real scan."
+      }
     },
     "usage": {
       "title": "AI usage",

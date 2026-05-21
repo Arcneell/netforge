@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { roomsApi, sitesApi } from '@/api'
 import type { Room, RoomCreate, RoomUpdate, Site } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -116,6 +117,9 @@ async function onSubmit(e: Event) {
         </template>
       </FormField>
       <FormField :label="t('room.fields.code')" :error="errors.code" required>
+        <template #help>
+          <HelpTooltip :text="t('room.help.code')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"

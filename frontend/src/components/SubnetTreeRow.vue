@@ -50,10 +50,7 @@ const indent = computed(() => `${props.depth * 16}px`)
       <span v-if="node.description" class="text-xs text-fg-muted truncate">
         — {{ node.description }}
       </span>
-      <span
-        v-if="hasChildren"
-        class="ml-auto text-[11px] text-fg-muted tabular-nums"
-      >
+      <span v-if="hasChildren" class="ml-auto text-[11px] text-fg-muted tabular-nums">
         {{ node.children.length }}
       </span>
     </div>

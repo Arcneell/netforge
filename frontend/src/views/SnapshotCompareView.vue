@@ -40,17 +40,7 @@ const entityFilter = ref('')
 const loading = ref(false)
 const result = ref<SnapshotCompareResponse | null>(null)
 
-const entityOptions = [
-  'site',
-  'room',
-  'vlan',
-  'subnet',
-  'ip',
-  'device',
-  'switch',
-  'port',
-  'link',
-]
+const entityOptions = ['site', 'room', 'vlan', 'subnet', 'ip', 'device', 'switch', 'port', 'link']
 
 const summaryEntities = computed(() =>
   result.value ? Object.entries(result.value.summary.by_entity) : [],
@@ -92,10 +82,7 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
 
 <template>
   <div class="p-4 sm:p-6 max-w-7xl mx-auto">
-    <PageHeader
-      :title="t('snapshots.compare.title')"
-      :subtitle="t('snapshots.compare.subtitle')"
-    >
+    <PageHeader :title="t('snapshots.compare.title')" :subtitle="t('snapshots.compare.subtitle')">
       <template #help>
         <HelpTooltip :text="t('snapshots.compare.help')" placement="bottom" />
       </template>
@@ -104,8 +91,11 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
     <!-- Range pickers -->
     <div class="nf-card p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
       <label class="text-sm">
-        <span class="block text-xs uppercase tracking-wider text-fg-muted font-semibold mb-1">
-          {{ t('snapshots.compare.from') }}
+        <span
+          class="text-xs uppercase tracking-wider text-fg-muted font-semibold mb-1 flex items-center gap-1"
+        >
+          <span>{{ t('snapshots.compare.from') }}</span>
+          <HelpTooltip :text="t('snapshots.compare.helpFrom')" />
         </span>
         <Input v-model="fromTs" type="datetime-local" autocomplete="off" />
       </label>
@@ -116,8 +106,11 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
         <Input v-model="toTs" type="datetime-local" autocomplete="off" />
       </label>
       <label class="text-sm">
-        <span class="block text-xs uppercase tracking-wider text-fg-muted font-semibold mb-1">
-          {{ t('snapshots.compare.entity') }}
+        <span
+          class="text-xs uppercase tracking-wider text-fg-muted font-semibold mb-1 flex items-center gap-1"
+        >
+          <span>{{ t('snapshots.compare.entity') }}</span>
+          <HelpTooltip :text="t('snapshots.compare.helpEntity')" />
         </span>
         <select
           v-model="entityFilter"
@@ -127,17 +120,17 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
           <option v-for="e in entityOptions" :key="e" :value="e">{{ e }}</option>
         </select>
       </label>
-      <Button variant="primary" :loading="loading" @click="run">
-        <Search class="w-4 h-4" aria-hidden="true" />
-        {{ t('snapshots.compare.run') }}
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button variant="primary" :loading="loading" @click="run">
+          <Search class="w-4 h-4" aria-hidden="true" />
+          {{ t('snapshots.compare.run') }}
+        </Button>
+        <HelpTooltip :text="t('snapshots.compare.helpRun')" />
+      </div>
     </div>
 
     <!-- Summary -->
-    <div
-      v-if="result"
-      class="nf-card p-4 mb-4"
-    >
+    <div v-if="result" class="nf-card p-4 mb-4">
       <div class="flex items-baseline justify-between flex-wrap gap-2 mb-3">
         <h2 class="text-sm font-semibold">{{ t('snapshots.compare.summary') }}</h2>
         <p class="text-xs text-fg-muted tabular-nums">
@@ -156,7 +149,9 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
             <th class="text-right font-semibold py-1.5">{{ t('snapshots.compare.colCreated') }}</th>
             <th class="text-right font-semibold py-1.5">{{ t('snapshots.compare.colUpdated') }}</th>
             <th class="text-right font-semibold py-1.5">{{ t('snapshots.compare.colDeleted') }}</th>
-            <th class="text-right font-semibold py-1.5">{{ t('snapshots.compare.colTransient') }}</th>
+            <th class="text-right font-semibold py-1.5">
+              {{ t('snapshots.compare.colTransient') }}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -177,12 +172,20 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
       <table class="w-full text-sm">
         <thead class="bg-surface">
           <tr class="text-[11px] uppercase tracking-wider text-fg-muted">
-            <th class="text-left font-semibold px-3 py-2">{{ t('snapshots.compare.colEntity') }}</th>
+            <th class="text-left font-semibold px-3 py-2">
+              {{ t('snapshots.compare.colEntity') }}
+            </th>
             <th class="text-left font-semibold px-3 py-2">ID</th>
-            <th class="text-left font-semibold px-3 py-2">{{ t('snapshots.compare.colStatus') }}</th>
+            <th class="text-left font-semibold px-3 py-2">
+              {{ t('snapshots.compare.colStatus') }}
+            </th>
             <th class="text-left font-semibold px-3 py-2">{{ t('snapshots.compare.colWhen') }}</th>
-            <th class="text-left font-semibold px-3 py-2">{{ t('snapshots.compare.colActions') }}</th>
-            <th class="text-left font-semibold px-3 py-2">{{ t('snapshots.compare.colFields') }}</th>
+            <th class="text-left font-semibold px-3 py-2">
+              {{ t('snapshots.compare.colActions') }}
+            </th>
+            <th class="text-left font-semibold px-3 py-2">
+              {{ t('snapshots.compare.colFields') }}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -193,7 +196,9 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
           >
             <td class="px-3 py-2 font-mono">{{ c.entity }}</td>
             <td class="px-3 py-2 font-mono">#{{ c.entity_id }}</td>
-            <td class="px-3 py-2"><Badge :tone="statusTone(c.status)">{{ c.status }}</Badge></td>
+            <td class="px-3 py-2">
+              <Badge :tone="statusTone(c.status)">{{ c.status }}</Badge>
+            </td>
             <td class="px-3 py-2 text-fg-muted whitespace-nowrap">
               {{ formatDate(c.last_action_at) }}
             </td>

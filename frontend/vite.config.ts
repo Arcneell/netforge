@@ -30,9 +30,7 @@ export default defineConfig(({ mode }) => {
           // appearing all at once.
           configure: (proxy) => {
             proxy.on('proxyRes', (proxyRes, _req, res) => {
-              const isSse = (proxyRes.headers['content-type'] || '').includes(
-                'text/event-stream',
-              )
+              const isSse = (proxyRes.headers['content-type'] || '').includes('text/event-stream')
               if (isSse) {
                 // Flush response headers immediately so the browser
                 // exposes `resp.body` as a readable stream right away
@@ -41,7 +39,10 @@ export default defineConfig(({ mode }) => {
                   res.flushHeaders()
                 }
                 const sock = res.socket
-                if (sock && typeof (sock as { setNoDelay?: (b: boolean) => void }).setNoDelay === 'function') {
+                if (
+                  sock &&
+                  typeof (sock as { setNoDelay?: (b: boolean) => void }).setNoDelay === 'function'
+                ) {
                   ;(sock as { setNoDelay: (b: boolean) => void }).setNoDelay(true)
                 }
               }

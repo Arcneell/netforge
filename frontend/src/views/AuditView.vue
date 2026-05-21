@@ -7,6 +7,7 @@ import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Select from '@/components/ui/Select.vue'
 import AuditDiff from '@/components/AuditDiff.vue'
@@ -103,6 +104,9 @@ function exportCsv() {
 <template>
   <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <PageHeader :title="t('nav.audit')" :subtitle="t('audit.subtitle')">
+      <template #help>
+        <HelpTooltip :text="t('audit.help')" placement="bottom" />
+      </template>
       <template #actions>
         <Button variant="secondary" @click="exportCsv">
           <Download class="w-4 h-4" aria-hidden="true" />

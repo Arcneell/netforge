@@ -6,6 +6,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
 import Button from '@/components/ui/Button.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import VlanBadge from '@/components/VlanBadge.vue'
 import VlanEditor from '@/components/editors/VlanEditor.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -89,6 +90,9 @@ const columns: DataTableColumn[] = [
 <template>
   <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <PageHeader :title="t('vlan.labelPlural')" :subtitle="t('vlan.subtitle')">
+      <template #help>
+        <HelpTooltip :text="t('vlan.help.vlanId')" placement="bottom" />
+      </template>
       <template #actions>
         <Button v-if="isAdmin" variant="primary" @click="onNew">
           <Plus class="w-4 h-4" aria-hidden="true" />

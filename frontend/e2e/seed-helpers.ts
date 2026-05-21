@@ -100,10 +100,7 @@ export async function createSwitch(
   return res.json()
 }
 
-export async function getFirstPort(
-  request: APIRequestContext,
-  switchId: number,
-): Promise<Port> {
+export async function getFirstPort(request: APIRequestContext, switchId: number): Promise<Port> {
   const res = await request.get(`/api/switches/${switchId}/ports?page_size=1`)
   if (!res.ok()) throw new Error(`getFirstPort failed: ${res.status()} ${await res.text()}`)
   const body = (await res.json()) as { items: Port[] }

@@ -19,6 +19,7 @@ import {
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import {
@@ -224,6 +225,12 @@ function entityLabel(e: InsightEntityRef): string {
 <template>
   <div class="p-4 sm:p-8 max-w-7xl mx-auto">
     <PageHeader :title="t('nav.insights')" :subtitle="t('ai.advisor.subtitle')">
+      <template #help>
+        <HelpTooltip
+          :text="tab === 'advisor' ? t('ai.advisor.help') : t('ai.integrity.help')"
+          placement="bottom"
+        />
+      </template>
       <template #actions>
         <Button
           v-if="tab === 'advisor' && runId !== null"
@@ -297,166 +304,166 @@ function entityLabel(e: InsightEntityRef): string {
 
     <!-- ============================== ADVISOR TAB ============================== -->
     <div v-if="tab === 'advisor'">
-    <!-- Run freshness banner — surfaces the age of the latest run and nudges
+      <!-- Run freshness banner — surfaces the age of the latest run and nudges
          the operator to re-run when older than a week. -->
-    <p
-      v-if="!loading && runCreatedAt"
-      class="text-xs text-fg-muted -mt-2 mb-6 flex items-center gap-2"
-      :class="{ 'text-warning': stale }"
-    >
-      <RefreshCw class="w-3 h-3" aria-hidden="true" />
-      <span>{{ t('ai.advisor.runAge', { age: ageLabel(runCreatedAt) }) }}</span>
-      <span v-if="stale" class="font-medium">· {{ t('ai.advisor.staleHint') }}</span>
-    </p>
-
-    <!-- Stat strip — same iOS Today-widget feel as Dashboard -->
-    <section v-if="!loading && runId !== null" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-      <div class="nf-card p-4">
-        <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-          {{ t('ai.advisor.severity.critical') }}
-        </p>
-        <p class="text-3xl font-semibold tabular-nums text-danger mt-1">{{ counts.critical }}</p>
-      </div>
-      <div class="nf-card p-4">
-        <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-          {{ t('ai.advisor.severity.warning') }}
-        </p>
-        <p class="text-3xl font-semibold tabular-nums text-warning mt-1">{{ counts.warning }}</p>
-      </div>
-      <div class="nf-card p-4">
-        <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-          {{ t('ai.advisor.severity.info') }}
-        </p>
-        <p class="text-3xl font-semibold tabular-nums text-primary-600 mt-1">{{ counts.info }}</p>
-      </div>
-      <div class="nf-card p-4">
-        <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-          {{ t('ai.advisor.total') }}
-        </p>
-        <p class="text-3xl font-semibold tabular-nums text-fg mt-1">{{ counts.total }}</p>
-      </div>
-    </section>
-
-    <!-- Loading -->
-    <div v-if="loading" class="space-y-3" aria-busy="true">
-      <div v-for="i in 3" :key="i" class="nf-card p-5 space-y-2">
-        <Skeleton width="40%" height="1rem" />
-        <Skeleton width="80%" height="0.75rem" />
-        <Skeleton width="60%" height="0.75rem" />
-      </div>
-    </div>
-
-    <!-- Empty: never run -->
-    <EmptyState
-      v-else-if="runId === null"
-      :icon="Sparkles"
-      :title="t('ai.advisor.emptyTitle')"
-      :description="t('ai.advisor.emptyDescription')"
-    >
-      <template v-if="status?.enabled" #action>
-        <Button variant="primary" shape="pill" :loading="refreshing" @click="refresh">
-          <RefreshCw class="w-4 h-4" aria-hidden="true" />
-          {{ t('ai.advisor.runFirst') }}
-        </Button>
-      </template>
-    </EmptyState>
-
-    <!-- Empty: clean infra (no insights returned) -->
-    <EmptyState
-      v-else-if="counts.total === 0"
-      :icon="Lightbulb"
-      :title="t('ai.advisor.cleanTitle')"
-      :description="t('ai.advisor.cleanDescription')"
-    />
-
-    <!-- Insight list grouped by severity -->
-    <template v-else>
-      <section
-        v-for="severity in ['critical', 'warning', 'info'] as InsightSeverity[]"
-        :key="severity"
+      <p
+        v-if="!loading && runCreatedAt"
+        class="text-xs text-fg-muted -mt-2 mb-6 flex items-center gap-2"
+        :class="{ 'text-warning': stale }"
       >
-        <div v-if="grouped[severity].length" class="mb-8">
-          <h2 class="text-xl font-semibold tracking-tight mb-3 flex items-center gap-2">
-            <component
-              :is="severityIcon[severity]"
-              class="w-5 h-5"
-              :class="{
-                'text-danger': severity === 'critical',
-                'text-warning': severity === 'warning',
-                'text-primary-600': severity === 'info',
-              }"
-              aria-hidden="true"
-            />
-            {{ severityLabel(severity) }}
-            <span class="text-sm font-normal text-fg-muted tabular-nums">
-              · {{ grouped[severity].length }}
-            </span>
-          </h2>
-          <ul class="space-y-3">
-            <li v-for="ins in grouped[severity]" :key="ins.id" class="nf-card p-5">
-              <div class="flex items-start justify-between gap-3 flex-wrap mb-2">
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <Badge :tone="severityTone[ins.severity]">
-                      {{ severityLabel(ins.severity) }}
-                    </Badge>
-                    <Badge tone="muted">{{ t(categoryLabelKey[ins.category] ?? '') }}</Badge>
-                    <Badge
-                      v-if="ins.streak_count && ins.streak_count >= 2"
-                      tone="danger"
-                      :title="t('ai.advisor.streakTooltip', { n: ins.streak_count })"
-                    >
-                      {{ t('ai.advisor.recurringBadge', { n: ins.streak_count }) }}
-                    </Badge>
-                  </div>
-                  <h3 class="text-base font-semibold tracking-tight mt-2">{{ ins.title }}</h3>
-                </div>
-              </div>
-              <p class="text-sm text-fg-muted leading-relaxed mt-1">{{ ins.description }}</p>
-              <p
-                v-if="ins.recommendation"
-                class="text-sm text-fg mt-3 p-3 rounded-lg bg-muted/60 border-l-2 border-primary-500"
-              >
-                <span class="font-medium text-primary-700 dark:text-primary-300 mr-1">
-                  {{ t('ai.advisor.recommendation') }}:
-                </span>
-                {{ ins.recommendation }}
-              </p>
-              <div
-                v-if="ins.affected_entities && ins.affected_entities.length"
-                class="mt-3 flex flex-wrap gap-1.5"
-              >
-                <RouterLink
-                  v-for="(e, idx) in ins.affected_entities"
-                  :key="`${e.type}-${e.id}-${idx}`"
-                  v-slot="{ href, navigate }"
-                  :to="entityRoute(e) ?? ''"
-                  custom
-                >
-                  <a
-                    :href="entityRoute(e) ? href : undefined"
-                    :class="[
-                      'nf-pill bg-muted/70',
-                      entityRoute(e)
-                        ? 'hover:bg-primary-50 hover:text-primary-700 cursor-pointer'
-                        : 'cursor-default text-fg-muted',
-                    ]"
-                    @click="entityRoute(e) ? navigate($event) : null"
-                  >
-                    <component
-                      :is="entityIcon[e.type] ?? Server"
-                      class="w-3 h-3"
-                      aria-hidden="true"
-                    />
-                    {{ entityLabel(e) }}
-                  </a>
-                </RouterLink>
-              </div>
-            </li>
-          </ul>
+        <RefreshCw class="w-3 h-3" aria-hidden="true" />
+        <span>{{ t('ai.advisor.runAge', { age: ageLabel(runCreatedAt) }) }}</span>
+        <span v-if="stale" class="font-medium">· {{ t('ai.advisor.staleHint') }}</span>
+      </p>
+
+      <!-- Stat strip — same iOS Today-widget feel as Dashboard -->
+      <section v-if="!loading && runId !== null" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        <div class="nf-card p-4">
+          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+            {{ t('ai.advisor.severity.critical') }}
+          </p>
+          <p class="text-3xl font-semibold tabular-nums text-danger mt-1">{{ counts.critical }}</p>
+        </div>
+        <div class="nf-card p-4">
+          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+            {{ t('ai.advisor.severity.warning') }}
+          </p>
+          <p class="text-3xl font-semibold tabular-nums text-warning mt-1">{{ counts.warning }}</p>
+        </div>
+        <div class="nf-card p-4">
+          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+            {{ t('ai.advisor.severity.info') }}
+          </p>
+          <p class="text-3xl font-semibold tabular-nums text-primary-600 mt-1">{{ counts.info }}</p>
+        </div>
+        <div class="nf-card p-4">
+          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+            {{ t('ai.advisor.total') }}
+          </p>
+          <p class="text-3xl font-semibold tabular-nums text-fg mt-1">{{ counts.total }}</p>
         </div>
       </section>
-    </template>
+
+      <!-- Loading -->
+      <div v-if="loading" class="space-y-3" aria-busy="true">
+        <div v-for="i in 3" :key="i" class="nf-card p-5 space-y-2">
+          <Skeleton width="40%" height="1rem" />
+          <Skeleton width="80%" height="0.75rem" />
+          <Skeleton width="60%" height="0.75rem" />
+        </div>
+      </div>
+
+      <!-- Empty: never run -->
+      <EmptyState
+        v-else-if="runId === null"
+        :icon="Sparkles"
+        :title="t('ai.advisor.emptyTitle')"
+        :description="t('ai.advisor.emptyDescription')"
+      >
+        <template v-if="status?.enabled" #action>
+          <Button variant="primary" shape="pill" :loading="refreshing" @click="refresh">
+            <RefreshCw class="w-4 h-4" aria-hidden="true" />
+            {{ t('ai.advisor.runFirst') }}
+          </Button>
+        </template>
+      </EmptyState>
+
+      <!-- Empty: clean infra (no insights returned) -->
+      <EmptyState
+        v-else-if="counts.total === 0"
+        :icon="Lightbulb"
+        :title="t('ai.advisor.cleanTitle')"
+        :description="t('ai.advisor.cleanDescription')"
+      />
+
+      <!-- Insight list grouped by severity -->
+      <template v-else>
+        <section
+          v-for="severity in ['critical', 'warning', 'info'] as InsightSeverity[]"
+          :key="severity"
+        >
+          <div v-if="grouped[severity].length" class="mb-8">
+            <h2 class="text-xl font-semibold tracking-tight mb-3 flex items-center gap-2">
+              <component
+                :is="severityIcon[severity]"
+                class="w-5 h-5"
+                :class="{
+                  'text-danger': severity === 'critical',
+                  'text-warning': severity === 'warning',
+                  'text-primary-600': severity === 'info',
+                }"
+                aria-hidden="true"
+              />
+              {{ severityLabel(severity) }}
+              <span class="text-sm font-normal text-fg-muted tabular-nums">
+                · {{ grouped[severity].length }}
+              </span>
+            </h2>
+            <ul class="space-y-3">
+              <li v-for="ins in grouped[severity]" :key="ins.id" class="nf-card p-5">
+                <div class="flex items-start justify-between gap-3 flex-wrap mb-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <Badge :tone="severityTone[ins.severity]">
+                        {{ severityLabel(ins.severity) }}
+                      </Badge>
+                      <Badge tone="muted">{{ t(categoryLabelKey[ins.category] ?? '') }}</Badge>
+                      <Badge
+                        v-if="ins.streak_count && ins.streak_count >= 2"
+                        tone="danger"
+                        :title="t('ai.advisor.streakTooltip', { n: ins.streak_count })"
+                      >
+                        {{ t('ai.advisor.recurringBadge', { n: ins.streak_count }) }}
+                      </Badge>
+                    </div>
+                    <h3 class="text-base font-semibold tracking-tight mt-2">{{ ins.title }}</h3>
+                  </div>
+                </div>
+                <p class="text-sm text-fg-muted leading-relaxed mt-1">{{ ins.description }}</p>
+                <p
+                  v-if="ins.recommendation"
+                  class="text-sm text-fg mt-3 p-3 rounded-lg bg-muted/60 border-l-2 border-primary-500"
+                >
+                  <span class="font-medium text-primary-700 dark:text-primary-300 mr-1">
+                    {{ t('ai.advisor.recommendation') }}:
+                  </span>
+                  {{ ins.recommendation }}
+                </p>
+                <div
+                  v-if="ins.affected_entities && ins.affected_entities.length"
+                  class="mt-3 flex flex-wrap gap-1.5"
+                >
+                  <RouterLink
+                    v-for="(e, idx) in ins.affected_entities"
+                    :key="`${e.type}-${e.id}-${idx}`"
+                    v-slot="{ href, navigate }"
+                    :to="entityRoute(e) ?? ''"
+                    custom
+                  >
+                    <a
+                      :href="entityRoute(e) ? href : undefined"
+                      :class="[
+                        'nf-pill bg-muted/70',
+                        entityRoute(e)
+                          ? 'hover:bg-primary-50 hover:text-primary-700 cursor-pointer'
+                          : 'cursor-default text-fg-muted',
+                      ]"
+                      @click="entityRoute(e) ? navigate($event) : null"
+                    >
+                      <component
+                        :is="entityIcon[e.type] ?? Server"
+                        class="w-3 h-3"
+                        aria-hidden="true"
+                      />
+                      {{ entityLabel(e) }}
+                    </a>
+                  </RouterLink>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </section>
+      </template>
     </div>
 
     <!-- ============================ INTEGRITY TAB ============================ -->

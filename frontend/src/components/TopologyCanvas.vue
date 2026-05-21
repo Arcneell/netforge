@@ -72,7 +72,11 @@ function layoutOpts(name: LayoutName): LayoutOptions {
 // cytoscape's own canvas labeller (centered inside the node) — that
 // way Geist Sans actually applies and text stays crisp at every zoom
 // level.
-function buildCardSvg(width: number, height: number, theme: { card: string; accent: string }): string {
+function buildCardSvg(
+  width: number,
+  height: number,
+  theme: { card: string; accent: string },
+): string {
   // Two stacked rects: full-size card body, then a 4-px-wide left
   // stripe in the accent colour. The cytoscape round-rectangle clip
   // takes care of rounding the corners — including the stripe's top-

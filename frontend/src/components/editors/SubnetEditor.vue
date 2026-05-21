@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { sitesApi, subnetsApi, vlansApi } from '@/api'
 import type { Site, Subnet, SubnetCreate, SubnetUpdate, Vlan } from '@/api'
 import { vrfsApi } from '@/api/endpoints/vrfs'
@@ -87,7 +88,7 @@ async function loadDropdowns() {
 // picker only ever offers subnets in the same routing scope (matches the
 // server-side `_validate_parent` rule).
 async function loadParentCandidates() {
-  const scope = form.vrf_id ?? 0  // 0 = global
+  const scope = form.vrf_id ?? 0 // 0 = global
   try {
     const res = await subnetsApi.list({ page_size: 200, vrf_id: scope })
     candidateParents.value = res.items.filter((s) => s.id !== props.subnet?.id)
@@ -164,9 +165,7 @@ async function onSubmit(e: Event) {
       site_id: form.site_id!,
       vrf_id: form.vrf_id && form.vrf_id !== 0 ? form.vrf_id : null,
       parent_subnet_id:
-        form.parent_subnet_id && form.parent_subnet_id !== 0
-          ? form.parent_subnet_id
-          : null,
+        form.parent_subnet_id && form.parent_subnet_id !== 0 ? form.parent_subnet_id : null,
       description: form.description.trim() || null,
       dhcp_enabled: form.dhcp_enabled,
       dhcp_range_start: form.dhcp_range_start.trim() || null,
@@ -199,6 +198,9 @@ async function onSubmit(e: Event) {
   >
     <form class="grid grid-cols-2 gap-4" @submit="onSubmit">
       <FormField :label="t('subnet.fields.cidr')" :error="errors.cidr" required>
+        <template #help>
+          <HelpTooltip :text="t('subnet.help.cidr')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"
@@ -213,6 +215,9 @@ async function onSubmit(e: Event) {
       </FormField>
 
       <FormField :label="t('subnet.fields.gateway')" :error="errors.gateway">
+        <template #help>
+          <HelpTooltip :text="t('subnet.help.gateway')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"
@@ -226,6 +231,9 @@ async function onSubmit(e: Event) {
       </FormField>
 
       <FormField :label="t('subnet.fields.site')" :error="errors.site_id" required>
+        <template #help>
+          <HelpTooltip :text="t('subnet.help.site')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -237,6 +245,9 @@ async function onSubmit(e: Event) {
       </FormField>
 
       <FormField :label="t('subnet.fields.vlan')">
+        <template #help>
+          <HelpTooltip :text="t('subnet.help.vlan')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -248,6 +259,9 @@ async function onSubmit(e: Event) {
       </FormField>
 
       <FormField :label="t('vrf.label')">
+        <template #help>
+          <HelpTooltip :text="t('subnet.help.vrf')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -266,14 +280,15 @@ async function onSubmit(e: Event) {
       </FormField>
 
       <FormField :label="t('subnet.fields.parent')">
+        <template #help>
+          <HelpTooltip :text="t('subnet.help.parent')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
             :model-value="form.parent_subnet_id ?? 0"
             :options="parentOptions"
-            @update:model-value="
-              (v) => (form.parent_subnet_id = v === 0 ? null : Number(v))
-            "
+            @update:model-value="(v) => (form.parent_subnet_id = v === 0 ? null : Number(v))"
           />
         </template>
       </FormField>
@@ -284,16 +299,22 @@ async function onSubmit(e: Event) {
         </template>
       </FormField>
 
-      <label class="col-span-2 flex items-center gap-2 text-sm select-none cursor-pointer">
-        <input
-          v-model="form.dhcp_enabled"
-          type="checkbox"
-          class="rounded border-border text-primary-600 focus:ring-primary-500"
-        />
-        {{ t('subnet.fields.dhcpEnabled') }}
-      </label>
+      <div class="col-span-2 flex items-center gap-2 text-sm">
+        <label class="flex items-center gap-2 select-none cursor-pointer">
+          <input
+            v-model="form.dhcp_enabled"
+            type="checkbox"
+            class="rounded border-border text-primary-600 focus:ring-primary-500"
+          />
+          {{ t('subnet.fields.dhcpEnabled') }}
+        </label>
+        <HelpTooltip :text="t('subnet.help.dhcp')" />
+      </div>
 
       <FormField v-if="form.dhcp_enabled" :label="t('subnet.fields.dhcpRangeStart')">
+        <template #help>
+          <HelpTooltip :text="t('subnet.help.dhcpRange')" />
+        </template>
         <template #default="{ id }">
           <Input
             :id="id"
