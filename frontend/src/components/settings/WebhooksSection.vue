@@ -207,9 +207,7 @@ async function viewDeliveries(row: Webhook) {
   }
 }
 
-const editorTitle = computed(() =>
-  editing.value ? t('webhooks.edit') : t('webhooks.new'),
-)
+const editorTitle = computed(() => (editing.value ? t('webhooks.edit') : t('webhooks.new')))
 </script>
 
 <template>

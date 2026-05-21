@@ -16,6 +16,7 @@ import {
 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { aiApi, type AIStatus, type QueryEntityRef, type QueryHistoryTurn } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -322,6 +323,9 @@ onMounted(loadStatus)
 <template>
   <div class="p-4 sm:p-8 max-w-4xl mx-auto h-full flex flex-col">
     <PageHeader :title="t('ai.askView.title')" :subtitle="t('ai.askView.subtitle')">
+      <template #help>
+        <HelpTooltip :text="t('ai.askView.help')" placement="bottom" />
+      </template>
       <template #actions>
         <Button
           v-if="hasConversation"

@@ -8,6 +8,7 @@ import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import VlanBadge from '@/components/VlanBadge.vue'
 import SubnetEditor from '@/components/editors/SubnetEditor.vue'
 import SubnetTreeRow from '@/components/SubnetTreeRow.vue'
@@ -180,6 +181,9 @@ const columns: DataTableColumn[] = [
 <template>
   <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <PageHeader :title="t('subnet.labelPlural')" :subtitle="t('subnet.subtitle')">
+      <template #help>
+        <HelpTooltip :text="t('subnet.pageHelp')" placement="bottom" />
+      </template>
       <template #actions>
         <Button v-if="isAdmin" variant="primary" @click="onNew">
           <Plus class="w-4 h-4" aria-hidden="true" />
@@ -240,7 +244,9 @@ const columns: DataTableColumn[] = [
             }
           "
         >
-          <option value="">{{ viewMode === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal') }}</option>
+          <option value="">
+            {{ viewMode === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal') }}
+          </option>
           <option value="0">{{ t('subnet.vrfFilterGlobal') }}</option>
           <option v-for="v in vrfs" :key="v.id" :value="v.id">{{ v.name }}</option>
         </select>

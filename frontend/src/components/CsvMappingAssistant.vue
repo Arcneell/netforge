@@ -247,10 +247,7 @@ function applyMapping() {
         </p>
 
         <!-- Data-quality observations: deterministic checks + LLM hints -->
-        <div
-          v-if="result.data_quality.length"
-          class="border-t border-border/50 pt-3 space-y-2"
-        >
+        <div v-if="result.data_quality.length" class="border-t border-border/50 pt-3 space-y-2">
           <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
             {{ t('ai.csvMapping.dataQualityTitle') }}
           </p>

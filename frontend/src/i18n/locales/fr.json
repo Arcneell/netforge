@@ -172,7 +172,10 @@
     },
     "new": "Nouveau site",
     "edit": "Modifier le site",
-    "empty": "Aucun site — créez-en un pour commencer."
+    "empty": "Aucun site — créez-en un pour commencer.",
+    "help": {
+      "code": "Identifiant court (ex. PAR-DC1). Lettres, chiffres, tirets et underscores uniquement — sert de préfixe partout dans les exports et l'IPAM."
+    }
   },
   "room": {
     "label": "Salle",
@@ -184,7 +187,10 @@
     },
     "new": "Nouvelle salle",
     "edit": "Modifier la salle",
-    "empty": "Aucune salle pour le moment."
+    "empty": "Aucune salle pour le moment.",
+    "help": {
+      "code": "Code court de la salle (ex. MDF-01, R-101). Doit être unique au sein du site."
+    }
   },
   "vlan": {
     "label": "VLAN",
@@ -198,7 +204,11 @@
     },
     "new": "Nouveau VLAN",
     "edit": "Modifier le VLAN",
-    "empty": "Aucun VLAN — créez-en un pour l'assigner à des sous-réseaux et des ports."
+    "empty": "Aucun VLAN — créez-en un pour l'assigner à des sous-réseaux et des ports.",
+    "help": {
+      "vlanId": "Tag VLAN, entre 1 et 4094. Doit être unique. Les IDs 1, 1002–1005 sont généralement réservés sur du matériel Cisco.",
+      "color": "Couleur d'affichage des badges VLAN dans l'interface. Aucun impact réseau — purement visuel."
+    }
   },
   "subnet": {
     "label": "Sous-réseau",
@@ -239,7 +249,18 @@
       "used": "{count} utilisées",
       "free": "{count} libres",
       "total": "sur {count}"
-    }
+    },
+    "help": {
+      "cidr": "Notation CIDR (ex. 10.0.30.0/24). Le préfixe (/24) définit la taille de la plage. Non modifiable après création.",
+      "gateway": "Passerelle par défaut IPv4 du sous-réseau. Souvent la première IP utilisable (ex. .1). Laissez vide s'il n'y en a pas.",
+      "vlan": "VLAN auquel ce sous-réseau est rattaché. Laissez vide pour un subnet non tagué.",
+      "site": "Localisation physique du sous-réseau. Sert au filtrage et aux rapports.",
+      "vrf": "Espace de routage. Laissez Global sauf si vous réutilisez la même plage IP dans un autre contexte isolé (multi-tenant, prod vs dev).",
+      "parent": "Optionnel : classez ce subnet sous un plus grand pour faire de l'IPAM hiérarchique. Limité aux subnets du même VRF.",
+      "dhcp": "Délimite un pool DHCP. NetForge marquera ces adresses comme DHCP et les exclura des assignations manuelles.",
+      "dhcpRange": "Première et dernière IP du pool DHCP. Les deux doivent appartenir au subnet."
+    },
+    "pageHelp": "Chaque carte montre le taux de remplissage, le VLAN et la passerelle. Filtrez avec la recherche par CIDR, description, passerelle ou VLAN. La vue arbre regroupe les subnets par parent."
   },
   "ip": {
     "label": "IP",
@@ -259,6 +280,13 @@
       "assigned": "Attribuée",
       "dhcp": "DHCP",
       "free": "Libre"
+    },
+    "help": {
+      "address": "Adresse IPv4 à attribuer. Doit appartenir à ce sous-réseau et être encore libre. Non modifiable après création.",
+      "status": "Réservée = bloquée mais inactive (pas d'équipement actif). Attribuée = en service. DHCP = adresse issue du pool DHCP.",
+      "hostname": "Nom DNS ou label interne (ex. srv-app-01). Facultatif mais très utile pour retrouver l'IP plus tard.",
+      "mac": "Adresse MAC de l'équipement. Formats acceptés : aa:bb:cc:dd:ee:ff, aa-bb-cc-dd-ee-ff, aabb.ccdd.eeff (Cisco).",
+      "device": "Lien optionnel vers un équipement de l'inventaire. Permet de naviguer de l'IP vers sa fiche complète."
     }
   },
   "device": {
@@ -281,6 +309,13 @@
     "edit": "Modifier l'équipement",
     "empty": "Aucun équipement pour le moment.",
     "eolHint": "Date d'arrêt de support constructeur — l'advisor signalera les équipements approchant cette date.",
+    "help": {
+      "type": "Catégorie d'équipement. Sert au filtrage, aux stats du tableau de bord et aux icônes dans la topologie.",
+      "assetTag": "Code interne issu de votre système d'inventaire ou CMDB (ex. NF-001234). Facultatif mais pratique pour les recoupements.",
+      "warranty": "Date de fin de garantie constructeur. Aide à planifier les remplacements avant la fin du support.",
+      "eol": "Date d'arrêt de support constructeur. L'advisor signale les équipements approchant cette date comme un risque."
+    },
+    "pageHelp": "Catalogue tout ce qui utilise une IP : serveurs, imprimantes, téléphones, bornes Wi-Fi, caméras, onduleurs. Les commutateurs ont leur propre page.",
     "types": {
       "server": "Serveur",
       "desktop": "Poste fixe",
@@ -322,7 +357,19 @@
     "links": "Liens",
     "portStats": "{used} ports utilisés sur {total}",
     "snmpCommunityHint": "Stockée telle quelle. Visible uniquement par les administrateurs.",
-    "eolHint": "Date d'arrêt de support constructeur — l'advisor signalera les équipements approchant cette date."
+    "eolHint": "Date d'arrêt de support constructeur — l'advisor signalera les équipements approchant cette date.",
+    "help": {
+      "name": "Identifiant court et unique (ex. sw-core-01). Sert d'ancrage dans les exports, la topologie et les extrémités de liens.",
+      "managementIp": "IPv4 d'administration (SSH, SNMP, télémétrie). Doit être joignable depuis le serveur NetForge.",
+      "rackPosition": "Position U dans la baie (ex. U22, ou 1-3 pour un châssis multi-U). Aide à l'inventaire physique.",
+      "portCount": "Nombre total de ports physiques. NetForge crée automatiquement les ports correspondants. Non modifiable après création.",
+      "snmpCommunity": "Chaîne de communauté SNMPv2c en lecture seule. Stockée telle quelle. Visible uniquement par les admins.",
+      "firmware": "Version du firmware en production (ex. 17.09.04). Utile pour suivre les correctifs de sécurité et les niveaux de fonctionnalités.",
+      "assetTag": "Code interne issu de votre système d'inventaire ou CMDB (ex. NF-001234). Facultatif mais pratique pour les recoupements.",
+      "warranty": "Date de fin de garantie constructeur. Aide à planifier les remplacements avant la fin du support.",
+      "eol": "Date d'arrêt de support constructeur. L'advisor signale les commutateurs approchant cette date comme un risque."
+    },
+    "pageHelp": "Tous les commutateurs gérés. Cliquez sur l'un d'eux pour voir ses ports, ses liens, sa vue rack et ses équipements connectés."
   },
   "port": {
     "label": "Port",
@@ -350,7 +397,15 @@
       "down": "Inactif"
     },
     "addTaggedVlan": "Ajouter un VLAN tagué",
-    "noTaggedVlans": "Aucun VLAN tagué."
+    "noTaggedVlans": "Aucun VLAN tagué.",
+    "help": {
+      "label": "Libellé court (ex. uplink-core). Aide à repérer le rôle du port d'un coup d'œil — apparaît dans les listes et la topologie.",
+      "mode": "Accès = un seul VLAN (poste utilisateur). Trunk = plusieurs VLAN tagués (uplink switch-à-switch). Hybride = les deux. Désactivé = port coupé administrativement.",
+      "nativeVlan": "VLAN non tagué de ce port. En mode accès c'est le VLAN du poste ; en trunk c'est celui des trames sans tag.",
+      "taggedVlans": "VLAN supplémentaires (tagués) transportés par ce port. Concerne surtout les modes trunk et hybride — géré via des endpoints dédiés, indépendamment du Save principal.",
+      "adminStatus": "État souhaité du port. Inactif = port coupé administrativement.",
+      "connectedDevice": "Équipement physique branché à l'autre bout (ex. un serveur). Facultatif — laissez vide pour les liens switch-à-switch, qui se décrivent comme Liens."
+    }
   },
   "audit": {
     "subtitle": "Qui a changé quoi, et quand.",
@@ -380,7 +435,8 @@
     "viewDiff": "Voir le diff",
     "before": "Avant",
     "after": "Après",
-    "noChanges": "Aucune modification de champ enregistrée."
+    "noChanges": "Aucune modification de champ enregistrée.",
+    "help": "Toutes les écritures sont enregistrées avec l'auteur, l'horodatage, l'IP d'origine et le diff complet champ par champ. Conservation indéfinie — pour enquêter sur « qui a changé quoi, et quand »."
   },
   "snapshots": {
     "compare": {
@@ -406,7 +462,10 @@
       "colStatus": "Statut",
       "colWhen": "Dernier changement",
       "colActions": "Actions",
-      "colFields": "Champs modifiés"
+      "colFields": "Champs modifiés",
+      "helpFrom": "Début de la fenêtre. Date et heure dans votre fuseau local — converties en UTC à l'envoi.",
+      "helpEntity": "Restreint la comparaison à un seul type d'entité. Laissez sur Tous pour une vue globale sur tout l'inventaire.",
+      "helpRun": "Parcourt le journal d'audit entre les deux dates et liste chaque entité créée, modifiée, supprimée ou brièvement créée puis supprimée (transitoire)."
     }
   },
   "settings": {
@@ -555,7 +614,8 @@
     "empty": {
       "title": "Aucune topologie à afficher",
       "description": "Créez des commutateurs et des liens inter-commutateurs pour les voir apparaître ici."
-    }
+    },
+    "help": "Chaque nœud est un commutateur, chaque arête est un lien inter-commutateurs. Cliquez sur un élément pour voir ses détails à droite. Le sélecteur de disposition aide quand le graphe devient dense."
   },
   "cable": {
     "label": "Câble",
@@ -572,6 +632,12 @@
       "installedOn": "Installé le",
       "lastTestedOn": "Testé le",
       "notes": "Notes"
+    },
+    "help": {
+      "section": "Métadonnées physiques du câble : référence, longueur, dates d'installation et de test. Facultatif — à remplir uniquement si vous tenez un registre des câbles.",
+      "length": "Longueur du câble en mètres. Utile pour diagnostiquer l'atténuation sur les longues distances (cuivre > 100m ou monomode > 10km).",
+      "installedOn": "Date de pose du câble. Aide à estimer son âge lors d'un diagnostic.",
+      "lastTestedOn": "Date du dernier test (certification Fluke, light meter, etc.)."
     }
   },
   "link": {
@@ -597,6 +663,11 @@
       "fiber": "Fibre",
       "dac": "DAC",
       "virtual": "Virtuel"
+    },
+    "help": {
+      "endpoints": "Choisissez les deux ports de chaque extrémité. Les deux doivent être libres (un port ne peut appartenir qu'à un seul lien). Les extrémités ne sont plus modifiables après création.",
+      "type": "Cuivre = UTP/RJ45. Fibre = SFP / SFP+ / QSFP. DAC = Twinax direct attach. Virtuel = lien logique sans support physique (membre LAG, stitching VRF).",
+      "speed": "Débit négocié en mégabits par seconde (1000 = 1 Gbps, 10000 = 10 Gbps, 100000 = 100 Gbps). Doit refléter ce que les ports ont réellement négocié."
     }
   },
   "shortcuts": {
@@ -633,6 +704,11 @@
     "fileReset": "Choisir un autre fichier",
     "dryRun": "Validation à blanc (n'écrit jamais)",
     "dryRunHint": "Recommandé pour le premier essai — la base est annulée même si tout se valide correctement.",
+    "helpDryRun": "Quand cochée, NetForge analyse et valide chaque ligne mais annule la transaction à la fin. Décochez pour écrire réellement.",
+    "helpEntity": "Choisissez l'entité décrite par ce CSV. La ligne d'en-tête doit correspondre aux colonnes affichées dans le modèle — téléchargez-le en cas de doute.",
+    "helpExportTemplate": "Télécharge l'entité en CSV avec exactement les colonnes attendues par l'import. Le moyen le plus simple de démarrer un nouveau fichier.",
+    "helpDownloadAll": "Archive ZIP contenant un CSV par entité — une sauvegarde logique de tout l'inventaire que vous pouvez ré-importer telle quelle.",
+    "helpMapping": "Vos en-têtes ne correspondent pas ? L'assistant IA propose un mapping de vos colonnes vers les champs NetForge, sans avoir à les renommer à la main.",
     "submit": "Lancer l'import",
     "submitDryRun": "Valider (à blanc)",
     "exportTemplate": "Télécharger les données actuelles comme modèle",
@@ -736,7 +812,8 @@
       "emptyAnswer": "(Réponse vide — relancez la question si nécessaire.)",
       "incompleteAnswer": "(Réponse interrompue — le modèle s'est arrêté en cours de route.)",
       "liteContextLabel": "Mode allégé — plus rapide, structure uniquement",
-      "liteContextHint": "N'envoie à l'IA que les identifiants (noms, IDs). Plus rapide et économique, mais l'IA ne verra pas les descriptions, notes, MAC ni vendor. À désactiver si votre question porte sur ce genre de contenu."
+      "liteContextHint": "N'envoie à l'IA que les identifiants (noms, IDs). Plus rapide et économique, mais l'IA ne verra pas les descriptions, notes, MAC ni vendor. À désactiver si votre question porte sur ce genre de contenu.",
+      "help": "L'assistant lit votre inventaire en temps réel pour répondre. Vos questions et les données envoyées sont tracées dans Réglages → Consommation IA. Évitez d'inclure des identifiants ou des secrets externes dans vos prompts."
     },
     "advisor": {
       "recurringBadge": "Récurrent ×{n}",
@@ -772,13 +849,15 @@
         "naming": "Nommage",
         "redundancy": "Redondance",
         "other": "Autre"
-      }
+      },
+      "help": "L'IA passe votre inventaire en revue à la recherche de SPOF, dépassements de capacité, failles de sécurité, problèmes de segmentation et incohérences de nommage. Chaque constat propose un correctif."
     },
     "integrity": {
       "tab": "Cohérence des données",
       "description": "Vérifie la cohérence de votre inventaire.",
       "cleanTitle": "Tout est en ordre",
-      "cleanDescription": "Aucune incohérence détectée."
+      "cleanDescription": "Aucune incohérence détectée.",
+      "help": "Contrôles déterministes, sans IA : références orphelines, contraintes cassées, états contradictoires. Pures requêtes SQL — aucun appel provider, aucun coût."
     },
     "drafts": {
       "title": "Actions IA à valider",
@@ -805,7 +884,8 @@
         "createRoom": "Créer une salle",
         "createVlan": "Créer un VLAN",
         "createSubnet": "Créer un subnet"
-      }
+      },
+      "help": "L'IA transforme votre demande en un brouillon d'action structuré (créer un VLAN, un subnet, un site ou une salle). Rien n'est exécuté tant que vous ne cliquez pas sur Appliquer — vous gardez la main."
     },
     "schedules": {
       "title": "Exécutions planifiées",
@@ -863,7 +943,11 @@
       "testOk": "Connexion réussie.",
       "testKo": "Échec de la connexion.",
       "howToChange": "Changer de provider",
-      "envHint": "Mettez à jour votre fichier .env puis relancez le backend. Une seule clé suffit — celle qui correspond à AI_PROVIDER."
+      "envHint": "Mettez à jour votre fichier .env puis relancez le backend. Une seule clé suffit — celle qui correspond à AI_PROVIDER.",
+      "help": {
+        "section": "Configuration centrale du fournisseur d'IA. Toutes les fonctions IA (advisor, brouillons, Ask AI, suggestions de liens, mapping CSV) l'utilisent. Si elle est désactivée, les boutons correspondants restent masqués.",
+        "test": "Envoie une complétion d'un jeton au provider — vérifie la clé API, le modèle et le réseau avant un vrai scan."
+      }
     },
     "usage": {
       "title": "Consommation IA",

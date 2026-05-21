@@ -5,6 +5,7 @@ import { Check, ClipboardList, Send, X as XIcon } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { aiApi, type ActionDraft, type ActionDraftStatus } from '@/api'
@@ -107,7 +108,11 @@ const pendingCount = computed(() => drafts.value.filter((d) => d.status === 'pen
 
 <template>
   <div class="p-4 sm:p-8 max-w-5xl mx-auto">
-    <PageHeader :title="t('ai.drafts.title')" :subtitle="t('ai.drafts.subtitle')" />
+    <PageHeader :title="t('ai.drafts.title')" :subtitle="t('ai.drafts.subtitle')">
+      <template #help>
+        <HelpTooltip :text="t('ai.drafts.help')" placement="bottom" />
+      </template>
+    </PageHeader>
 
     <!-- Composer -->
     <form class="nf-card p-4 mb-6 space-y-3" @submit.prevent="createDraft">

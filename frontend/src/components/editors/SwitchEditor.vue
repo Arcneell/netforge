@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { roomsApi, switchesApi } from '@/api'
 import type { Room, Switch, SwitchCreate, SwitchUpdate } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -167,6 +168,9 @@ async function onSubmit(e: Event) {
   >
     <form class="grid grid-cols-2 gap-4" @submit="onSubmit">
       <FormField :label="t('switch.fields.name')" :error="errors.name" required>
+        <template #help>
+          <HelpTooltip :text="t('switch.help.name')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"
@@ -179,6 +183,9 @@ async function onSubmit(e: Event) {
       </FormField>
 
       <FormField :label="t('switch.fields.managementIp')" :error="errors.management_ip">
+        <template #help>
+          <HelpTooltip :text="t('switch.help.managementIp')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"
@@ -208,6 +215,9 @@ async function onSubmit(e: Event) {
         </template>
       </FormField>
       <FormField :label="t('switch.fields.firmware')">
+        <template #help>
+          <HelpTooltip :text="t('switch.help.firmware')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.firmware_version" autocomplete="off" />
         </template>
@@ -224,6 +234,9 @@ async function onSubmit(e: Event) {
         </template>
       </FormField>
       <FormField :label="t('switch.fields.rackPosition')">
+        <template #help>
+          <HelpTooltip :text="t('switch.help.rackPosition')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.rack_position" placeholder="U22" autocomplete="off" />
         </template>
@@ -235,6 +248,9 @@ async function onSubmit(e: Event) {
         :hint="isEdit ? t('switch.portCountImmutable') : undefined"
         required
       >
+        <template #help>
+          <HelpTooltip :text="t('switch.help.portCount')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"
@@ -250,22 +266,34 @@ async function onSubmit(e: Event) {
       </FormField>
 
       <FormField :label="t('switch.fields.snmpCommunity')" :hint="t('switch.snmpCommunityHint')">
+        <template #help>
+          <HelpTooltip :text="t('switch.help.snmpCommunity')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.snmp_community" type="password" autocomplete="off" />
         </template>
       </FormField>
 
       <FormField :label="t('switch.fields.assetTag')">
+        <template #help>
+          <HelpTooltip :text="t('switch.help.assetTag')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.asset_tag" placeholder="NF-001234" autocomplete="off" />
         </template>
       </FormField>
       <FormField :label="t('switch.fields.warrantyExpiresAt')">
+        <template #help>
+          <HelpTooltip :text="t('switch.help.warranty')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.warranty_expires_at" type="date" autocomplete="off" />
         </template>
       </FormField>
       <FormField :label="t('switch.fields.eolDate')" :hint="t('switch.eolHint')">
+        <template #help>
+          <HelpTooltip :text="t('switch.help.eol')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.eol_date" type="date" autocomplete="off" />
         </template>

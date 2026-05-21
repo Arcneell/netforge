@@ -19,12 +19,12 @@ test('topology view renders the graph with at least one node', async ({ page, re
   await expect(page.getByRole('heading', { name: /topology|topologie/i })).toBeVisible()
 
   // Canvas wrapper — TopologyCanvas exposes role=img + aria-label.
-  await expect(page.getByRole('img', { name: /network topology graph|graphe de topologie/i }))
-    .toBeVisible()
+  await expect(
+    page.getByRole('img', { name: /network topology graph|graphe de topologie/i }),
+  ).toBeVisible()
 
   // The empty-state copy is a sentinel — its presence means no data loaded.
-  await expect(page.getByText(/no topology to display|aucune topologie à afficher/i))
-    .toBeHidden()
+  await expect(page.getByText(/no topology to display|aucune topologie à afficher/i)).toBeHidden()
 
   // Layout selector + "Fit to screen" + "Export PNG" buttons are the
   // user-facing toolbar; they only mount once the canvas is ready.

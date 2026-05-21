@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { devicesApi, roomsApi } from '@/api'
 import type { Device, DeviceCreate, DeviceType, DeviceUpdate, Room } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -158,6 +159,9 @@ async function onSubmit(e: Event) {
       </FormField>
 
       <FormField :label="t('device.fields.type')" required>
+        <template #help>
+          <HelpTooltip :text="t('device.help.type')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -195,17 +199,26 @@ async function onSubmit(e: Event) {
         </template>
       </FormField>
       <FormField :label="t('device.fields.assetTag')">
+        <template #help>
+          <HelpTooltip :text="t('device.help.assetTag')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.asset_tag" placeholder="NF-001234" autocomplete="off" />
         </template>
       </FormField>
 
       <FormField :label="t('device.fields.warrantyExpiresAt')">
+        <template #help>
+          <HelpTooltip :text="t('device.help.warranty')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.warranty_expires_at" type="date" autocomplete="off" />
         </template>
       </FormField>
       <FormField :label="t('device.fields.eolDate')" :hint="t('device.eolHint')">
+        <template #help>
+          <HelpTooltip :text="t('device.help.eol')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.eol_date" type="date" autocomplete="off" />
         </template>

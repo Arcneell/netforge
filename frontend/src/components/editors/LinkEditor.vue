@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { linksApi, portsApi, switchesApi } from '@/api'
 import type { Link, LinkType, Port, Switch } from '@/api'
 import { cablesApi } from '@/api/endpoints/cables'
@@ -392,6 +393,9 @@ async function onSubmit(e: Event) {
     <form class="flex flex-col gap-4" @submit="onSubmit">
       <!-- Endpoints: editable on create, read-only on edit -->
       <template v-if="!isEdit">
+        <p class="text-xs text-fg-muted -mb-2 flex items-center gap-1">
+          <span>{{ t('link.help.endpoints') }}</span>
+        </p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <fieldset class="rounded-md border border-border p-3 space-y-3">
             <legend class="text-xs uppercase tracking-wide text-fg-muted px-1">
@@ -475,6 +479,9 @@ async function onSubmit(e: Event) {
       <!-- Shared metadata -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <FormField :label="t('link.fields.type')" required>
+          <template #help>
+            <HelpTooltip :text="t('link.help.type')" />
+          </template>
           <template #default="{ id }">
             <Select
               :id="id"
@@ -485,6 +492,9 @@ async function onSubmit(e: Event) {
           </template>
         </FormField>
         <FormField :label="t('link.fields.speed')" :error="errors.speed_mbps">
+          <template #help>
+            <HelpTooltip :text="t('link.help.speed')" />
+          </template>
           <template #default="{ id, invalid }">
             <Input
               :id="id"
@@ -511,8 +521,11 @@ async function onSubmit(e: Event) {
     <!-- Cable metadata — edit mode only. Independent persistence (separate
          endpoints, doesn't block the link save). -->
     <fieldset v-if="isEdit" class="mt-4 rounded-md border border-border p-3 space-y-3">
-      <legend class="text-xs uppercase tracking-wide text-fg-muted px-1">
-        {{ t('cable.label') }}
+      <legend
+        class="text-xs uppercase tracking-wide text-fg-muted px-1 inline-flex items-center gap-1"
+      >
+        <span>{{ t('cable.label') }}</span>
+        <HelpTooltip :text="t('cable.help.section')" />
       </legend>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <FormField :label="t('cable.fields.label')">
@@ -521,6 +534,9 @@ async function onSubmit(e: Event) {
           </template>
         </FormField>
         <FormField :label="t('cable.fields.length')">
+          <template #help>
+            <HelpTooltip :text="t('cable.help.length')" />
+          </template>
           <template #default="{ id }">
             <Input
               :id="id"
@@ -544,12 +560,7 @@ async function onSubmit(e: Event) {
         </FormField>
         <FormField :label="t('cable.fields.partNumber')">
           <template #default="{ id }">
-            <Input
-              :id="id"
-              v-model="cableForm.part_number"
-              maxlength="100"
-              autocomplete="off"
-            />
+            <Input :id="id" v-model="cableForm.part_number" maxlength="100" autocomplete="off" />
           </template>
         </FormField>
         <FormField :label="t('cable.fields.serial')">
@@ -558,18 +569,19 @@ async function onSubmit(e: Event) {
           </template>
         </FormField>
         <FormField :label="t('cable.fields.installedOn')">
+          <template #help>
+            <HelpTooltip :text="t('cable.help.installedOn')" />
+          </template>
           <template #default="{ id }">
             <Input :id="id" v-model="cableForm.installed_on" type="date" autocomplete="off" />
           </template>
         </FormField>
         <FormField :label="t('cable.fields.lastTestedOn')">
+          <template #help>
+            <HelpTooltip :text="t('cable.help.lastTestedOn')" />
+          </template>
           <template #default="{ id }">
-            <Input
-              :id="id"
-              v-model="cableForm.last_tested_on"
-              type="date"
-              autocomplete="off"
-            />
+            <Input :id="id" v-model="cableForm.last_tested_on" type="date" autocomplete="off" />
           </template>
         </FormField>
       </div>
@@ -580,13 +592,7 @@ async function onSubmit(e: Event) {
       </FormField>
       <p v-if="cableError" class="text-sm text-danger" role="alert">{{ cableError }}</p>
       <div class="flex justify-end gap-2">
-        <Button
-          v-if="cable"
-          variant="ghost"
-          size="sm"
-          :disabled="cableSaving"
-          @click="deleteCable"
-        >
+        <Button v-if="cable" variant="ghost" size="sm" :disabled="cableSaving" @click="deleteCable">
           {{ t('cable.delete') }}
         </Button>
         <Button variant="secondary" size="sm" :loading="cableSaving" @click="saveCable">
