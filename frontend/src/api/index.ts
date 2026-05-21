@@ -45,6 +45,15 @@ export {
   type BulkImportFileReport,
   type BulkImportReport,
 } from './endpoints/imports'
+export { webhooksApi } from './endpoints/webhooks'
+export type {
+  Webhook,
+  WebhookCreate,
+  WebhookCreated,
+  WebhookDelivery,
+  WebhookUpdate,
+} from './endpoints/webhooks'
+
 export {
   aiApi,
   type AIStatus,

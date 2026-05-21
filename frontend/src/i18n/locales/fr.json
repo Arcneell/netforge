@@ -379,7 +379,57 @@
     "sitesTab": "Sites",
     "roomsTab": "Salles",
     "tokensTab": "Jetons API",
-    "aiTab": "Intelligence artificielle"
+    "aiTab": "Intelligence artificielle",
+    "webhooksTab": "Webhooks"
+  },
+  "webhooks": {
+    "subtitle": "POST des mutations d'inventaire vers vos propres systèmes. Chaque évènement est signé en HMAC-SHA256 sur le corps (entête X-Netforge-Signature).",
+    "new": "Nouveau webhook",
+    "edit": "Modifier le webhook",
+    "namePlaceholder": "p. ex. itsm-bridge",
+    "eventsHint": "Motifs séparés par des virgules. \"*\" pour tout, ou \"port.*\", \"site.create\", ...",
+    "secretTitle": "Copiez votre secret maintenant — il ne sera plus jamais affiché.",
+    "secretHint": "Stockez-le côté abonné pour vérifier l'entête X-Netforge-Signature à chaque livraison.",
+    "secretCopied": "Secret copié.",
+    "secretRotated": "Secret régénéré — mettez l'abonné à jour.",
+    "copyFailed": "Impossible d'accéder au presse-papiers.",
+    "viewDeliveries": "Voir les livraisons récentes",
+    "sendTest": "Envoyer un évènement de test",
+    "rotateSecret": "Régénérer le secret",
+    "testOk": "Test livré (HTTP {code}).",
+    "testFailed": "Échec du test : {error}",
+    "failuresShort": "échecs",
+    "deliveriesTitle": "Livraisons — {name}",
+    "confirmDeleteTitle": "Supprimer le webhook « {name} » ?",
+    "confirmDeleteMessage": "Les abonnés cesseront immédiatement de recevoir les évènements. L'historique des livraisons est également effacé.",
+    "errors": {
+      "eventsRequired": "Indiquez au moins un motif d'évènement."
+    },
+    "status": {
+      "enabled": "Activé",
+      "disabled": "Désactivé"
+    },
+    "fields": {
+      "name": "Nom",
+      "url": "URL",
+      "events": "Évènements",
+      "enabled": "Activé",
+      "status": "État",
+      "stats": "Livraisons / échecs"
+    },
+    "delivery": {
+      "when": "Quand",
+      "event": "Évènement",
+      "status": "HTTP",
+      "latency": "Latence",
+      "error": "Erreur",
+      "empty": "Aucune livraison",
+      "emptyHint": "Utilisez le bouton Test pour envoyer un évènement synthétique."
+    },
+    "empty": {
+      "title": "Aucun webhook",
+      "description": "Configurez des abonnés HTTP pour recevoir les évènements en temps réel."
+    }
   },
   "apiTokens": {
     "subtitle": "Créez des jetons d'accès personnels pour les scripts et les automatisations. Les jetons héritent de votre rôle, donc à utiliser avec parcimonie.",
