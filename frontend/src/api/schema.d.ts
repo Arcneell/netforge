@@ -2744,6 +2744,18 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Usable
+             * @description Host-usable address count (excludes network/broadcast on /≤30).
+             * @default 0
+             */
+            usable?: number;
+            /**
+             * Used
+             * @description Number of recorded Ip rows in this subnet.
+             * @default 0
+             */
+            used?: number;
         };
         /**
          * SubnetTreeNode
