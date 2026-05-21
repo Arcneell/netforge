@@ -208,6 +208,38 @@ def test_local_dq_flags_invalid_mac() -> None:
     assert "not-a-mac" in mac_issue.sample_values
 
 
+def test_local_dq_accepts_cisco_dotted_mac_format() -> None:
+    """Codex P2 on PR #63: the importer's `_MAC_PATTERNS` accepts
+    `aabb.ccdd.eeff` so the local validator must too — otherwise we'd
+    flag valid Cisco/HP MACs as data-quality issues."""
+    issues = cm.run_local_data_quality(
+        entity="ips",
+        csv_columns=["MAC"],
+        sample_rows=[["aabb.ccdd.eeff"], ["AABB.CCDD.EEFF"]],
+        column_mapping={"MAC": "mac"},
+    )
+    assert not any(i.column == "MAC" for i in issues)
+
+
+def test_local_dq_subnets_treats_site_code_as_required() -> None:
+    """Codex P2 on PR #63: `site_code` is required by `_SubnetRow` in the
+    importer but was missing from the mapper's required-field map. A blank
+    cell in a mapped `site_code` column now produces a critical issue."""
+    issues = cm.run_local_data_quality(
+        entity="subnets",
+        csv_columns=["Subnet", "Site"],
+        sample_rows=[["10.0.0.0/24", ""], ["10.0.1.0/24", "PAR"]],
+        column_mapping={"Subnet": "cidr", "Site": "site_code"},
+    )
+    site_issue = next(
+        (i for i in issues if i.column == "Site" and "empty" in i.issue),
+        None,
+    )
+    assert site_issue is not None
+    assert site_issue.severity == "critical"
+    assert site_issue.affected_row_count == 1
+
+
 def test_local_dq_flags_invalid_vlan_id() -> None:
     issues = cm.run_local_data_quality(
         entity="vlans",

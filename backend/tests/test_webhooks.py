@@ -16,11 +16,13 @@ import pytest
 
 from app.services.webhooks import (
     WebhookEvent,
+    _drop_pending,
+    _promote_pending_to_committed,
     generate_secret,
     matches,
     queue_event,
-    set_dispatch_enabled,
     sign_body,
+    take_committed,
     take_pending,
 )
 
@@ -119,9 +121,10 @@ def _drain_queue_before_each():
     when tests run synchronously (pytest-asyncio gives each test its own
     task, but the default value is shared)."""
     take_pending()
-    set_dispatch_enabled(True)
+    take_committed()
     yield
     take_pending()
+    take_committed()
 
 
 def test_queue_event_appends_to_request_scoped_bucket() -> None:
@@ -135,7 +138,42 @@ def test_queue_event_appends_to_request_scoped_bucket() -> None:
     assert take_pending() == []
 
 
-def test_queue_event_is_a_noop_when_dispatch_disabled() -> None:
-    set_dispatch_enabled(False)
-    queue_event("port", "create", 5, None, {"id": 5}, user_id=None)
+# --- session lifecycle promotion / drop ------------------------------------
+
+
+def test_commit_promotes_pending_events_to_committed_bucket() -> None:
+    """Replays the `after_commit` hook: pending events should move into
+    the committed bucket, ready for the middleware to dispatch."""
+    queue_event("site", "create", 1, None, {"name": "HQ"}, user_id=None)
+    queue_event("site", "update", 1, {"name": "HQ"}, {"name": "HQ2"}, user_id=None)
+    # Before commit: pending has events, committed bucket is empty.
+    assert take_committed() == []
+    _promote_pending_to_committed()
+    # After commit: pending drained, committed bucket holds both events.
     assert take_pending() == []
+    committed = take_committed()
+    assert [c.event_name for c in committed] == ["site.create", "site.update"]
+
+
+def test_rollback_drops_pending_without_touching_committed() -> None:
+    """Codex P1 on PR #62: the CSV import dry-run flushes (queues events)
+    and then rolls back. The rollback must wipe pending so subscribers
+    never see those mutations."""
+    # First commit some events so the committed bucket isn't empty.
+    queue_event("site", "create", 1, None, {"name": "HQ"}, user_id=None)
+    _promote_pending_to_committed()
+    # Then flush some more — they belong to a transaction we're about to roll back.
+    queue_event("port", "update", 7, {"label": "old"}, {"label": "new"}, user_id=None)
+    _drop_pending()
+    assert take_pending() == []
+    # The previously-committed events survive the rollback.
+    committed = take_committed()
+    assert len(committed) == 1
+    assert committed[0].event_name == "site.create"
+
+
+def test_take_committed_returns_empty_when_no_commit_happened() -> None:
+    queue_event("port", "create", 5, None, {"id": 5}, user_id=None)
+    # Without calling _promote_pending_to_committed, the committed bucket is
+    # untouched — so the middleware would dispatch nothing.
+    assert take_committed() == []

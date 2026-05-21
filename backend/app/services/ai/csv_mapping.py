@@ -289,7 +289,10 @@ _REQUIRED_FIELDS: dict[str, set[str]] = {
     "sites": {"code", "name"},
     "rooms": {"site_code", "code"},
     "vlans": {"vlan_id", "name"},
-    "subnets": {"cidr"},
+    # `site_code` is required by `_SubnetRow` in services.csv_import — Codex
+    # flagged the omission on PR #63, otherwise a CSV with blank site_code
+    # passed the mapper's data-quality check and crashed at import.
+    "subnets": {"cidr", "site_code"},
     "ips": {"address"},
     "devices": {"name"},
     "switches": {"name"},
@@ -325,7 +328,14 @@ _UNIQUE_FIELDS: dict[str, set[str]] = {
     "ips": {"address"},
 }
 
-_MAC_RE = re.compile(r"^[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}$", re.IGNORECASE)
+# Mirror the importer's `_MAC_PATTERNS` — colon/hyphen-separated, no
+# separator, AND Cisco-style dotted (`aabb.ccdd.eeff`). Codex flagged the
+# omission on PR #63 because the validator was rejecting MACs the importer
+# happily accepts.
+_MAC_PATTERNS = (
+    re.compile(r"^[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}$", re.IGNORECASE),
+    re.compile(r"^[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}$", re.IGNORECASE),
+)
 
 
 def _looks_like_cidr(value: str) -> bool:
@@ -345,7 +355,8 @@ def _looks_like_ipv4(value: str) -> bool:
 
 
 def _looks_like_mac(value: str) -> bool:
-    return bool(_MAC_RE.match(value.strip()))
+    s = value.strip()
+    return any(pat.match(s) for pat in _MAC_PATTERNS)
 
 
 def _looks_like_vlan_id(value: str) -> bool:
