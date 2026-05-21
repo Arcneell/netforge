@@ -180,3 +180,43 @@ async def test_tree_sorts_siblings_by_cidr() -> None:
     tree = await service.build_subnet_tree(db, vrf_id=None)
     ordered = [c["cidr"] for c in tree[0]["children"]]
     assert ordered == ["10.0.1.0/24", "10.0.5.0/24"]
+
+
+# --- _reject_vrf_move_with_children (Codex P1 on PR #64) -------------------
+
+
+def _mock_db_with_children_query(children_rows: list) -> AsyncMock:
+    """Mock returning `children_rows` for the SELECT inside
+    `_reject_vrf_move_with_children` — query shape doesn't matter here."""
+    children_result = MagicMock()
+    children_result.all = MagicMock(return_value=children_rows)
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=children_result)
+    return db
+
+
+@pytest.mark.asyncio
+async def test_reject_vrf_move_when_subnet_has_children() -> None:
+    """Moving a parent subnet to a new VRF while children still point to it
+    would silently violate the same-VRF invariant on those children. The
+    service must refuse the move with INVALID_PARENT."""
+    from types import SimpleNamespace
+
+    parent = _subnet(id=10, cidr="10.0.0.0/16", vrf_id=1)
+    db = _mock_db_with_children_query(
+        [SimpleNamespace(id=11, cidr="10.0.1.0/24"), SimpleNamespace(id=12, cidr="10.0.2.0/24")]
+    )
+    with pytest.raises(HTTPException) as exc:
+        await service._reject_vrf_move_with_children(db, parent, new_vrf=2)
+    assert exc.value.status_code == 400
+    detail = exc.value.detail["error"]
+    assert detail["code"] == "INVALID_PARENT"
+    assert detail["details"]["child_ids"] == [11, 12]
+
+
+@pytest.mark.asyncio
+async def test_vrf_move_allowed_when_subnet_has_no_children() -> None:
+    parent = _subnet(id=10, cidr="10.0.0.0/16", vrf_id=1)
+    db = _mock_db_with_children_query([])
+    # Should not raise.
+    await service._reject_vrf_move_with_children(db, parent, new_vrf=2)

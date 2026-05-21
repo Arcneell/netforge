@@ -1,16 +1,19 @@
 """Outbound webhooks — dispatch entity-change events to operator URLs.
 
 Wired into the audit listener: every CRUD that the audit log records also
-queues a webhook event into a request-scoped ContextVar. After the request
-completes successfully (status < 400, no exception), the ASGI middleware
-flushes the queue via `dispatch_pending()`, which:
+queues a webhook event into a request-scoped ContextVar. SQLAlchemy
+session-level `after_commit` / `after_rollback` events then promote the
+events to a "committed" bucket — or drop them on rollback. The ASGI
+middleware reads from that committed bucket at end-of-request and fires
+deliveries as a fire-and-forget asyncio task.
 
-  - resolves the list of enabled `Webhook` rows whose `events` patterns
-    match the queued events,
-  - POSTs the body to each, signed with HMAC-SHA256 of the body using the
-    webhook's `secret` (header `X-Netforge-Signature: sha256=<hex>`),
-  - writes a `WebhookDelivery` row per attempt and updates the parent
-    `Webhook`'s aggregate counters.
+Why route through commit/rollback events rather than the HTTP status code:
+the audit listeners fire on flush (Codex P1 on PR #62). Some write paths
+intentionally flush and roll back while still returning 2xx — the CSV
+import does this for `dry_run=true` and on partial failures. Gating on
+HTTP status would have notified subscribers about mutations that never
+actually committed. Hooking into the session lifecycle anchors dispatch
+to the real persistence boundary.
 
 We never block the request on dispatch — it always runs as a fire-and-forget
 asyncio task. The trade-off is that a slow webhook never slows down a user
@@ -34,8 +37,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models.webhook import Webhook, WebhookDelivery
@@ -53,7 +57,7 @@ _CLEANUP_INTERVAL = timedelta(hours=6)
 
 @dataclass
 class WebhookEvent:
-    """A pending dispatch — collected during a request, flushed on success."""
+    """A pending dispatch — collected during a request, flushed on commit."""
 
     entity: str
     action: str
@@ -80,24 +84,21 @@ class WebhookEvent:
         }
 
 
-# Populated by the audit listener via `queue_event`; flushed by the
-# ASGI middleware via `dispatch_pending`. Each request gets a fresh list
-# because ContextVar is task-local in asyncio.
+# Two request-scoped buckets:
+#   _pending_events_var  — queued by audit listeners on flush, awaiting the
+#                          session's commit/rollback verdict.
+#   _committed_events_var — promoted from pending by the session's
+#                           after_commit hook; consumed by the ASGI
+#                           middleware at end of request.
+# Both are reset per asyncio task (= per request).
 _pending_events_var: ContextVar[list[WebhookEvent] | None] = ContextVar(
     "webhook_pending_events", default=None
 )
+_committed_events_var: ContextVar[list[WebhookEvent] | None] = ContextVar(
+    "webhook_committed_events", default=None
+)
 
-# Module-level toggle so tests can disable dispatch globally without poking
-# at the model rows. Set False at app startup when no webhooks exist (cheap
-# optimisation) and re-enabled by the router when a row is created.
-_dispatch_enabled = True
 _last_cleanup_at: datetime | None = None
-
-
-def set_dispatch_enabled(enabled: bool) -> None:
-    """Tests / startup can short-circuit dispatch entirely."""
-    global _dispatch_enabled
-    _dispatch_enabled = enabled
 
 
 def queue_event(
@@ -108,9 +109,11 @@ def queue_event(
     after: dict[str, Any] | None,
     user_id: int | None,
 ) -> None:
-    """Called by the audit listener on each mutation. No I/O."""
-    if not _dispatch_enabled:
-        return
+    """Called by the audit listener on each mutation. No I/O.
+
+    The event sits in `_pending_events_var` until the surrounding session
+    commits (→ promoted to `_committed_events_var`) or rolls back (→ dropped).
+    """
     bucket = _pending_events_var.get()
     if bucket is None:
         bucket = []
@@ -128,12 +131,64 @@ def queue_event(
 
 
 def take_pending() -> list[WebhookEvent]:
-    """Drain the queue for the current request — used by tests + middleware."""
+    """Drain the pending queue without committing it — used by tests and by
+    the ASGI middleware on uncaught exceptions to discard never-committed
+    events."""
     bucket = _pending_events_var.get()
     if not bucket:
         return []
     _pending_events_var.set([])
     return bucket
+
+
+def take_committed() -> list[WebhookEvent]:
+    """Drain the committed queue — used by the ASGI middleware to fire
+    deliveries at end of request."""
+    bucket = _committed_events_var.get()
+    if not bucket:
+        return []
+    _committed_events_var.set([])
+    return bucket
+
+
+def _promote_pending_to_committed() -> None:
+    """Move every pending event into the committed bucket. Called when the
+    surrounding SQLAlchemy session commits successfully."""
+    pending = _pending_events_var.get()
+    if not pending:
+        return
+    _pending_events_var.set([])
+    committed = _committed_events_var.get()
+    if committed is None:
+        committed = []
+        _committed_events_var.set(committed)
+    committed.extend(pending)
+
+
+def _drop_pending() -> None:
+    """Discard the pending queue. Called when the surrounding session rolls
+    back so we never ping subscribers about rolled-back mutations."""
+    _pending_events_var.set([])
+
+
+# Register the session-lifecycle hooks once. SQLAlchemy fires these on the
+# underlying sync Session even when the caller uses AsyncSession — that's
+# why we listen on Session, not AsyncSession.
+@event.listens_for(Session, "after_commit")
+def _on_session_commit(_session: Session) -> None:
+    _promote_pending_to_committed()
+
+
+@event.listens_for(Session, "after_rollback")
+def _on_session_rollback(_session: Session) -> None:
+    _drop_pending()
+
+
+@event.listens_for(Session, "after_soft_rollback")
+def _on_session_soft_rollback(_session: Session, _previous_state: Any) -> None:
+    # SAVEPOINT releases / nested rollbacks also discard their queue — the
+    # audit rows were inserted under that savepoint and won't survive.
+    _drop_pending()
 
 
 def generate_secret() -> str:
@@ -167,13 +222,16 @@ def matches(pattern: str, event_name: str) -> bool:
 _background_tasks: set[asyncio.Task] = set()
 
 
-def dispatch_pending_in_background() -> None:
-    """Schedule a dispatch of currently-queued events as a fire-and-forget
-    task. Safe to call when nothing is pending — no task is created.
+def dispatch_committed_in_background() -> None:
+    """Schedule a dispatch of committed events as a fire-and-forget task.
+    Safe to call when nothing is committed — no task is created.
 
-    Called by the ASGI middleware once the response is known to be 2xx/3xx.
+    Called by the ASGI middleware once the request has completed; we use
+    the committed bucket (populated by the session's after_commit hook)
+    rather than the raw pending queue, so subscribers never see events
+    from rolled-back transactions.
     """
-    events = take_pending()
+    events = take_committed()
     if not events:
         return
     try:
@@ -187,7 +245,12 @@ def dispatch_pending_in_background() -> None:
 
 
 async def _dispatch_events(events: list[WebhookEvent]) -> None:
-    """One-shot fan-out: load matching webhooks, POST in parallel."""
+    """One-shot fan-out: load matching webhooks, POST in parallel.
+
+    The lookup query lives here (not at queue time) so toggling a webhook
+    on/off takes effect for the very next request in every worker process
+    — no cross-worker cache to sync (Codex P2 on PR #62).
+    """
     try:
         async with SessionLocal() as db:
             result = await db.execute(
@@ -198,12 +261,12 @@ async def _dispatch_events(events: list[WebhookEvent]) -> None:
                 return
 
             tasks: list[asyncio.Task] = []
-            for event in events:
+            for ev in events:
                 for webhook in webhooks:
-                    if any(matches(p, event.event_name) for p in webhook.events):
+                    if any(matches(p, ev.event_name) for p in webhook.events):
                         tasks.append(
                             asyncio.create_task(
-                                _deliver_one(webhook.id, webhook.url, webhook.secret, event)
+                                _deliver_one(webhook.id, webhook.url, webhook.secret, ev)
                             )
                         )
             if tasks:
@@ -215,16 +278,16 @@ async def _dispatch_events(events: list[WebhookEvent]) -> None:
 
 
 async def _deliver_one(
-    webhook_id: int, url: str, secret: str, event: WebhookEvent
+    webhook_id: int, url: str, secret: str, ev: WebhookEvent
 ) -> None:
     """Send one POST, write the delivery row + update aggregates. Never raises."""
-    payload = event.to_payload()
+    payload = ev.to_payload()
     body = json.dumps(payload, default=str, separators=(",", ":")).encode("utf-8")
     signature = sign_body(secret, body)
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "Netforge-Webhook/1.0",
-        "X-Netforge-Event": event.event_name,
+        "X-Netforge-Event": ev.event_name,
         "X-Netforge-Signature": signature,
         "X-Netforge-Delivery": secrets.token_hex(8),
     }
@@ -251,7 +314,7 @@ async def _deliver_one(
             db.add(
                 WebhookDelivery(
                     webhook_id=webhook_id,
-                    event=event.event_name,
+                    event=ev.event_name,
                     payload=payload,
                     status_code=status_code,
                     success=success,
@@ -287,21 +350,6 @@ async def _maybe_cleanup_old_deliveries(db: AsyncSession) -> None:
     cutoff = now - _DELIVERY_RETENTION
     await db.execute(delete(WebhookDelivery).where(WebhookDelivery.created_at < cutoff))
     await db.commit()
-
-
-async def refresh_dispatch_enabled() -> None:
-    """Probe the DB for any enabled webhook and update the module toggle.
-
-    Called at startup so we can short-circuit dispatch for installs that
-    never use webhooks (zero overhead). Routers call it again after each
-    create/update/delete so toggling a row takes effect immediately.
-    """
-    async with SessionLocal() as db:
-        result = await db.execute(
-            select(Webhook.id).where(Webhook.enabled.is_(True)).limit(1)
-        )
-        any_enabled = result.first() is not None
-    set_dispatch_enabled(any_enabled)
 
 
 async def send_test_event(webhook: Webhook) -> WebhookDelivery:
