@@ -23,6 +23,10 @@ const loading = ref(false)
 
 const createOpen = ref(false)
 const newName = ref('')
+// `<input type="datetime-local">` exposes the value as the local-time
+// "YYYY-MM-DDTHH:mm" string with no timezone. We append ":00" + the user's
+// offset before posting so the server stores an unambiguous UTC instant.
+const newExpiresAt = ref('')
 const creating = ref(false)
 const createError = ref<string | null>(null)
 
@@ -63,6 +67,7 @@ onMounted(load)
 
 function openCreate() {
   newName.value = ''
+  newExpiresAt.value = ''
   createError.value = null
   // Wipe a previous plaintext before opening — we never want two open tokens
   // visible at once. The user closing the previous create-result modal also
@@ -72,6 +77,17 @@ function openCreate() {
   createOpen.value = true
 }
 
+function parseExpiry(): string | null {
+  const raw = newExpiresAt.value.trim()
+  if (!raw) return null
+  // `datetime-local` gives us "YYYY-MM-DDTHH:mm" without timezone. Hand it
+  // to the Date ctor (which interprets it in the user's local tz) and
+  // serialise as ISO 8601 with the Z suffix — backend stores UTC.
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString()
+}
+
 async function submitCreate(e: Event) {
   e.preventDefault()
   if (creating.value) return
@@ -79,10 +95,24 @@ async function submitCreate(e: Event) {
     createError.value = t('common.validation.required')
     return
   }
+  const expiresAt = parseExpiry()
+  if (newExpiresAt.value.trim() && expiresAt === null) {
+    createError.value = t('apiTokens.invalidExpiry')
+    return
+  }
+  // Reject past dates — the backend would accept the token but it'd be
+  // immediately expired. Trip this client-side so the user can fix it.
+  if (expiresAt && new Date(expiresAt) <= new Date()) {
+    createError.value = t('apiTokens.expiryInPast')
+    return
+  }
   creating.value = true
   createError.value = null
   try {
-    const result = await authApi.createToken({ name: newName.value.trim() })
+    const result = await authApi.createToken({
+      name: newName.value.trim(),
+      expires_at: expiresAt,
+    })
     justCreated.value = result
     createOpen.value = false
     await load()
@@ -221,6 +251,18 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
           </template>
         </FormField>
         <p class="text-xs text-fg-muted -mt-2">{{ t('apiTokens.nameHint') }}</p>
+
+        <FormField :label="t('apiTokens.fields.expiresAt')">
+          <template #default="{ id }">
+            <Input
+              :id="id"
+              v-model="newExpiresAt"
+              type="datetime-local"
+              autocomplete="off"
+            />
+          </template>
+        </FormField>
+        <p class="text-xs text-fg-muted -mt-2">{{ t('apiTokens.expiresAtHint') }}</p>
       </form>
       <template #footer>
         <div class="flex justify-end gap-2">

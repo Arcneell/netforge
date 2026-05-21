@@ -316,6 +316,7 @@ async def stream_audit_export(
     *,
     entity: str | None = None,
     entity_id: int | None = None,
+    action: str | None = None,
     user_id: int | None = None,
     from_: datetime | None = None,
     to: datetime | None = None,
@@ -357,6 +358,8 @@ async def stream_audit_export(
         q = q.where(AuditLog.entity == entity)
     if entity_id is not None:
         q = q.where(AuditLog.entity_id == entity_id)
+    if action is not None:
+        q = q.where(AuditLog.action == action)
     if user_id is not None:
         q = q.where(AuditLog.user_id == user_id)
     if from_ is not None:

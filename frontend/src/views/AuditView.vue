@@ -52,12 +52,9 @@ async function load() {
       page: page.value,
       page_size: pageSize,
       entity: entityFilter.value || undefined,
+      action: actionFilter.value || undefined,
     })
-    let rows = res.items
-    // The backend filters by entity server-side, but not by action — keep that
-    // filter client-side to avoid an API churn for what's effectively a UI knob.
-    if (actionFilter.value) rows = rows.filter((r) => r.action === actionFilter.value)
-    items.value = rows
+    items.value = res.items
     total.value = res.total
   } finally {
     loading.value = false
@@ -91,12 +88,12 @@ const columns: DataTableColumn[] = [
 ]
 
 function exportCsv() {
-  // Carry the visible entity filter into the export so what the admin sees on
-  // screen matches what lands in the file. The action filter stays purely
-  // client-side (matches the `load()` comment); replicating it here would mean
-  // adding a server-side action filter and that's out of scope.
+  // Carry the visible filters into the export so what the admin sees on
+  // screen matches what lands in the file. The export endpoint accepts the
+  // same filter params as the list endpoint.
   const params = new URLSearchParams()
   if (entityFilter.value) params.set('entity', entityFilter.value)
+  if (actionFilter.value) params.set('action', actionFilter.value)
   const qs = params.toString()
   const url = qs ? `/api/exports/audit?${qs}` : '/api/exports/audit'
   window.open(url, '_blank', 'noopener')

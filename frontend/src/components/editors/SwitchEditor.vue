@@ -35,6 +35,11 @@ interface Form {
   port_count: number
   firmware_version: string
   snmp_community: string
+  asset_tag: string
+  // ISO date strings (YYYY-MM-DD) — `<input type="date">` exposes them that
+  // way and the Pydantic `date` schema accepts the same format directly.
+  warranty_expires_at: string
+  eol_date: string
   description: string
 }
 
@@ -49,6 +54,9 @@ const form = reactive<Form>({
   port_count: 48,
   firmware_version: '',
   snmp_community: '',
+  asset_tag: '',
+  warranty_expires_at: '',
+  eol_date: '',
   description: '',
 })
 const errors = reactive<Partial<Record<keyof Form, string | null>>>({})
@@ -73,6 +81,9 @@ watch(
     form.port_count = s?.port_count ?? 48
     form.firmware_version = s?.firmware_version ?? ''
     form.snmp_community = s?.snmp_community ?? ''
+    form.asset_tag = s?.asset_tag ?? ''
+    form.warranty_expires_at = s?.warranty_expires_at ?? ''
+    form.eol_date = s?.eol_date ?? ''
     form.description = s?.description ?? ''
     Object.keys(errors).forEach((k) => ((errors as Record<string, string | null>)[k] = null))
     submitError.value = null
@@ -123,6 +134,9 @@ async function onSubmit(e: Event) {
       rack_position: form.rack_position.trim() || null,
       firmware_version: form.firmware_version.trim() || null,
       snmp_community: form.snmp_community.trim() || null,
+      asset_tag: form.asset_tag.trim() || null,
+      warranty_expires_at: form.warranty_expires_at || null,
+      eol_date: form.eol_date || null,
       description: form.description.trim() || null,
     }
     let saved: Switch
@@ -238,6 +252,22 @@ async function onSubmit(e: Event) {
       <FormField :label="t('switch.fields.snmpCommunity')" :hint="t('switch.snmpCommunityHint')">
         <template #default="{ id }">
           <Input :id="id" v-model="form.snmp_community" type="password" autocomplete="off" />
+        </template>
+      </FormField>
+
+      <FormField :label="t('switch.fields.assetTag')">
+        <template #default="{ id }">
+          <Input :id="id" v-model="form.asset_tag" placeholder="NF-001234" autocomplete="off" />
+        </template>
+      </FormField>
+      <FormField :label="t('switch.fields.warrantyExpiresAt')">
+        <template #default="{ id }">
+          <Input :id="id" v-model="form.warranty_expires_at" type="date" autocomplete="off" />
+        </template>
+      </FormField>
+      <FormField :label="t('switch.fields.eolDate')" :hint="t('switch.eolHint')">
+        <template #default="{ id }">
+          <Input :id="id" v-model="form.eol_date" type="date" autocomplete="off" />
         </template>
       </FormField>
 

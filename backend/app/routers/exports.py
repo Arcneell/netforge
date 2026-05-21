@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
-from app.models.user import UserRole
+from app.models.user import AuditAction, UserRole
 from app.services import csv_export as service
 from app.services.errors import http_error
 
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/exports", tags=["exports"])
 async def export_audit(
     entity: str | None = Query(default=None, min_length=1, max_length=50),
     entity_id: int | None = Query(default=None, gt=0),
+    action: AuditAction | None = Query(default=None),
     user_id: int | None = Query(default=None, gt=0),
     from_: datetime | None = Query(default=None, alias="from"),
     to: datetime | None = Query(default=None),
@@ -43,6 +44,7 @@ async def export_audit(
             db,
             entity=entity,
             entity_id=entity_id,
+            action=action.value if action is not None else None,
             user_id=user_id,
             from_=from_,
             to=to,

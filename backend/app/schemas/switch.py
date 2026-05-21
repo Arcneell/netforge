@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from ipaddress import IPv4Address
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -23,6 +23,9 @@ class SwitchBase(BaseModel):
     port_count: int = Field(gt=0, le=1024)
     firmware_version: str | None = Field(default=None, max_length=50)
     snmp_community: str | None = Field(default=None, max_length=100)
+    asset_tag: str | None = Field(default=None, max_length=50)
+    warranty_expires_at: date | None = None
+    eol_date: date | None = None
     description: str | None = None
 
     @field_validator("management_ip", mode="before")
@@ -47,6 +50,9 @@ class SwitchUpdate(BaseModel):
     # in bulk would silently destroy port references on links/VLANs.
     firmware_version: str | None = Field(default=None, max_length=50)
     snmp_community: str | None = Field(default=None, max_length=100)
+    asset_tag: str | None = Field(default=None, max_length=50)
+    warranty_expires_at: date | None = None
+    eol_date: date | None = None
     description: str | None = None
 
     @field_validator("management_ip", mode="before")
