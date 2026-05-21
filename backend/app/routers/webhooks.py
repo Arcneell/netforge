@@ -23,11 +23,7 @@ from app.schemas.webhook import (
     WebhookUpdate,
 )
 from app.services.errors import catch_integrity_errors, not_found
-from app.services.webhooks import (
-    generate_secret,
-    refresh_dispatch_enabled,
-    send_test_event,
-)
+from app.services.webhooks import generate_secret, send_test_event
 
 router = APIRouter(
     prefix="/webhooks",
@@ -58,7 +54,6 @@ async def create_webhook(
         db.add(row)
         await db.commit()
     await db.refresh(row)
-    await refresh_dispatch_enabled()
     return WebhookCreated(secret=secret, **WebhookRead.model_validate(row).model_dump())
 
 
@@ -89,7 +84,6 @@ async def update_webhook(
     with catch_integrity_errors():
         await db.commit()
     await db.refresh(row)
-    await refresh_dispatch_enabled()
     return WebhookRead.model_validate(row)
 
 
@@ -102,7 +96,6 @@ async def delete_webhook(
         not_found("Webhook", webhook_id)
     await db.delete(row)
     await db.commit()
-    await refresh_dispatch_enabled()
 
 
 @router.post("/{webhook_id}/rotate-secret", response_model=WebhookCreated)

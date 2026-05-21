@@ -173,12 +173,46 @@ async def update_subnet(
         parent_subnet_id=new_parent,
         self_id=subnet.id,
     )
+    # Block a VRF move that would strand existing children in a different
+    # scope. Without this guard the children silently violate the "same
+    # VRF as parent" invariant and any later edit to them fails with a
+    # confusing INVALID_PARENT (Codex P1 on #64).
+    if "vrf_id" in patch and new_vrf != subnet.vrf_id:
+        await _reject_vrf_move_with_children(db, subnet, new_vrf)
     for field, value in patch.items():
         setattr(subnet, field, value)
     with catch_integrity_errors():
         await db.commit()
     await db.refresh(subnet)
     return subnet
+
+
+async def _reject_vrf_move_with_children(
+    db: AsyncSession, subnet: Subnet, new_vrf: int | None
+) -> None:
+    """Refuse to move a subnet to a new VRF while children point to it.
+
+    Operators should either re-parent the children first, or move the whole
+    subtree atomically via separate calls. Surfacing this as a 400 is much
+    safer than silently leaving the hierarchy inconsistent.
+    """
+    result = await db.execute(
+        select(Subnet.id, Subnet.cidr).where(Subnet.parent_subnet_id == subnet.id)
+    )
+    children = list(result.all())
+    if not children:
+        return
+    business_rule(
+        "INVALID_PARENT",
+        f"Cannot move subnet {subnet.cidr} to a different VRF while {len(children)} "
+        f"child subnet(s) still reference it. Detach or move the children first.",
+        details={
+            "subnet_id": subnet.id,
+            "current_vrf_id": subnet.vrf_id,
+            "requested_vrf_id": new_vrf,
+            "child_ids": [int(c.id) for c in children],
+        },
+    )
 
 
 async def delete_subnet(db: AsyncSession, subnet_id: int) -> None:
