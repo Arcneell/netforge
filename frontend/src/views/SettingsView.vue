@@ -9,6 +9,7 @@ import SiteEditor from '@/components/editors/SiteEditor.vue'
 import RoomEditor from '@/components/editors/RoomEditor.vue'
 import ApiTokensSection from '@/components/settings/ApiTokensSection.vue'
 import AiSection from '@/components/settings/AiSection.vue'
+import WebhooksSection from '@/components/settings/WebhooksSection.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { roomsApi, sitesApi } from '@/api'
 import type { Room, Site } from '@/api'
@@ -19,7 +20,7 @@ const { t } = useI18n()
 const { success } = useToast()
 const { describe } = useApiErrorMessage()
 
-const tab = ref<'sites' | 'rooms' | 'tokens' | 'ai'>('sites')
+const tab = ref<'sites' | 'rooms' | 'tokens' | 'ai' | 'webhooks'>('sites')
 
 // --- Sites ---
 const sites = ref<Site[]>([])
@@ -193,6 +194,20 @@ const roomColumns: DataTableColumn[] = [
       >
         {{ t('settings.aiTab') }}
       </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'webhooks'"
+        :class="[
+          'px-3 h-8 rounded text-sm font-medium transition',
+          tab === 'webhooks'
+            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+        ]"
+        @click="tab = 'webhooks'"
+      >
+        {{ t('settings.webhooksTab') }}
+      </button>
     </div>
 
     <!-- Sites tab -->
@@ -241,6 +256,9 @@ const roomColumns: DataTableColumn[] = [
 
     <!-- AI tab -->
     <AiSection v-else-if="tab === 'ai'" />
+
+    <!-- Webhooks tab -->
+    <WebhooksSection v-else-if="tab === 'webhooks'" />
 
     <!-- Rooms tab -->
     <section v-else>

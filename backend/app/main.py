@@ -32,11 +32,17 @@ from app.routers import (
     switches,
     topology,
     vlans,
+    webhooks,
 )
 from app.services.audit import (
     current_request_ip_var,
     current_request_ua_var,
     register_audit_listeners,
+)
+from app.services.webhooks import (
+    dispatch_pending_in_background,
+    refresh_dispatch_enabled,
+    take_pending,
 )
 from app.utils.request import client_ip
 
@@ -61,6 +67,14 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     from app.services.ai.scheduler import start_scheduler, stop_scheduler
 
     start_scheduler()
+    # One-shot probe so the webhook dispatcher can short-circuit when no
+    # operator has configured a subscriber. The router refreshes this on
+    # every CRUD; we only need to seed it at boot.
+    try:
+        await refresh_dispatch_enabled()
+    except Exception:
+        # Never block startup on a DB hiccup — webhook dispatch is best-effort.
+        logger.exception("webhook dispatch state probe failed at startup")
     try:
         yield
     finally:
@@ -111,6 +125,9 @@ class _RequestLogMiddleware:
         try:
             await self.app(scope, receive, send_with_request_id)
         except Exception:
+            # The request blew up — drop any queued webhook events so we
+            # don't ping subscribers about a transaction that rolled back.
+            take_pending()
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.exception(
                 "request.error rid=%s %s %s duration_ms=%d",
@@ -120,6 +137,15 @@ class _RequestLogMiddleware:
                 duration_ms,
             )
             raise
+        # Successful or client-error response: dispatch the webhooks queued
+        # by the audit listener during this request. 4xx responses still
+        # fire — a failed DELETE that nonetheless wrote something would be
+        # a bug elsewhere, but if mutations happened the subscribers must
+        # see them. We only suppress on 5xx (treated as "may have rolled back").
+        if status_holder["code"] < 500:
+            dispatch_pending_in_background()
+        else:
+            take_pending()
         duration_ms = int((time.monotonic() - start) * 1000)
         logger.info(
             "request rid=%s %s %s status=%d duration_ms=%d",
@@ -197,6 +223,7 @@ def create_app() -> FastAPI:
     app.include_router(imports.router, prefix="/api")
     app.include_router(exports.router, prefix="/api")
     app.include_router(ai.router, prefix="/api")
+    app.include_router(webhooks.router, prefix="/api")
 
     return app
 
