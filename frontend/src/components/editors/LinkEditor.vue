@@ -9,6 +9,9 @@ import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
 import { linksApi, portsApi, switchesApi } from '@/api'
 import type { Link, LinkType, Port, Switch } from '@/api'
+import { cablesApi } from '@/api/endpoints/cables'
+import type { Cable } from '@/api/endpoints/cables'
+import { ApiError } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 
 const props = defineProps<{
@@ -83,6 +86,23 @@ const loadingPortsB = ref(false)
 const endpointALabel = ref<string>('')
 const endpointBLabel = ref<string>('')
 
+// Cable metadata attached to the link (1:1). Read on open; null = no cable
+// row yet, so the inline form acts as "create cable for this link".
+const cable = ref<Cable | null>(null)
+const cableForm = reactive({
+  label: '',
+  length_m: null as number | null,
+  color: '',
+  vendor: '',
+  part_number: '',
+  serial: '',
+  installed_on: '',
+  last_tested_on: '',
+  notes: '',
+})
+const cableSaving = ref(false)
+const cableError = ref<string | null>(null)
+
 const linkTypeOptions = computed(() => [
   { value: 'copper', label: t('link.types.copper') },
   { value: 'fiber', label: t('link.types.fiber') },
@@ -143,9 +163,99 @@ watch(
       // "#42". The ports API returns the Port; we then look up its switch via
       // the cached map to render `<switch>:<number>`.
       await resolveEndpointLabels(props.link)
+      await loadCable(props.link.id)
     }
   },
 )
+
+async function loadCable(linkId: number) {
+  // Reset to a blank form before each fetch so a previously-opened link's
+  // cable can't bleed into the next session.
+  cable.value = null
+  Object.assign(cableForm, {
+    label: '',
+    length_m: null,
+    color: '',
+    vendor: '',
+    part_number: '',
+    serial: '',
+    installed_on: '',
+    last_tested_on: '',
+    notes: '',
+  })
+  cableError.value = null
+  try {
+    cable.value = await cablesApi.forLink(linkId)
+    Object.assign(cableForm, {
+      label: cable.value.label ?? '',
+      length_m: cable.value.length_m,
+      color: cable.value.color ?? '',
+      vendor: cable.value.vendor ?? '',
+      part_number: cable.value.part_number ?? '',
+      serial: cable.value.serial ?? '',
+      installed_on: cable.value.installed_on ?? '',
+      last_tested_on: cable.value.last_tested_on ?? '',
+      notes: cable.value.notes ?? '',
+    })
+  } catch (err) {
+    // 404 just means "no cable attached yet" — the inline form acts as
+    // "create one". Any other failure surfaces as an error in the panel.
+    if (!(err instanceof ApiError && err.status === 404)) {
+      cableError.value = describe(err)
+    }
+  }
+}
+
+async function saveCable() {
+  if (!props.link || cableSaving.value) return
+  cableSaving.value = true
+  cableError.value = null
+  const body = {
+    label: cableForm.label.trim() || null,
+    link_id: props.link.id,
+    length_m: cableForm.length_m,
+    color: cableForm.color.trim() || null,
+    vendor: cableForm.vendor.trim() || null,
+    part_number: cableForm.part_number.trim() || null,
+    serial: cableForm.serial.trim() || null,
+    installed_on: cableForm.installed_on || null,
+    last_tested_on: cableForm.last_tested_on || null,
+    notes: cableForm.notes.trim() || null,
+  }
+  try {
+    cable.value = cable.value
+      ? await cablesApi.update(cable.value.id, body)
+      : await cablesApi.create(body)
+  } catch (err) {
+    cableError.value = describe(err)
+  } finally {
+    cableSaving.value = false
+  }
+}
+
+async function deleteCable() {
+  if (!cable.value) return
+  cableSaving.value = true
+  try {
+    await cablesApi.delete(cable.value.id)
+    cable.value = null
+    Object.assign(cableForm, {
+      label: '',
+      length_m: null,
+      color: '',
+      vendor: '',
+      part_number: '',
+      serial: '',
+      installed_on: '',
+      last_tested_on: '',
+      notes: '',
+    })
+  } catch (err) {
+    cableError.value = describe(err)
+  } finally {
+    cableSaving.value = false
+  }
+}
 
 async function resolveEndpointLabels(link: Link) {
   try {
@@ -397,6 +507,93 @@ async function onSubmit(e: Event) {
 
       <p v-if="submitError" class="text-sm text-danger" role="alert">{{ submitError }}</p>
     </form>
+
+    <!-- Cable metadata — edit mode only. Independent persistence (separate
+         endpoints, doesn't block the link save). -->
+    <fieldset v-if="isEdit" class="mt-4 rounded-md border border-border p-3 space-y-3">
+      <legend class="text-xs uppercase tracking-wide text-fg-muted px-1">
+        {{ t('cable.label') }}
+      </legend>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <FormField :label="t('cable.fields.label')">
+          <template #default="{ id }">
+            <Input :id="id" v-model="cableForm.label" maxlength="120" autocomplete="off" />
+          </template>
+        </FormField>
+        <FormField :label="t('cable.fields.length')">
+          <template #default="{ id }">
+            <Input
+              :id="id"
+              v-model.number="cableForm.length_m"
+              type="number"
+              min="0"
+              max="10000"
+              autocomplete="off"
+            />
+          </template>
+        </FormField>
+        <FormField :label="t('cable.fields.color')">
+          <template #default="{ id }">
+            <Input :id="id" v-model="cableForm.color" maxlength="40" autocomplete="off" />
+          </template>
+        </FormField>
+        <FormField :label="t('cable.fields.vendor')">
+          <template #default="{ id }">
+            <Input :id="id" v-model="cableForm.vendor" maxlength="100" autocomplete="off" />
+          </template>
+        </FormField>
+        <FormField :label="t('cable.fields.partNumber')">
+          <template #default="{ id }">
+            <Input
+              :id="id"
+              v-model="cableForm.part_number"
+              maxlength="100"
+              autocomplete="off"
+            />
+          </template>
+        </FormField>
+        <FormField :label="t('cable.fields.serial')">
+          <template #default="{ id }">
+            <Input :id="id" v-model="cableForm.serial" maxlength="120" autocomplete="off" />
+          </template>
+        </FormField>
+        <FormField :label="t('cable.fields.installedOn')">
+          <template #default="{ id }">
+            <Input :id="id" v-model="cableForm.installed_on" type="date" autocomplete="off" />
+          </template>
+        </FormField>
+        <FormField :label="t('cable.fields.lastTestedOn')">
+          <template #default="{ id }">
+            <Input
+              :id="id"
+              v-model="cableForm.last_tested_on"
+              type="date"
+              autocomplete="off"
+            />
+          </template>
+        </FormField>
+      </div>
+      <FormField :label="t('cable.fields.notes')">
+        <template #default="{ id }">
+          <Textarea :id="id" v-model="cableForm.notes" :rows="2" />
+        </template>
+      </FormField>
+      <p v-if="cableError" class="text-sm text-danger" role="alert">{{ cableError }}</p>
+      <div class="flex justify-end gap-2">
+        <Button
+          v-if="cable"
+          variant="ghost"
+          size="sm"
+          :disabled="cableSaving"
+          @click="deleteCable"
+        >
+          {{ t('cable.delete') }}
+        </Button>
+        <Button variant="secondary" size="sm" :loading="cableSaving" @click="saveCable">
+          {{ cable ? t('cable.save') : t('cable.create') }}
+        </Button>
+      </div>
+    </fieldset>
 
     <template #footer>
       <div class="flex justify-end gap-2">

@@ -18,6 +18,7 @@ from app.routers import (
     ai,
     audit,
     auth,
+    cables,
     devices,
     exports,
     health,
@@ -219,6 +220,8 @@ def create_app() -> FastAPI:
     app.include_router(ports.nested_router, prefix="/api")
     app.include_router(ports.router, prefix="/api")
     app.include_router(links.router, prefix="/api")
+    app.include_router(cables.router, prefix="/api")
+    app.include_router(cables.nested_router, prefix="/api")
     app.include_router(audit.router, prefix="/api")
     app.include_router(search.router, prefix="/api")
     app.include_router(topology.router, prefix="/api")
