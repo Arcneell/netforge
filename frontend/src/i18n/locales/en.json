@@ -241,6 +241,10 @@
     "vrfFilterAll": "All scopes",
     "vrfFilterGlobal": "Global",
     "treeEmpty": "No subnets in this scope — create one to get started.",
+    "tree": {
+      "autoGroup": "Auto",
+      "containedCount": "{n} subnet(s) in this range"
+    },
     "exportCsv": "Export CSV",
     "nextFree": "Next free IP",
     "nextFreeFound": "Next free address: {address}",

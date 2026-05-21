@@ -108,6 +108,10 @@ class SubnetTreeNode(BaseModel):
     gateway: str | None = None
     usable: int = 0
     used: int = 0
+    # True when this node is a virtual supernet synthesised by
+    # `_auto_group_roots`: it has no DB row, can't be opened in the
+    # editor, and its `id` is negative.
+    synthetic: bool = False
     children: list[SubnetTreeNode] = []
 
 

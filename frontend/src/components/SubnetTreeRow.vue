@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ChevronDown, ChevronRight, Network } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
+import { ChevronDown, ChevronRight, FolderTree, Network } from 'lucide-vue-next'
 import VlanBadge from '@/components/VlanBadge.vue'
 import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import type { SubnetTreeNode } from '@/api/endpoints/subnets'
 import type { Vlan } from '@/api'
+
+const { t } = useI18n()
 
 /**
  * One row in the subnet hierarchy tree, drawn with explorer-style
@@ -43,6 +46,7 @@ const emit = defineEmits<{
 
 const hasChildren = computed(() => props.node.children.length > 0)
 const isCollapsed = computed(() => props.collapsed.has(props.node.id))
+const isSynthetic = computed(() => props.node.synthetic === true)
 
 const vlan = computed<Vlan | null>(() =>
   props.node.vlan_id ? (props.vlansById.get(props.node.vlan_id) ?? null) : null,
@@ -52,15 +56,27 @@ const vlan = computed<Vlan | null>(() =>
 // `paddingLeft` style and the absolute-positioned guide lines below.
 const INDENT_REM = 1.5
 
-const childAncestorOpen = computed(() => [...props.ancestorOpen, !props.isLast])
+// Children inherit our ancestor trail PLUS our own column — but only when
+// we ourselves have an elbow column to extend (i.e. depth >= 1). For
+// depth-0 roots, appending would put a guide line right on top of the
+// depth-1 child's elbow stem (same x-position), which makes a last-child
+// `└` look like a continuing `├`. Codex P2 on #74.
+const childAncestorOpen = computed<boolean[]>(() =>
+  props.depth === 0 ? props.ancestorOpen : [...props.ancestorOpen, !props.isLast],
+)
 </script>
 
 <template>
   <li>
     <div
-      class="relative group flex items-center min-h-[2.25rem] hover:bg-surface-hover cursor-pointer transition-colors"
+      :class="[
+        'relative group flex items-center min-h-[2.25rem] transition-colors',
+        isSynthetic
+          ? 'cursor-default bg-muted/30 hover:bg-muted/40'
+          : 'cursor-pointer hover:bg-surface-hover',
+      ]"
       :style="{ paddingLeft: `${depth * INDENT_REM + 0.75}rem` }"
-      @click="emit('open', node.id)"
+      @click="isSynthetic ? null : emit('open', node.id)"
     >
       <!-- Vertical guide lines for ancestor columns that still have more
            siblings below this row. Centered horizontally in each indent
@@ -114,25 +130,46 @@ const childAncestorOpen = computed(() => [...props.ancestorOpen, !props.isLast])
         v-else
         class="relative z-10 w-5 h-5 inline-flex items-center justify-center text-fg-muted flex-shrink-0 bg-surface rounded"
       >
-        <Network class="w-3 h-3" aria-hidden="true" />
+        <FolderTree v-if="isSynthetic" class="w-3 h-3" aria-hidden="true" />
+        <Network v-else class="w-3 h-3" aria-hidden="true" />
       </span>
 
       <div class="flex items-center gap-2 px-2 py-1.5 min-w-0 flex-1">
-        <span class="font-mono text-sm font-medium truncate">{{ node.cidr }}</span>
+        <span
+          :class="[
+            'font-mono text-sm truncate',
+            isSynthetic ? 'font-semibold italic text-fg-muted' : 'font-medium',
+          ]"
+        >
+          {{ node.cidr }}
+        </span>
 
-        <VlanBadge v-if="vlan" :vlan="vlan" class="flex-shrink-0" />
+        <span
+          v-if="isSynthetic"
+          class="text-[10px] uppercase tracking-wider text-fg-muted bg-muted px-1.5 py-px rounded font-semibold flex-shrink-0"
+        >
+          {{ t('subnet.tree.autoGroup') }}
+        </span>
 
-        <span v-if="node.gateway" class="text-xs text-fg-muted font-mono hidden md:inline">
+        <VlanBadge v-if="vlan && !isSynthetic" :vlan="vlan" class="flex-shrink-0" />
+
+        <span
+          v-if="node.gateway && !isSynthetic"
+          class="text-xs text-fg-muted font-mono hidden md:inline"
+        >
           → {{ node.gateway }}
         </span>
 
-        <span v-if="node.description" class="text-xs text-fg-muted truncate hidden lg:inline">
+        <span
+          v-if="node.description && !isSynthetic"
+          class="text-xs text-fg-muted truncate hidden lg:inline"
+        >
           — {{ node.description }}
         </span>
 
         <span class="ml-auto flex items-center gap-3 flex-shrink-0">
           <SubnetFillBar
-            v-if="node.usable > 0"
+            v-if="node.usable > 0 && !isSynthetic"
             :used="node.used"
             :usable="node.usable"
             class="hidden sm:inline-flex"
@@ -140,7 +177,11 @@ const childAncestorOpen = computed(() => [...props.ancestorOpen, !props.isLast])
           <span
             v-if="hasChildren"
             class="text-[11px] text-fg-muted tabular-nums px-1.5 rounded bg-muted"
-            :title="`${node.children.length} child subnet(s)`"
+            :title="
+              isSynthetic
+                ? t('subnet.tree.containedCount', { n: node.children.length })
+                : `${node.children.length} child subnet(s)`
+            "
           >
             {{ node.children.length }}
           </span>
