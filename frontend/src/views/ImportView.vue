@@ -17,6 +17,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Select from '@/components/ui/Select.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import CsvDropzone from '@/components/CsvDropzone.vue'
 import CsvMappingAssistant from '@/components/CsvMappingAssistant.vue'
 import {
@@ -331,6 +332,9 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
 <template>
   <div class="p-6 max-w-5xl mx-auto">
     <PageHeader :title="t('nav.import')" :subtitle="t('import.subtitle')">
+      <template #help>
+        <HelpTooltip :text="t('import.help')" placement="bottom" />
+      </template>
       <template #actions>
         <Button variant="ghost" @click="mappingOpen = true">
           <Wand2 class="w-4 h-4" aria-hidden="true" />

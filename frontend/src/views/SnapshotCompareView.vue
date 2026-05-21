@@ -6,6 +6,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { snapshotsApi } from '@/api/endpoints/snapshots'
 import type { SnapshotCompareResponse } from '@/api/endpoints/snapshots'
@@ -94,7 +95,11 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
     <PageHeader
       :title="t('snapshots.compare.title')"
       :subtitle="t('snapshots.compare.subtitle')"
-    />
+    >
+      <template #help>
+        <HelpTooltip :text="t('snapshots.compare.help')" placement="bottom" />
+      </template>
+    </PageHeader>
 
     <!-- Range pickers -->
     <div class="nf-card p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
