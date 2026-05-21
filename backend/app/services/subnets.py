@@ -152,6 +152,46 @@ async def next_free_ip(db: AsyncSession, subnet_id: int) -> str:
     )
 
 
+async def compute_utilization(
+    db: AsyncSession, subnet_id: int
+) -> tuple[Subnet, dict[str, int]]:
+    """Snapshot of how full a subnet is — usable space, count per IP status.
+
+    Does NOT scan the address space (unlike `list_subnet_ips`), so it works
+    on subnets larger than `_MAX_HOSTS_FOR_SCAN`. Just two SELECTs: one to
+    fetch the subnet row, one aggregated count grouped by status.
+
+    Returned counts cover every `Ip` row attached to the subnet — the
+    caller derives the free count as `usable - sum(by_status.values())`.
+    The /31 and /32 special cases match the integrity check (RFC 3021).
+    """
+    subnet = await get_subnet(db, subnet_id)
+    network = IPv4Network(subnet.cidr, strict=False)
+    usable = (
+        network.num_addresses if network.prefixlen >= 31 else network.num_addresses - 2
+    )
+
+    counts_rows = (
+        await db.execute(
+            select(Ip.status, func.count(Ip.id))
+            .where(Ip.subnet_id == subnet_id)
+            .group_by(Ip.status)
+        )
+    ).all()
+    by_status: dict[str, int] = {"assigned": 0, "reserved": 0, "dhcp": 0}
+    for status_val, count in counts_rows:
+        key = status_val.value if hasattr(status_val, "value") else str(status_val)
+        by_status[key] = int(count)
+
+    consumed = sum(by_status.values())
+    return subnet, {
+        "usable": usable,
+        "free": max(0, usable - consumed),
+        "used_pct": (consumed * 100 // usable) if usable > 0 else 0,
+        **{f"status_{k}": v for k, v in by_status.items()},
+    }
+
+
 async def list_subnet_ips(
     db: AsyncSession, subnet_id: int
 ) -> tuple[Subnet, list[SubnetIpEntry]]:
