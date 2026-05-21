@@ -10,6 +10,7 @@ from app.models.ai import (
     LinkSuggestionStatus,
 )
 from app.models.base import Base
+from app.models.cable import Cable
 from app.models.core import Room, Site
 from app.models.device import Device
 from app.models.ip import Ip
@@ -28,6 +29,7 @@ __all__ = [
     "ApiToken",
     "AuditLog",
     "Base",
+    "Cable",
     "Device",
     "InfraInsight",
     "InsightCategory",
