@@ -19,6 +19,7 @@ from app.models.subnet import Subnet
 from app.models.switch import Switch
 from app.models.user import ApiToken, AuditLog, Session, User
 from app.models.vlan import Vlan
+from app.models.vrf import Vrf
 from app.models.webhook import Webhook, WebhookDelivery
 
 __all__ = [
@@ -44,6 +45,7 @@ __all__ = [
     "Switch",
     "User",
     "Vlan",
+    "Vrf",
     "Webhook",
     "WebhookDelivery",
 ]

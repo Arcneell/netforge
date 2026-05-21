@@ -14,6 +14,7 @@ from app.schemas.subnet import (
     SubnetCreate,
     SubnetIpsResponse,
     SubnetRead,
+    SubnetTreeNode,
     SubnetUpdate,
     SubnetUtilization,
 )
@@ -27,15 +28,44 @@ async def list_subnets(
     page: PageParams = Depends(),
     site_id: int | None = Query(default=None, gt=0),
     vlan_id: int | None = Query(default=None, gt=0),
+    vrf_id: int | None = Query(
+        default=None,
+        ge=0,
+        description="Filter by VRF. Use `0` to fetch only global-scope subnets.",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> Page[SubnetRead]:
-    items, total = await service.list_subnets(db, page, site_id=site_id, vlan_id=vlan_id)
+    items, total = await service.list_subnets(
+        db, page, site_id=site_id, vlan_id=vlan_id, vrf_id=vrf_id
+    )
     return Page[SubnetRead](
         items=[SubnetRead.model_validate(s) for s in items],
         total=total,
         page=page.page,
         page_size=page.page_size,
     )
+
+
+@router.get(
+    "/tree",
+    response_model=list[SubnetTreeNode],
+    dependencies=[Depends(get_current_user)],
+)
+async def subnet_tree(
+    vrf_id: int | None = Query(
+        default=None,
+        ge=0,
+        description="VRF scope. Omit or pass `0` for the global VRF.",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> list[SubnetTreeNode]:
+    """Hierarchical view of the subnets in one VRF. Roots first, depth-first
+    children. Operators with no VRFs configured just see the global tree."""
+    # The service treats None as "global" but the OpenAPI `Query(ge=0)`
+    # accepts a literal 0 too — normalise here.
+    scope = None if vrf_id in (None, 0) else vrf_id
+    raw = await service.build_subnet_tree(db, scope)
+    return [SubnetTreeNode.model_validate(n) for n in raw]
 
 
 @router.get(
