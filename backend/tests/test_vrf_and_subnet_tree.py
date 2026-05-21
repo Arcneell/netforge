@@ -126,13 +126,26 @@ async def test_validate_parent_accepts_strictly_contained_child() -> None:
 # --- build_subnet_tree -----------------------------------------------------
 
 
-def _mock_db_with_subnets(subnets: list[Subnet]) -> AsyncMock:
+def _mock_db_with_subnets(
+    subnets: list[Subnet], ip_counts: dict[int, int] | None = None
+) -> AsyncMock:
+    """Mock the two SELECTs `build_subnet_tree` issues: one for the Subnet
+    rows, one aggregated COUNT for the per-subnet IP totals shown in the
+    tree's fill-rate column. Tests that don't care about counts can omit
+    `ip_counts` and the second call just resolves to an empty mapping."""
     scalars = MagicMock()
     scalars.all = MagicMock(return_value=subnets)
-    result = MagicMock()
-    result.scalars = MagicMock(return_value=scalars)
+    subnet_result = MagicMock()
+    subnet_result.scalars = MagicMock(return_value=scalars)
+
+    counts_result = MagicMock()
+    counts_result.all = MagicMock(return_value=list((ip_counts or {}).items()))
+
     db = AsyncMock()
-    db.execute = AsyncMock(return_value=result)
+    # Subnet query fires first, count query second. The service only runs
+    # the count query when there's at least one subnet in scope, so an
+    # empty tree case never reaches `counts_result`.
+    db.execute = AsyncMock(side_effect=[subnet_result, counts_result])
     return db
 
 

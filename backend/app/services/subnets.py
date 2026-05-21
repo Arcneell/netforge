@@ -241,6 +241,17 @@ async def _used_addresses(db: AsyncSession, subnet_id: int) -> dict[str, Ip]:
     return {str(ip.address): ip for ip in result.scalars().all()}
 
 
+def _dhcp_bounds(subnet: Subnet) -> tuple[IPv4Address, IPv4Address] | None:
+    """Return the configured DHCP pool as `(start, end)` IPv4Address objects.
+
+    Returns `None` when DHCP is disabled or either bound is missing, so
+    callers can fall back to "no DHCP range" with a single truthy check.
+    """
+    if not (subnet.dhcp_enabled and subnet.dhcp_range_start and subnet.dhcp_range_end):
+        return None
+    return IPv4Address(subnet.dhcp_range_start), IPv4Address(subnet.dhcp_range_end)
+
+
 async def next_free_ip(db: AsyncSession, subnet_id: int) -> str:
     subnet = await get_subnet(db, subnet_id)
     network = IPv4Network(subnet.cidr, strict=False)
@@ -249,9 +260,16 @@ async def next_free_ip(db: AsyncSession, subnet_id: int) -> str:
     used = await _used_addresses(db, subnet_id)
     skip: set[str] = {str(IPv4Address(subnet.gateway))} if subnet.gateway else set()
 
+    # Skip addresses inside the DHCP pool: they're reserved for dynamic
+    # leases, so handing one back to the "next free for manual assignment"
+    # flow would silently steal a DHCP address from clients.
+    dhcp = _dhcp_bounds(subnet)
+
     for host in network.hosts():
         s = str(host)
         if s in used or s in skip:
+            continue
+        if dhcp is not None and dhcp[0] <= host <= dhcp[1]:
             continue
         return s
 
@@ -350,14 +368,36 @@ async def build_subnet_tree(
     for siblings in children_of.values():
         siblings.sort(key=lambda s: str(s.cidr))
 
+    # Fetch the per-subnet IP counts in one query so the tree row can show
+    # a fill-rate badge without going back to the server N times. Counted
+    # over `Ip` rows only — DHCP-range slots that have no DB row stay
+    # invisible here (consistent with how `compute_utilization` works for
+    # subnets too big to enumerate).
+    counts_q = (
+        select(Ip.subnet_id, func.count(Ip.id))
+        .where(Ip.subnet_id.in_(by_id.keys()))
+        .group_by(Ip.subnet_id)
+    )
+    ip_counts: dict[int, int] = (
+        dict((await db.execute(counts_q)).all()) if by_id else {}
+    )
+
+    def usable_hosts(s: Subnet) -> int:
+        net = IPv4Network(s.cidr, strict=False)
+        return net.num_addresses if net.prefixlen >= 31 else max(0, net.num_addresses - 2)
+
     def node_for(s: Subnet) -> dict:
         return {
             "id": s.id,
             "cidr": str(s.cidr),
             "site_id": s.site_id,
             "vrf_id": s.vrf_id,
+            "vlan_id": s.vlan_id,
             "parent_subnet_id": s.parent_subnet_id,
             "description": s.description,
+            "gateway": None if s.gateway is None else str(s.gateway),
+            "usable": usable_hosts(s),
+            "used": int(ip_counts.get(s.id, 0)),
             "children": [node_for(c) for c in children_of.get(s.id, [])],
         }
 
@@ -372,13 +412,24 @@ async def list_subnet_ips(
     _check_size(network)
 
     used = await _used_addresses(db, subnet_id)
+    # Pre-compute the DHCP pool bounds once so we don't reparse the strings
+    # for every host in the loop.
+    dhcp = _dhcp_bounds(subnet)
 
     entries: list[SubnetIpEntry] = []
     for host in network.hosts():
         s = str(host)
         ip = used.get(s)
         if ip is None:
-            entries.append(SubnetIpEntry(address=s, status="free"))
+            # No row in the DB. If the host falls inside the configured
+            # DHCP pool, surface it as "dhcp" in the grid so the operator
+            # can see at a glance which range is dedicated to leases.
+            # Manual assignment from this slot is still possible — the
+            # editor uses the `prefilled-address` flow, not next-free.
+            if dhcp is not None and dhcp[0] <= host <= dhcp[1]:
+                entries.append(SubnetIpEntry(address=s, status="dhcp"))
+            else:
+                entries.append(SubnetIpEntry(address=s, status="free"))
         else:
             entries.append(
                 SubnetIpEntry(
