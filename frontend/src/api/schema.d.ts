@@ -655,6 +655,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cables */
+        get: operations["list_cables_api_cables_get"];
+        put?: never;
+        /** Create Cable */
+        post: operations["create_cable_api_cables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cables/{cable_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cable */
+        get: operations["get_cable_api_cables__cable_id__get"];
+        /** Update Cable */
+        put: operations["update_cable_api_cables__cable_id__put"];
+        post?: never;
+        /** Delete Cable */
+        delete: operations["delete_cable_api_cables__cable_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/links/{link_id}/cable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Link Cable
+         * @description Returns the cable attached to a given link. 404 when the link has no
+         *     cable metadata yet — the UI uses this to switch between create / edit.
+         */
+        get: operations["get_link_cable_api_links__link_id__cable_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audit": {
         parameters: {
             query?: never;
@@ -1581,6 +1639,87 @@ export interface components {
             total_ok_rows: number;
             /** Applied */
             applied: boolean;
+        };
+        /** CableCreate */
+        CableCreate: {
+            /** Label */
+            label?: string | null;
+            /** Link Id */
+            link_id?: number | null;
+            /** Length M */
+            length_m?: number | null;
+            /** Color */
+            color?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /** Part Number */
+            part_number?: string | null;
+            /** Serial */
+            serial?: string | null;
+            /** Installed On */
+            installed_on?: string | null;
+            /** Last Tested On */
+            last_tested_on?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** CableRead */
+        CableRead: {
+            /** Label */
+            label?: string | null;
+            /** Link Id */
+            link_id?: number | null;
+            /** Length M */
+            length_m?: number | null;
+            /** Color */
+            color?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /** Part Number */
+            part_number?: string | null;
+            /** Serial */
+            serial?: string | null;
+            /** Installed On */
+            installed_on?: string | null;
+            /** Last Tested On */
+            last_tested_on?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** CableUpdate */
+        CableUpdate: {
+            /** Label */
+            label?: string | null;
+            /** Link Id */
+            link_id?: number | null;
+            /** Length M */
+            length_m?: number | null;
+            /** Color */
+            color?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /** Part Number */
+            part_number?: string | null;
+            /** Serial */
+            serial?: string | null;
+            /** Installed On */
+            installed_on?: string | null;
+            /** Last Tested On */
+            last_tested_on?: string | null;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * CsvColumnMapping
@@ -4846,6 +4985,197 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cables_api_cables_get: {
+        parameters: {
+            query?: {
+                /** @description Only cables with no link assigned. */
+                in_stock?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CableRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_cable_api_cables_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CableCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CableRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cable_api_cables__cable_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cable_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CableRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_cable_api_cables__cable_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cable_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CableUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CableRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cable_api_cables__cable_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cable_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_link_cable_api_links__link_id__cable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CableRead"];
+                };
             };
             /** @description Validation Error */
             422: {
