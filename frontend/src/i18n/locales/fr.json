@@ -189,7 +189,7 @@
   "vlan": {
     "label": "VLAN",
     "labelPlural": "VLAN",
-    "subtitle": "VLAN et leurs couleurs associées.",
+    "subtitle": "Les VLAN et leurs couleurs.",
     "fields": {
       "vlanId": "ID VLAN",
       "name": "Nom",
@@ -203,7 +203,7 @@
   "subnet": {
     "label": "Sous-réseau",
     "labelPlural": "Sous-réseaux",
-    "subtitle": "Sous-réseaux IPv4 avec détection de chevauchement et statistiques d'usage.",
+    "subtitle": "Vos plages d'IP et leur taux de remplissage.",
     "fields": {
       "cidr": "CIDR",
       "gateway": "Passerelle",
@@ -264,7 +264,7 @@
   "device": {
     "label": "Équipement",
     "labelPlural": "Équipements",
-    "subtitle": "Serveurs, postes, bornes Wi-Fi, imprimantes…",
+    "subtitle": "Tout ce qui n'est pas un commutateur.",
     "fields": {
       "name": "Nom",
       "type": "Type",
@@ -296,7 +296,7 @@
   "switch": {
     "label": "Commutateur",
     "labelPlural": "Commutateurs",
-    "subtitle": "Commutateurs, plans de ports et liens inter-équipements.",
+    "subtitle": "Vos commutateurs, leurs ports et leurs liens.",
     "fields": {
       "name": "Nom",
       "vendor": "Fabricant",
@@ -353,7 +353,7 @@
     "noTaggedVlans": "Aucun VLAN tagué."
   },
   "audit": {
-    "subtitle": "Toutes les créations, modifications et suppressions sont tracées ici.",
+    "subtitle": "Qui a changé quoi, et quand.",
     "exportCsv": "Exporter en CSV",
     "fields": {
       "when": "Quand",
@@ -385,7 +385,8 @@
   "snapshots": {
     "compare": {
       "title": "Diff d'inventaire",
-      "subtitle": "Modifications de l'inventaire entre deux instants, dérivées du journal d'audit.",
+      "subtitle": "Ce qui a changé entre deux moments.",
+      "help": "Choisissez une date de début et de fin, puis cliquez sur Lancer le diff. La page liste toutes les entités créées, modifiées ou supprimées dans cette fenêtre — à partir du journal d'audit.",
       "from": "Du",
       "to": "Au",
       "entity": "Entité",
@@ -409,7 +410,7 @@
     }
   },
   "settings": {
-    "subtitle": "Gérez les sites, les salles et les jetons d'accès. Seuls les administrateurs peuvent modifier.",
+    "subtitle": "Sites, salles, intégrations et accès.",
     "sitesTab": "Sites",
     "roomsTab": "Salles",
     "tokensTab": "Jetons API",
@@ -418,15 +419,22 @@
     "vrfsTab": "VRF"
   },
   "webhooks": {
-    "subtitle": "POST des mutations d'inventaire vers vos propres systèmes. Chaque évènement est signé en HMAC-SHA256 sur le corps (entête X-Netforge-Signature).",
+    "subtitle": "Avertir vos propres systèmes quand l'inventaire change.",
+    "help": {
+      "section": "Les webhooks permettent à un système externe (passerelle Slack, ticketing, script maison) de réagir en temps réel aux modifications d'inventaire. Chaque envoi est signé afin que le récepteur puisse vérifier qu'il provient bien de NetForge.",
+      "url": "L'URL HTTPS complète qui recevra la requête POST. Pour tester, vous pouvez utiliser des services comme webhook.site.",
+      "events": "Quels changements envoyer. Utilisez * pour tout, ou filtrez avec des motifs comme port.* (tous les évènements de port) ou site.create.",
+      "secret": "Une longue chaîne aléatoire que le récepteur utilise pour vérifier la signature dans l'entête X-Netforge-Signature. Affichée une seule fois — conservez-la en lieu sûr.",
+      "test": "Envoie un évènement synthétique pour vérifier que le récepteur est joignable avant de compter sur de vrais changements."
+    },
     "new": "Nouveau webhook",
     "edit": "Modifier le webhook",
     "namePlaceholder": "p. ex. itsm-bridge",
-    "eventsHint": "Motifs séparés par des virgules. \"*\" pour tout, ou \"port.*\", \"site.create\", ...",
+    "eventsHint": "Séparés par des virgules. * pour tout, port.* pour un type, ou port.create pour un évènement précis.",
     "secretTitle": "Copiez votre secret maintenant — il ne sera plus jamais affiché.",
-    "secretHint": "Stockez-le côté abonné pour vérifier l'entête X-Netforge-Signature à chaque livraison.",
+    "secretHint": "À utiliser côté récepteur pour vérifier chaque livraison.",
     "secretCopied": "Secret copié.",
-    "secretRotated": "Secret régénéré — mettez l'abonné à jour.",
+    "secretRotated": "Secret régénéré — mettez le récepteur à jour.",
     "copyFailed": "Impossible d'accéder au presse-papiers.",
     "viewDeliveries": "Voir les livraisons récentes",
     "sendTest": "Envoyer un évènement de test",
@@ -436,7 +444,7 @@
     "failuresShort": "échecs",
     "deliveriesTitle": "Livraisons — {name}",
     "confirmDeleteTitle": "Supprimer le webhook « {name} » ?",
-    "confirmDeleteMessage": "Les abonnés cesseront immédiatement de recevoir les évènements. L'historique des livraisons est également effacé.",
+    "confirmDeleteMessage": "Le récepteur cessera immédiatement de recevoir les évènements. L'historique des livraisons est également effacé.",
     "errors": {
       "eventsRequired": "Indiquez au moins un motif d'évènement."
     },
@@ -463,16 +471,20 @@
     },
     "empty": {
       "title": "Aucun webhook",
-      "description": "Configurez des abonnés HTTP pour recevoir les évènements en temps réel."
+      "description": "Ajoutez-en un pour avertir un système externe lors des changements d'inventaire."
     }
   },
   "vrf": {
     "label": "VRF",
     "labelPlural": "VRF",
-    "subtitle": "Isolation de tables de routage. Des subnets dans des VRF différents peuvent se chevaucher ; à l'intérieur d'un VRF, non.",
+    "subtitle": "Regrouper des subnets qui partagent le même espace de routage.",
+    "help": {
+      "section": "Un VRF (Virtual Routing and Forwarding) est un monde de routage séparé. La plupart des installations n'en ont pas besoin — laissez les subnets dans le scope Global par défaut. Créez un VRF uniquement si vous devez réutiliser la même plage IP dans deux contextes isolés (deux tenants, prod vs dev).",
+      "rd": "Identifiant optionnel pour les configurations BGP/MPLS, format « AS:nn » comme « 65000:42 ». Laissez vide si vous ne faites pas de BGP."
+    },
     "new": "Nouveau VRF",
     "edit": "Modifier le VRF",
-    "rdHint": "Route distinguisher BGP optionnel, p. ex. 65000:42 — laissez vide si vous ne faites pas de BGP.",
+    "rdHint": "Laissez vide si vous ne faites pas de BGP.",
     "confirmDeleteTitle": "Supprimer le VRF « {name} » ?",
     "confirmDeleteMessage": "Les subnets encore rattachés à ce VRF bloqueront la suppression — détachez-les d'abord.",
     "fields": {
@@ -482,17 +494,21 @@
     },
     "empty": {
       "title": "Aucun VRF",
-      "description": "Créez un VRF quand vous avez besoin de CIDR qui se chevauchent (isolation tenant ou env)."
+      "description": "Ajoutez-en un seulement si vous devez réutiliser la même plage IP dans deux contextes isolés."
     }
   },
   "apiTokens": {
-    "subtitle": "Créez des jetons d'accès personnels pour les scripts et les automatisations. Les jetons héritent de votre rôle, donc à utiliser avec parcimonie.",
+    "subtitle": "Clés personnelles pour appeler l'API depuis un script.",
+    "help": {
+      "section": "Les jetons API permettent à un script externe ou un job CI d'appeler NetForge en votre nom. Ils héritent de vos permissions — traitez-les comme un mot de passe, ne les partagez pas et révoquez ceux que vous n'utilisez plus.",
+      "expiry": "Choisissez une date où le jeton doit cesser de fonctionner. Laissez vide pour un jeton sans expiration (révocable manuellement à tout moment)."
+    },
     "new": "Nouveau jeton",
     "generate": "Générer",
     "revoke": "Révoquer",
     "namePlaceholder": "ex. ansible-prod",
     "nameHint": "Un libellé court pour vous aider à reconnaître le jeton plus tard.",
-    "expiresAtHint": "Date d'expiration optionnelle. Laissez vide pour un jeton sans expiration (révocable manuellement).",
+    "expiresAtHint": "Laissez vide pour un jeton sans expiration (révocable manuellement).",
     "invalidExpiry": "Format de date invalide.",
     "expiryInPast": "L'expiration doit être dans le futur.",
     "copied": "Jeton copié dans le presse-papiers.",
@@ -521,7 +537,7 @@
     }
   },
   "topology": {
-    "subtitle": "Liens inter-commutateurs sous forme de graphe interactif.",
+    "subtitle": "Carte visuelle de vos commutateurs et de leur câblage.",
     "layout": "Disposition",
     "layouts": {
       "dagre": "Hiérarchique",
@@ -602,7 +618,8 @@
     }
   },
   "import": {
-    "subtitle": "Importez en masse depuis des fichiers CSV. Lancez d'abord une validation à blanc pour repérer les erreurs sans rien écrire.",
+    "subtitle": "Importez des données en masse depuis des fichiers CSV.",
+    "help": "Astuce : commencez toujours par une validation à blanc — elle vérifie le fichier sans rien modifier. Quand la validation passe, relancez sans cocher l'option pour importer pour de vrai.",
     "modeAria": "Mode d'import",
     "tabs": {
       "bulk": "Tout en un (auto)",
@@ -626,7 +643,7 @@
     "orderHint": "Dépendances entre entités — suivez cet ordre pour une installation neuve.",
     "bulk": {
       "title": "Importer plusieurs fichiers à la fois",
-      "subtitle": "Déposez tous vos CSV (ou un .zip) — l'entité est détectée automatiquement à partir des en-têtes et l'ordre des dépendances est respecté.",
+      "subtitle": "Déposez tous vos CSV (ou un .zip) — le type est détecté à partir des en-têtes.",
       "dropPrompt": "Déposez vos fichiers .csv ou un .zip ici",
       "dropHint": "Plusieurs fichiers acceptés en une seule fois — jusqu'à 50 fichiers, 50 Mio au total.",
       "removeFile": "Retirer ce fichier",
@@ -702,7 +719,7 @@
     "scanDoneToast": "{persisted} suggestion(s) ajoutée(s) sur {raw} renvoyée(s).",
     "askView": {
       "title": "Demander à l'IA",
-      "subtitle": "Questions en langage naturel sur votre inventaire.",
+      "subtitle": "Posez des questions à propos de votre inventaire en français courant.",
       "you": "Vous",
       "assistant": "Assistant",
       "placeholder": "Posez une question (ex : combien de ports sont libres sur SW-CORE-01 ?)",
@@ -718,14 +735,14 @@
       "newChat": "Nouvelle conversation",
       "emptyAnswer": "(Réponse vide — relancez la question si nécessaire.)",
       "incompleteAnswer": "(Réponse interrompue — le modèle s'est arrêté en cours de route.)",
-      "liteContextLabel": "Mode contexte léger (moins de tokens, sans champs libres)",
-      "liteContextHint": "N'envoie au modèle que les identifiants (sites, salles, switches, vlans, subnets), sans descriptions, notes, MAC, vendor/modèle ni adresses. Idéal pour les questions structurelles. À désactiver si la question porte sur le contenu de ces champs."
+      "liteContextLabel": "Mode allégé — plus rapide, structure uniquement",
+      "liteContextHint": "N'envoie à l'IA que les identifiants (noms, IDs). Plus rapide et économique, mais l'IA ne verra pas les descriptions, notes, MAC ni vendor. À désactiver si votre question porte sur ce genre de contenu."
     },
     "advisor": {
       "recurringBadge": "Récurrent ×{n}",
       "streakTooltip": "Ce constat est apparu sur {n} runs consécutifs — un correctif ou un acknowledge est attendu.",
       "tab": "Conseiller IA",
-      "subtitle": "Analyse de votre infrastructure : SPOF, capacité, sécurité, segmentation.",
+      "subtitle": "Analyse automatique de votre infrastructure.",
       "refresh": "Relancer l'analyse",
       "runFirst": "Lancer l'analyse",
       "refreshedToast": "{count} insight(s) générés · {latency} ms",
