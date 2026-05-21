@@ -2171,12 +2171,25 @@ export interface components {
          *     `history` lets the operator have a follow-up conversation — capped at 10
          *     turns (≈ 5 user/assistant pairs) so the prompt doesn't balloon. Older
          *     turns are dropped client-side.
+         *
+         *     `lite_context`, when true, strips the inventory snapshot down to bare
+         *     identifiers (id + name + code + parent id where relevant) before
+         *     handing it to the model. Useful for token-cost-sensitive deployments
+         *     or privacy-conscious operators who don't want vendor / model / MAC /
+         *     serial details leaving their network. The model can still answer
+         *     structural questions ("what's on VLAN 10?") but loses the ability to
+         *     reason over free-text fields it no longer receives.
          */
         QueryRequest: {
             /** Question */
             question: string;
             /** History */
             history?: components["schemas"]["QueryHistoryTurn"][];
+            /**
+             * Lite Context
+             * @default false
+             */
+            lite_context: boolean;
         };
         /** RoomCreate */
         RoomCreate: {

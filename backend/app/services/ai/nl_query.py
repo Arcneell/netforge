@@ -239,6 +239,36 @@ does not pull out a separate chips list.
 """
 
 
+def _lite_snapshot(context: dict) -> dict:
+    """Reshape the full topology snapshot into an identifier-only summary.
+
+    Drops free-text (descriptions, notes, vendor/model/serial, addresses)
+    and most relational metadata; keeps just enough for the model to answer
+    structural questions ("how many switches in site PAR?", "what's on
+    VLAN 10?"). The token cost is roughly 10× smaller than the verbose
+    snapshot — and operators who don't want sensitive fields leaving their
+    network can flip this on per-question.
+    """
+    return {
+        "sites": [{"id": s["id"], "name": s["name"], "code": s["code"]} for s in context.get("sites", [])],
+        "rooms": [{"id": r["id"], "site_id": r["site_id"], "code": r["code"]} for r in context.get("rooms", [])],
+        "switches": [
+            {"id": s["id"], "name": s["name"], "room_id": s.get("room_id"), "site_id": s.get("site_id")}
+            for s in context.get("switches", [])
+        ],
+        "vlans": [{"id": v["id"], "vlan_id": v["vlan_id"], "name": v["name"]} for v in context.get("vlans", [])],
+        "subnets": [
+            {"id": s["id"], "cidr": s["cidr"], "vlan_id": s.get("vlan_id"), "site_id": s.get("site_id")}
+            for s in context.get("subnets", [])
+        ],
+        # Counts replace per-row lists for the high-cardinality tables —
+        # the model rarely needs every device by name in lite mode.
+        "device_count": len(context.get("devices", [])),
+        "port_count": len(context.get("ports", [])),
+        "existing_link_count": len(context.get("existing_links", [])),
+    }
+
+
 async def run_query_streaming(
     db: AsyncSession,
     *,
@@ -246,6 +276,7 @@ async def run_query_streaming(
     question: str,
     history: list[dict] | None = None,
     language_instruction: str | None = None,
+    lite_context: bool = False,
 ):
     """Async generator yielding `(event_name, payload)` pairs.
 
@@ -253,10 +284,15 @@ async def run_query_streaming(
     an `AIRunLog` row at the END of the stream so the Usage dashboard
     accounts for streaming calls just like one-shots; latency is the time
     until the LAST chunk arrives.
+
+    `lite_context` swaps the full inventory snapshot for an identifier-only
+    summary — see `_lite_snapshot` for the trade-off.
     """
     settings = get_settings()
     provider = get_provider()
     context, _was_cached = await build_topology_context_cached(db)
+    if lite_context:
+        context = _lite_snapshot(context)
     payload = json.dumps(context, separators=(",", ":"), default=str)
 
     system = SYSTEM_PROMPT + _STREAM_SYSTEM_SUFFIX

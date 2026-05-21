@@ -16,7 +16,9 @@ from app.services.ai.integrity import (
     _check_duplicate_macs,
     _check_orphan_assigned_ips,
     _check_port_label_collisions,
+    _check_subnet_capacity,
     _check_subnets_without_gateway,
+    _check_switch_port_capacity,
     _check_switches_without_ports,
     _check_vlans_without_subnet,
     run_all_checks,
@@ -150,6 +152,100 @@ async def test_port_label_collisions_groups_by_switch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_subnet_capacity_flags_over_90pct() -> None:
+    """A /24 with 230 assigned/dhcp IPs (out of 254 usable) → warning at 90%.
+    A /24 with 30 IPs (≈12%) stays quiet."""
+    full = SimpleNamespace(id=1, cidr="10.0.0.0/24")
+    sparse = SimpleNamespace(id=2, cidr="10.0.1.0/24")
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalars([full, sparse]),  # subnets
+            _all_rows([(1, 230), (2, 30)]),  # ip counts per subnet
+        ]
+    )
+    issues = await _check_subnet_capacity(db, "en")
+    assert len(issues) == 1
+    issue = issues[0]
+    assert issue.severity == "warning"
+    assert "10.0.0.0/24" in issue.title
+    # 230/254 ≈ 90%
+    assert "90%" in issue.title
+    assert issue.affected_entities[0]["id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_subnet_capacity_full_is_critical() -> None:
+    """100% utilisation gets bumped to `critical` — there's no slack left,
+    the next allocation will fail."""
+    full = SimpleNamespace(id=1, cidr="10.0.0.0/30")  # 2 usable
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalars([full]),
+            _all_rows([(1, 2)]),
+        ]
+    )
+    issues = await _check_subnet_capacity(db, "en")
+    assert len(issues) == 1
+    assert issues[0].severity == "critical"
+    assert "100%" in issues[0].title
+
+
+@pytest.mark.asyncio
+async def test_subnet_capacity_handles_slash_31_specially() -> None:
+    """/31 (RFC 3021 point-to-point) and /32 (loopback) keep all addresses
+    as usable. A /31 with 1 IP is at 50%, not over the threshold, and must
+    not raise — without the special case the math would treat usable as 0
+    and divide-by-zero (caught by the `usable <= 0` guard but the test
+    pins the intent)."""
+    ptp = SimpleNamespace(id=1, cidr="10.0.0.0/31")
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalars([ptp]),
+            _all_rows([(1, 1)]),  # 50% used
+        ]
+    )
+    assert await _check_subnet_capacity(db, "en") == []
+
+
+@pytest.mark.asyncio
+async def test_switch_port_capacity_flags_over_90pct() -> None:
+    """A 48-port switch with 45 ports in use (94%) trips the warning."""
+    sw = SimpleNamespace(id=10, name="SW-CORE-01")
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalars([sw]),  # switches
+            _all_rows([SimpleNamespace(switch_id=10, total=48, in_use=45)]),
+        ]
+    )
+    issues = await _check_switch_port_capacity(db, "en")
+    assert len(issues) == 1
+    assert issues[0].severity == "warning"
+    assert "SW-CORE-01" in issues[0].title
+    assert "93%" in issues[0].title or "94%" in issues[0].title
+
+
+@pytest.mark.asyncio
+async def test_switch_port_capacity_ignores_switches_without_ports() -> None:
+    """A switch with no Port rows is already handled by the dedicated
+    `_check_switches_without_ports` detector — the capacity one must not
+    double-warn (would say `0% used` and trip a divide-by-zero if not
+    guarded)."""
+    sw = SimpleNamespace(id=10, name="SW-X")
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalars([sw]),
+            _all_rows([]),  # no aggregate rows = switch has no ports
+        ]
+    )
+    assert await _check_switch_port_capacity(db, "en") == []
+
+
+@pytest.mark.asyncio
 async def test_orphan_assigned_ips_localized_french() -> None:
     """The FR locale flips title/description to French strings so the UI
     doesn't show English text when the operator is on the FR locale."""
@@ -187,6 +283,10 @@ async def test_run_all_checks_orders_by_severity() -> None:
             _scalars([]),  # vlans-without-subnet: referenced
             _scalars([]),  # vlans-without-subnet: all
             _all_rows([]),  # port label collisions: none
+            _scalars([]),  # subnet capacity: no subnets → no issues
+            _all_rows([]),  # subnet capacity: ip counts (not reached)
+            _scalars([]),  # switch port capacity: no switches → no issues
+            _all_rows([]),  # switch port capacity: aggregates (not reached)
         ]
     )
     issues = await run_all_checks(db, accept_language="en")

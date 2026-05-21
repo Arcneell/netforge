@@ -292,7 +292,11 @@ export const aiApi = {
    * usual, but the SSE body itself may also carry `event: error` frames
    * mid-stream (e.g. when the provider hiccups halfway through).
    */
-  askStream(question: string, history: QueryHistoryTurn[] = []): Promise<Response> {
+  askStream(
+    question: string,
+    history: QueryHistoryTurn[] = [],
+    options: { liteContext?: boolean } = {},
+  ): Promise<Response> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
@@ -309,7 +313,11 @@ export const aiApi = {
       method: 'POST',
       headers,
       credentials: 'include',
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({
+        question,
+        history,
+        lite_context: options.liteContext ?? false,
+      }),
     })
   },
   /** Aggregate AI usage over `days` days (1–365, default 30 server-side). */
