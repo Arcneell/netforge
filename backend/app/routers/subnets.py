@@ -35,11 +35,19 @@ async def list_subnets(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> Page[SubnetRead]:
-    items, total = await service.list_subnets(
+    items, total, ip_counts = await service.list_subnets(
         db, page, site_id=site_id, vlan_id=vlan_id, vrf_id=vrf_id
     )
     return Page[SubnetRead](
-        items=[SubnetRead.model_validate(s) for s in items],
+        items=[
+            SubnetRead.model_validate(s).model_copy(
+                update={
+                    "usable": service.usable_hosts(str(s.cidr)),
+                    "used": ip_counts.get(s.id, 0),
+                }
+            )
+            for s in items
+        ],
         total=total,
         page=page.page,
         page_size=page.page_size,
