@@ -15,6 +15,7 @@ from app.schemas.subnet import (
     SubnetIpsResponse,
     SubnetRead,
     SubnetUpdate,
+    SubnetUtilization,
 )
 from app.services import subnets as service
 
@@ -104,3 +105,18 @@ async def next_free_ip(
 ) -> NextFreeIpResponse:
     address = await service.next_free_ip(db, subnet_id)
     return NextFreeIpResponse(address=address)
+
+
+@router.get(
+    "/{subnet_id}/utilization",
+    response_model=SubnetUtilization,
+    dependencies=[Depends(get_current_user)],
+)
+async def subnet_utilization(
+    subnet_id: int, db: AsyncSession = Depends(get_db)
+) -> SubnetUtilization:
+    """Fill-rate snapshot for one subnet. Two SELECTs, works on any prefix
+    length — unlike `/ips`, this endpoint does not enumerate the address
+    space, so it stays cheap on `/16`s and larger."""
+    subnet, util = await service.compute_utilization(db, subnet_id)
+    return SubnetUtilization(subnet_id=subnet.id, cidr=str(subnet.cidr), **util)

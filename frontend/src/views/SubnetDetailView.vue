@@ -15,7 +15,7 @@ import SubnetEditor from '@/components/editors/SubnetEditor.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import { useStoredRef } from '@/composables/useStoredRef'
 import { ipsApi, subnetsApi, vlansApi } from '@/api'
-import type { Ip, Subnet, SubnetIpEntry, Vlan } from '@/api'
+import type { Ip, Subnet, SubnetIpEntry, SubnetUtilization, Vlan } from '@/api'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -31,6 +31,7 @@ const { describe } = useApiErrorMessage()
 const subnet = ref<Subnet | null>(null)
 const ips = ref<SubnetIpEntry[]>([])
 const vlan = ref<Vlan | null>(null)
+const utilization = ref<SubnetUtilization | null>(null)
 const loading = ref(true)
 // Persist the view mode across reloads — admins flipping between grid and
 // table once expect that choice to stick on the same machine.
@@ -44,10 +45,27 @@ const id = computed(() => Number(route.params.id))
 async function load() {
   loading.value = true
   try {
-    const [s, list] = await Promise.all([subnetsApi.get(id.value), subnetsApi.ips(id.value)])
+    // Fetch the subnet + utilisation in parallel — the utilisation endpoint
+    // works on any prefix length (two SELECTs, no address-space scan), so
+    // we always have the headline fill rate even for /20 and larger blocks.
+    // The IP enumeration (`/ips`) is bounded server-side; we let it fail
+    // soft on huge subnets so the page still renders with the utilisation
+    // bar and an empty grid.
+    const [s, util] = await Promise.all([
+      subnetsApi.get(id.value),
+      subnetsApi.utilization(id.value),
+    ])
     subnet.value = s
-    ips.value = list.ips
+    utilization.value = util
     vlan.value = s.vlan_id ? await vlansApi.get(s.vlan_id) : null
+    try {
+      const list = await subnetsApi.ips(id.value)
+      ips.value = list.ips
+    } catch {
+      // Subnet too large for full enumeration — utilisation header still
+      // tells the operator what they need to know.
+      ips.value = []
+    }
   } catch (err) {
     void describe(err)
     router.replace('/subnets')
@@ -60,6 +78,20 @@ onMounted(load)
 watch(id, load)
 
 const stats = computed(() => {
+  // Prefer the cheap server-side utilisation when available — it works on
+  // any prefix length and matches the integrity check's accounting. Falls
+  // back to the in-memory IPs list for the loading window before util
+  // arrives (and as a last resort if the endpoint is unreachable).
+  if (utilization.value) {
+    const total = utilization.value.usable
+    const used = total - utilization.value.free
+    return {
+      total,
+      used,
+      free: utilization.value.free,
+      ratio: total ? used / total : 0,
+    }
+  }
   const total = ips.value.length
   const used = ips.value.filter((i) => i.status !== 'free').length
   const free = total - used

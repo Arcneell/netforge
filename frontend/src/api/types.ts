@@ -82,6 +82,7 @@ export type SubnetUpdate = S['SubnetUpdate']
 export type SubnetIpEntry = S['SubnetIpEntry']
 export type SubnetIpsResponse = S['SubnetIpsResponse']
 export type NextFreeIp = S['NextFreeIpResponse']
+export type SubnetUtilization = S['SubnetUtilization']
 
 // ---------------------------------------------------------------------------
 // IPs
