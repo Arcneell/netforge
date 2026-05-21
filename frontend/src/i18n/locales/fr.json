@@ -708,7 +708,9 @@
       "unmapped": "non mappée",
       "missingFields": "Champs requis manquants : {fields}",
       "applyButton": "Utiliser ce mapping pour l'import",
-      "pendingNotice": "Mapping IA en attente — il sera appliqué au prochain import."
+      "pendingNotice": "Mapping IA en attente — il sera appliqué au prochain import.",
+      "dataQualityTitle": "Observations de qualité des données",
+      "dataQualitySample": "Échantillon"
     },
     "settings": {
       "title": "Assistant IA",

@@ -63,6 +63,7 @@ export {
   type AIScheduleKind,
   type AIScheduleUpsert,
   type CsvColumnMapping,
+  type CsvDataQualityIssue,
   type CsvMappingRequest,
   type CsvMappingResponse,
   type IntegrityIssue,

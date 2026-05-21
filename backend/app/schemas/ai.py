@@ -267,12 +267,34 @@ class CsvColumnMapping(BaseModel):
     notes: str
 
 
+class CsvDataQualityIssue(BaseModel):
+    """One data-quality observation surfaced by the mapper.
+
+    Two complementary sources feed this:
+      - **Deterministic checks** (`csv_mapping.run_local_data_quality`) catch
+        obviously wrong cells in the sample: empty required fields, malformed
+        CIDR/IPv4/MAC, duplicate values in unique columns.
+      - **LLM observations** flag higher-level issues the deterministic
+        checks miss: mixed unit conventions, inconsistent casing, suspicious
+        outliers.
+    """
+
+    severity: str  # "info" | "warning" | "critical"
+    column: str | None  # null when the issue is row-level (e.g. duplicate)
+    issue: str  # short headline, e.g. "invalid CIDR"
+    details: str  # human-readable explanation
+    sample_values: list[str] = Field(default_factory=list, max_length=5)
+    affected_row_count: int = 0
+    source: str  # "local" (deterministic) | "llm"
+
+
 class CsvMappingResponse(BaseModel):
     """Response of POST /api/ai/csv/suggest-mapping."""
 
     entity: str
     columns: list[CsvColumnMapping]
     missing_required_fields: list[str]
+    data_quality: list[CsvDataQualityIssue] = Field(default_factory=list)
     provider: str
     model: str
     latency_ms: int

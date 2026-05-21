@@ -15,9 +15,12 @@ already structured to be reusable for that.
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import re
 import time
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -113,9 +116,11 @@ _MAX_CELL_LEN = 80
 
 SYSTEM_PROMPT = """You are a CSV-import mapping assistant for NetForge.
 
-The operator's CSV uses arbitrary column names. Your job: for each CSV column,
-guess which NetForge canonical field it maps to — or mark it as unmapped
-when nothing matches.
+The operator's CSV uses arbitrary column names. Your job, in one tool call:
+  1. For each CSV column, guess which NetForge canonical field it maps to
+     (or mark it as unmapped).
+  2. Flag data-quality issues you spot in the sample rows that would break
+     the import or mislead the operator.
 
 You receive:
 - The target entity (e.g. "subnets", "switches").
@@ -125,7 +130,7 @@ You receive:
 - A few sample rows so you can disambiguate from the data (e.g. column
   "IP" with values like "10.0.0.1" is an `address`; "10.0.0.0/24" is a `cidr`).
 
-Rules:
+Mapping rules:
 - Each `suggested_field` value MUST be either one of the canonical fields
   listed in the user prompt or null.
 - A canonical field may be referenced by at most ONE CSV column. If two
@@ -136,6 +141,17 @@ Rules:
 - Use the sample values to settle disambiguations — never invent a value.
 - `notes` is one short sentence (≤ 120 chars) explaining the call.
 
+Data-quality rules:
+- Focus on issues the sample obviously reveals: mixed unit conventions
+  (Mbps vs Gbps), inconsistent casing of identifiers, ambiguous boolean
+  encodings (1/0 vs yes/no vs Y/N), suspicious outliers, values that don't
+  match the column's apparent type, mixed delimiters, hidden whitespace, …
+- DO NOT flag missing-required-field errors here — that's reserved for
+  `missing_required_fields`.
+- Severity: "critical" if the import would crash; "warning" if it would
+  succeed but produce wrong data; "info" for style hints.
+- `affected_row_count` counts ONLY the rows shown in the sample.
+
 Return your output via the `submit_mapping` tool.
 """
 
@@ -144,8 +160,9 @@ def _build_tool(allowed_fields: list[str]) -> ToolDef:
     return ToolDef(
         name="submit_mapping",
         description=(
-            "Submit the per-column mapping decisions. Use null for "
-            "`suggested_field` to leave a CSV column unmapped."
+            "Submit the per-column mapping decisions and any data-quality "
+            "observations. Use null for `suggested_field` to leave a CSV "
+            "column unmapped."
         ),
         input_schema={
             "type": "object",
@@ -177,6 +194,34 @@ def _build_tool(allowed_fields: list[str]) -> ToolDef:
                     "items": {"type": "string"},
                     "maxItems": 30,
                 },
+                # Free-form data-quality observations the model can spot
+                # from the sample — mixed units, inconsistent casing, etc.
+                # The deterministic checks in `run_local_data_quality` catch
+                # the obvious ones (malformed CIDR, empty required cells).
+                "data_quality": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["severity", "issue", "details"],
+                        "properties": {
+                            "severity": {
+                                "type": "string",
+                                "enum": ["info", "warning", "critical"],
+                            },
+                            "column": {"type": ["string", "null"], "maxLength": 200},
+                            "issue": {"type": "string", "maxLength": 80},
+                            "details": {"type": "string", "maxLength": 400},
+                            "sample_values": {
+                                "type": "array",
+                                "items": {"type": "string", "maxLength": 80},
+                                "maxItems": 5,
+                            },
+                            "affected_row_count": {"type": "integer", "minimum": 0},
+                        },
+                    },
+                },
             },
         },
     )
@@ -191,10 +236,22 @@ class MappingSuggestion:
 
 
 @dataclass
+class DataQualityIssue:
+    severity: str  # "info" | "warning" | "critical"
+    column: str | None
+    issue: str
+    details: str
+    sample_values: list[str] = field(default_factory=list)
+    affected_row_count: int = 0
+    source: str = "llm"  # "local" for deterministic checks
+
+
+@dataclass
 class MappingResult:
     entity: str
     columns: list[MappingSuggestion]
     missing_required_fields: list[str]
+    data_quality: list[DataQualityIssue]
     provider: str
     model: str
     latency_ms: int
@@ -220,6 +277,208 @@ def list_canonical_fields(entity: str) -> list[str]:
     if fields is None:
         return []
     return sorted(fields.keys())
+
+
+# --- Deterministic data-quality checks -------------------------------------
+
+# Per-entity hint of which canonical fields are required to import a row.
+# Used to flag empty cells in mapped columns. Mirrors the `_*Row` Pydantic
+# models in services.csv_import — we duplicate here deliberately because
+# importing them would create a circular dep, and the catalog is short.
+_REQUIRED_FIELDS: dict[str, set[str]] = {
+    "sites": {"code", "name"},
+    "rooms": {"site_code", "code"},
+    "vlans": {"vlan_id", "name"},
+    "subnets": {"cidr"},
+    "ips": {"address"},
+    "devices": {"name"},
+    "switches": {"name"},
+    "ports": {"switch_name", "number"},
+    "links": {"switch_a", "port_a", "switch_b", "port_b"},
+}
+
+# Field → checker name. The checker validates one cell and returns True
+# when the value looks valid for that target. Only fields with a reasonable
+# regex/parsing check appear here — free-text fields (description, notes)
+# are intentionally skipped.
+_FIELD_VALIDATORS: dict[str, str] = {
+    "cidr": "cidr",
+    "gateway": "ipv4",
+    "address": "ipv4",
+    "management_ip": "ipv4",
+    "dhcp_range_start": "ipv4",
+    "dhcp_range_end": "ipv4",
+    "mac": "mac",
+    "vlan_id": "vlan_id",
+    "native_vlan": "vlan_id",
+}
+
+# Canonical fields that should be unique within a CSV — duplicates are
+# nearly always operator error and the import would either fail or pick
+# one arbitrarily. Keep this conservative; "name" is duplicated all the
+# time across entities (two devices may share a name across sites) so it
+# is NOT in this list — only fields with a hard uniqueness invariant.
+_UNIQUE_FIELDS: dict[str, set[str]] = {
+    "sites": {"code"},
+    "vlans": {"vlan_id"},
+    "subnets": {"cidr"},
+    "ips": {"address"},
+}
+
+_MAC_RE = re.compile(r"^[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}$", re.IGNORECASE)
+
+
+def _looks_like_cidr(value: str) -> bool:
+    try:
+        ipaddress.ip_network(value.strip(), strict=False)
+    except ValueError:
+        return False
+    return "/" in value
+
+
+def _looks_like_ipv4(value: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return False
+    return isinstance(addr, ipaddress.IPv4Address)
+
+
+def _looks_like_mac(value: str) -> bool:
+    return bool(_MAC_RE.match(value.strip()))
+
+
+def _looks_like_vlan_id(value: str) -> bool:
+    try:
+        v = int(value.strip())
+    except (ValueError, TypeError):
+        return False
+    return 1 <= v <= 4094
+
+
+_VALIDATORS = {
+    "cidr": _looks_like_cidr,
+    "ipv4": _looks_like_ipv4,
+    "mac": _looks_like_mac,
+    "vlan_id": _looks_like_vlan_id,
+}
+
+
+def run_local_data_quality(
+    *,
+    entity: str,
+    csv_columns: list[str],
+    sample_rows: list[list[str]],
+    column_mapping: dict[str, str | None],
+) -> list[DataQualityIssue]:
+    """Deterministic checks that don't need the LLM.
+
+    Three categories, ordered by how much they matter:
+      1. Empty required cells — would crash the import outright.
+      2. Type mismatches in mapped columns — would import wrong data.
+      3. Duplicate values in unique columns — sample-only, just a heuristic.
+
+    We deliberately keep this short. The LLM picks up the long tail
+    (mixed units, casing conventions) — it's a complement, not a backstop.
+    """
+    issues: list[DataQualityIssue] = []
+    if not sample_rows:
+        return issues
+
+    required = _REQUIRED_FIELDS.get(entity, set())
+    unique = _UNIQUE_FIELDS.get(entity, set())
+
+    # Map column index → target field, for the columns the operator actually
+    # mapped. Unmapped columns are skipped by all three checks below.
+    col_index_to_field: dict[int, str] = {}
+    for idx, col in enumerate(csv_columns):
+        target = column_mapping.get(col)
+        if target:
+            col_index_to_field[idx] = target
+
+    # 1. Empty cells in columns mapped to a required field.
+    for idx, field_name in col_index_to_field.items():
+        if field_name not in required:
+            continue
+        empty_count = 0
+        for row in sample_rows:
+            cell = (row[idx] if idx < len(row) else "").strip()
+            if not cell:
+                empty_count += 1
+        if empty_count:
+            issues.append(
+                DataQualityIssue(
+                    severity="critical",
+                    column=csv_columns[idx],
+                    issue="empty required value",
+                    details=(
+                        f"{empty_count}/{len(sample_rows)} sample rows have an empty "
+                        f"`{csv_columns[idx]}` cell — `{field_name}` is required."
+                    ),
+                    sample_values=[],
+                    affected_row_count=empty_count,
+                    source="local",
+                )
+            )
+
+    # 2. Type mismatches in mapped columns whose target has a validator.
+    for idx, field_name in col_index_to_field.items():
+        validator_key = _FIELD_VALIDATORS.get(field_name)
+        if not validator_key:
+            continue
+        check = _VALIDATORS[validator_key]
+        bad: list[str] = []
+        for row in sample_rows:
+            cell = (row[idx] if idx < len(row) else "").strip()
+            if not cell:
+                continue  # empty handled by check #1; not a type issue
+            if not check(cell):
+                bad.append(cell)
+        if bad:
+            issues.append(
+                DataQualityIssue(
+                    severity="warning",
+                    column=csv_columns[idx],
+                    issue=f"value doesn't look like {validator_key}",
+                    details=(
+                        f"{len(bad)}/{len(sample_rows)} sample rows in "
+                        f"`{csv_columns[idx]}` don't match the expected "
+                        f"{validator_key} format."
+                    ),
+                    sample_values=bad[:5],
+                    affected_row_count=len(bad),
+                    source="local",
+                )
+            )
+
+    # 3. Duplicates in columns mapped to a unique field.
+    for idx, field_name in col_index_to_field.items():
+        if field_name not in unique:
+            continue
+        values = [
+            (row[idx] if idx < len(row) else "").strip().lower()
+            for row in sample_rows
+        ]
+        values = [v for v in values if v]
+        counts = Counter(values)
+        dups = [v for v, n in counts.items() if n > 1]
+        if dups:
+            issues.append(
+                DataQualityIssue(
+                    severity="warning",
+                    column=csv_columns[idx],
+                    issue="duplicate values in unique column",
+                    details=(
+                        f"`{csv_columns[idx]}` maps to `{field_name}` which is "
+                        f"unique across the dataset, but the sample shows duplicates."
+                    ),
+                    sample_values=dups[:5],
+                    affected_row_count=sum(counts[v] for v in dups),
+                    source="local",
+                )
+            )
+
+    return issues
 
 
 async def run_mapping_suggestion(
@@ -341,10 +600,60 @@ async def run_mapping_suggestion(
         if isinstance(f, str) and str(f).strip() in allowed and str(f).strip() not in used_targets
     ]
 
+    # Parse the LLM's data-quality observations (optional in the schema —
+    # older provider responses may omit the key entirely).
+    raw_dq = completion.tool_call.input.get("data_quality", []) or []
+    llm_dq: list[DataQualityIssue] = []
+    for item in raw_dq:
+        if not isinstance(item, dict):
+            continue
+        severity = str(item.get("severity", "warning")).lower()
+        if severity not in {"info", "warning", "critical"}:
+            severity = "warning"
+        col = item.get("column")
+        col_str = str(col).strip()[:200] if isinstance(col, str) else None
+        issue_text = str(item.get("issue", "")).strip()[:80]
+        if not issue_text:
+            continue
+        details_text = str(item.get("details", "")).strip()[:400]
+        sample_values = [
+            str(v).strip()[:80]
+            for v in (item.get("sample_values") or [])
+            if isinstance(v, (str, int, float))
+        ][:5]
+        try:
+            row_count = int(item.get("affected_row_count", 0) or 0)
+        except (TypeError, ValueError):
+            row_count = 0
+        llm_dq.append(
+            DataQualityIssue(
+                severity=severity,
+                column=col_str,
+                issue=issue_text,
+                details=details_text,
+                sample_values=sample_values,
+                affected_row_count=max(0, row_count),
+                source="llm",
+            )
+        )
+
+    # Run the deterministic checks against the LLM's own mapping. This is
+    # what makes the assistant catch "you forgot to fill `code` on row 2"
+    # reliably — the LLM is bad at counting blanks but great at spotting
+    # inconsistent conventions.
+    column_mapping = {c.csv_column: c.suggested_field for c in columns_out}
+    local_dq = run_local_data_quality(
+        entity=entity,
+        csv_columns=csv_columns,
+        sample_rows=sample,
+        column_mapping=column_mapping,
+    )
+
     return MappingResult(
         entity=entity,
         columns=columns_out,
         missing_required_fields=missing_out,
+        data_quality=local_dq + llm_dq,
         provider=provider.name,
         model=provider.model,
         latency_ms=elapsed_ms,
