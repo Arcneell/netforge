@@ -747,6 +747,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/snapshots/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare
+         * @description Aggregate every audit row in [from, to] into a per-entity diff.
+         *
+         *     The response is a flat list of `{entity, entity_id, status, fields_changed}`
+         *     plus a per-entity summary. Status legend:
+         *       - `created`   : entity exists at `to` but didn't exist at `from`
+         *       - `updated`   : existed before, mutated during the window
+         *       - `deleted`   : existed before, removed during the window
+         *       - `transient` : created AND deleted in the window — useful for spotting
+         *                       botched migrations
+         *
+         *     We do NOT reconstruct full entity state at each timestamp — that would
+         *     require replaying every audit event since day one. The audit log's
+         *     `before`/`after` payloads are sufficient for the questions this view
+         *     typically answers.
+         */
+        get: operations["compare_api_snapshots_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/search": {
         parameters: {
             query?: never;
@@ -2532,6 +2565,88 @@ export interface components {
             name?: string | null;
             /** Address */
             address?: string | null;
+        };
+        /**
+         * SnapshotChange
+         * @description One affected entity inside the window.
+         */
+        SnapshotChange: {
+            /** Entity */
+            entity: string;
+            /** Entity Id */
+            entity_id: number;
+            /**
+             * Status
+             * @description created | updated | deleted | transient
+             */
+            status: string;
+            /** Actions Count */
+            actions_count: number;
+            /**
+             * First Action At
+             * Format: date-time
+             */
+            first_action_at: string;
+            /**
+             * Last Action At
+             * Format: date-time
+             */
+            last_action_at: string;
+            /** Fields Changed */
+            fields_changed: string[];
+        };
+        /** SnapshotCompareResponse */
+        SnapshotCompareResponse: {
+            /**
+             * From Ts
+             * Format: date-time
+             */
+            from_ts: string;
+            /**
+             * To Ts
+             * Format: date-time
+             */
+            to_ts: string;
+            summary: components["schemas"]["SnapshotSummary"];
+            /** Changes */
+            changes: components["schemas"]["SnapshotChange"][];
+        };
+        /**
+         * SnapshotEntityBucket
+         * @description Per-entity counter inside a snapshot summary.
+         */
+        SnapshotEntityBucket: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /**
+             * Deleted
+             * @default 0
+             */
+            deleted: number;
+            /**
+             * Transient
+             * @default 0
+             */
+            transient: number;
+        };
+        /** SnapshotSummary */
+        SnapshotSummary: {
+            /** Total Audit Rows */
+            total_audit_rows: number;
+            /** Orphan Rows */
+            orphan_rows: number;
+            /** By Entity */
+            by_entity: {
+                [key: string]: components["schemas"]["SnapshotEntityBucket"];
+            };
         };
         /** SubnetCreate */
         SubnetCreate: {
@@ -5244,6 +5359,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditLogRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_api_snapshots_compare_get: {
+        parameters: {
+            query: {
+                /** @description ISO-8601 lower bound (inclusive). */
+                from: string;
+                /** @description ISO-8601 upper bound (inclusive). Defaults to now() when omitted. */
+                to?: string | null;
+                /** @description Restrict the diff to one entity type (site, room, vlan, subnet, port, ...). */
+                entity?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotCompareResponse"];
                 };
             };
             /** @description Validation Error */

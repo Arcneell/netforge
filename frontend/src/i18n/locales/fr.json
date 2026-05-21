@@ -92,6 +92,7 @@
     "drafts": "Actions à valider",
     "import": "Importer",
     "audit": "Journal d'audit",
+    "snapshots": "Diff d'inventaire",
     "settings": "Paramètres",
     "sections": {
       "network": "Réseau",
@@ -380,6 +381,32 @@
     "before": "Avant",
     "after": "Après",
     "noChanges": "Aucune modification de champ enregistrée."
+  },
+  "snapshots": {
+    "compare": {
+      "title": "Diff d'inventaire",
+      "subtitle": "Modifications de l'inventaire entre deux instants, dérivées du journal d'audit.",
+      "from": "Du",
+      "to": "Au",
+      "entity": "Entité",
+      "run": "Lancer le diff",
+      "summary": "Résumé",
+      "summaryMeta": "{total} lignes d'audit · {orphan} orphelines",
+      "noChanges": "Aucune modification dans cette fenêtre.",
+      "noChangesTitle": "Aucune modification",
+      "noChangesDescription": "Élargissez la fenêtre temporelle ou retirez le filtre par entité.",
+      "pickTitle": "Choisissez une fenêtre",
+      "pickDescription": "Choisissez une date de début et de fin, puis cliquez sur Lancer le diff.",
+      "colEntity": "Entité",
+      "colCreated": "Créés",
+      "colUpdated": "Modifiés",
+      "colDeleted": "Supprimés",
+      "colTransient": "Transitoires",
+      "colStatus": "Statut",
+      "colWhen": "Dernier changement",
+      "colActions": "Actions",
+      "colFields": "Champs modifiés"
+    }
   },
   "settings": {
     "subtitle": "Gérez les sites, les salles et les jetons d'accès. Seuls les administrateurs peuvent modifier.",

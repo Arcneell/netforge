@@ -92,6 +92,7 @@
     "drafts": "Drafted actions",
     "import": "Import",
     "audit": "Audit log",
+    "snapshots": "Snapshot diff",
     "settings": "Settings",
     "sections": {
       "network": "Network",
@@ -380,6 +381,32 @@
     "before": "Before",
     "after": "After",
     "noChanges": "No field changes recorded."
+  },
+  "snapshots": {
+    "compare": {
+      "title": "Snapshot diff",
+      "subtitle": "Inventory changes between two timestamps, derived from the audit log.",
+      "from": "From",
+      "to": "To",
+      "entity": "Entity",
+      "run": "Run diff",
+      "summary": "Summary",
+      "summaryMeta": "{total} audit rows · {orphan} orphan",
+      "noChanges": "No changes in this window.",
+      "noChangesTitle": "No changes",
+      "noChangesDescription": "Try widening the time window or removing the entity filter.",
+      "pickTitle": "Pick a window",
+      "pickDescription": "Choose a start and end time, then click Run diff to aggregate the audit log.",
+      "colEntity": "Entity",
+      "colCreated": "Created",
+      "colUpdated": "Updated",
+      "colDeleted": "Deleted",
+      "colTransient": "Transient",
+      "colStatus": "Status",
+      "colWhen": "Last change",
+      "colActions": "Actions",
+      "colFields": "Fields changed"
+    }
   },
   "settings": {
     "subtitle": "Manage sites, rooms and access tokens. Only administrators can edit.",
