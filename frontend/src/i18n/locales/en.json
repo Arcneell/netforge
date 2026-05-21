@@ -379,7 +379,57 @@
     "sitesTab": "Sites",
     "roomsTab": "Rooms",
     "tokensTab": "API tokens",
-    "aiTab": "AI"
+    "aiTab": "AI",
+    "webhooksTab": "Webhooks"
+  },
+  "webhooks": {
+    "subtitle": "POST inventory mutations to your own systems. Each event is signed with HMAC-SHA256 over the body (header X-Netforge-Signature).",
+    "new": "New webhook",
+    "edit": "Edit webhook",
+    "namePlaceholder": "e.g. itsm-bridge",
+    "eventsHint": "Comma-separated patterns. Use \"*\" for everything, or \"port.*\", \"site.create\", ...",
+    "secretTitle": "Copy your signing secret now — it will never be shown again.",
+    "secretHint": "Store it in your subscriber to verify the X-Netforge-Signature header on each delivery.",
+    "secretCopied": "Secret copied to clipboard.",
+    "secretRotated": "Secret rotated — update your subscriber.",
+    "copyFailed": "Could not access the clipboard.",
+    "viewDeliveries": "View recent deliveries",
+    "sendTest": "Send a test event",
+    "rotateSecret": "Rotate signing secret",
+    "testOk": "Test delivered (HTTP {code}).",
+    "testFailed": "Test failed: {error}",
+    "failuresShort": "fails",
+    "deliveriesTitle": "Deliveries — {name}",
+    "confirmDeleteTitle": "Delete webhook \"{name}\"?",
+    "confirmDeleteMessage": "Subscribers will stop receiving events immediately. Past delivery history is also removed.",
+    "errors": {
+      "eventsRequired": "Provide at least one event pattern."
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "fields": {
+      "name": "Name",
+      "url": "URL",
+      "events": "Events",
+      "enabled": "Enabled",
+      "status": "Status",
+      "stats": "Deliveries / failures"
+    },
+    "delivery": {
+      "when": "When",
+      "event": "Event",
+      "status": "HTTP",
+      "latency": "Latency",
+      "error": "Error",
+      "empty": "No deliveries yet",
+      "emptyHint": "Use the Test button to send a synthetic event."
+    },
+    "empty": {
+      "title": "No webhooks",
+      "description": "Configure HTTP subscribers to receive entity-change events in real time."
+    }
   },
   "apiTokens": {
     "subtitle": "Create personal access tokens for scripts and automations. Tokens inherit your role, so issue them sparingly.",
