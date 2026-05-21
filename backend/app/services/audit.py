@@ -137,6 +137,19 @@ def _write_audit_row(
             user_agent=current_request_ua_var.get(),
         )
     )
+    # Queue an outbound webhook event for this mutation. Dispatch is
+    # deferred until after the response is known to be successful — see
+    # `services/webhooks.py::dispatch_pending_in_background`.
+    from app.services.webhooks import queue_event
+
+    queue_event(
+        entity=entity,
+        action=action.value,
+        entity_id=entity_id,
+        before=changes.get("before") if isinstance(changes, dict) else None,
+        after=changes.get("after") if isinstance(changes, dict) else None,
+        user_id=current_user_id_var.get(),
+    )
 
 
 def register_audit_listeners() -> None:
