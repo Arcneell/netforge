@@ -10,6 +10,7 @@ import RoomEditor from '@/components/editors/RoomEditor.vue'
 import ApiTokensSection from '@/components/settings/ApiTokensSection.vue'
 import AiSection from '@/components/settings/AiSection.vue'
 import WebhooksSection from '@/components/settings/WebhooksSection.vue'
+import VrfsSection from '@/components/settings/VrfsSection.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { roomsApi, sitesApi } from '@/api'
 import type { Room, Site } from '@/api'
@@ -20,7 +21,7 @@ const { t } = useI18n()
 const { success } = useToast()
 const { describe } = useApiErrorMessage()
 
-const tab = ref<'sites' | 'rooms' | 'tokens' | 'ai' | 'webhooks'>('sites')
+const tab = ref<'sites' | 'rooms' | 'tokens' | 'ai' | 'webhooks' | 'vrfs'>('sites')
 
 // --- Sites ---
 const sites = ref<Site[]>([])
@@ -208,6 +209,20 @@ const roomColumns: DataTableColumn[] = [
       >
         {{ t('settings.webhooksTab') }}
       </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'vrfs'"
+        :class="[
+          'px-3 h-8 rounded text-sm font-medium transition',
+          tab === 'vrfs'
+            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+        ]"
+        @click="tab = 'vrfs'"
+      >
+        {{ t('settings.vrfsTab') }}
+      </button>
     </div>
 
     <!-- Sites tab -->
@@ -259,6 +274,9 @@ const roomColumns: DataTableColumn[] = [
 
     <!-- Webhooks tab -->
     <WebhooksSection v-else-if="tab === 'webhooks'" />
+
+    <!-- VRFs tab -->
+    <VrfsSection v-else-if="tab === 'vrfs'" />
 
     <!-- Rooms tab -->
     <section v-else>

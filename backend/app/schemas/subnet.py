@@ -25,6 +25,8 @@ class SubnetBase(BaseModel):
     gateway: str | None = None
     vlan_id: int | None = Field(default=None, gt=0)
     site_id: int = Field(gt=0)
+    vrf_id: int | None = Field(default=None, gt=0)
+    parent_subnet_id: int | None = Field(default=None, gt=0)
     description: str | None = None
     dhcp_enabled: bool = False
     dhcp_range_start: str | None = None
@@ -50,6 +52,8 @@ class SubnetUpdate(BaseModel):
     gateway: str | None = None
     vlan_id: int | None = Field(default=None, gt=0)
     site_id: int | None = Field(default=None, gt=0)
+    vrf_id: int | None = Field(default=None, gt=0)
+    parent_subnet_id: int | None = Field(default=None, gt=0)
     description: str | None = None
     dhcp_enabled: bool | None = None
     dhcp_range_start: str | None = None
@@ -73,6 +77,27 @@ class SubnetRead(SubnetBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+class SubnetTreeNode(BaseModel):
+    """One node of the subnet hierarchy tree.
+
+    `children` is depth-first; siblings ordered by CIDR ascending. Root
+    nodes are the subnets that have no parent (or whose parent rests in a
+    different VRF — orphaned children float back to the top of their VRF).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    cidr: str
+    site_id: int
+    vrf_id: int | None
+    parent_subnet_id: int | None
+    description: str | None
+    children: list[SubnetTreeNode] = []
+
+
+SubnetTreeNode.model_rebuild()
 
 
 # --- Utility responses (phase 4) ---------------------------------------------
