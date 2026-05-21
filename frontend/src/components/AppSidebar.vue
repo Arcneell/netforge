@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { aiApi, type AIStatus } from '@/api'
 import {
   ClipboardList,
+  Diff,
   LayoutDashboard,
   Lightbulb,
   MessageCircle,
@@ -77,6 +78,7 @@ const sections: NavSection[] = [
       },
       { to: '/import', icon: Upload, labelKey: 'nav.import' },
       { to: '/audit', icon: History, labelKey: 'nav.audit' },
+      { to: '/snapshots/compare', icon: Diff, labelKey: 'nav.snapshots' },
       { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
     ],
   },
