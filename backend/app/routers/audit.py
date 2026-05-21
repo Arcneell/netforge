@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_role
 from app.db import get_session as get_db
-from app.models.user import AuditLog, UserRole
+from app.models.user import AuditAction, AuditLog, UserRole
 from app.schemas.audit import AuditLogRead
 from app.schemas.common import Page, PageParams
 from app.services.errors import not_found
@@ -27,6 +27,7 @@ async def list_audit(
     page: PageParams = Depends(),
     entity: str | None = Query(default=None, min_length=1, max_length=50),
     entity_id: int | None = Query(default=None, gt=0),
+    action: AuditAction | None = Query(default=None),
     user_id: int | None = Query(default=None, gt=0),
     from_: datetime | None = Query(default=None, alias="from"),
     to: datetime | None = Query(default=None),
@@ -41,6 +42,9 @@ async def list_audit(
     if entity_id is not None:
         base = base.where(AuditLog.entity_id == entity_id)
         count_q = count_q.where(AuditLog.entity_id == entity_id)
+    if action is not None:
+        base = base.where(AuditLog.action == action)
+        count_q = count_q.where(AuditLog.action == action)
     if user_id is not None:
         base = base.where(AuditLog.user_id == user_id)
         count_q = count_q.where(AuditLog.user_id == user_id)

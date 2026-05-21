@@ -264,11 +264,15 @@
       "model": "Model",
       "serial": "Serial number",
       "room": "Room",
+      "assetTag": "Asset tag",
+      "warrantyExpiresAt": "Warranty expires",
+      "eolDate": "End-of-life date",
       "description": "Description"
     },
     "new": "New device",
     "edit": "Edit device",
     "empty": "No devices yet.",
+    "eolHint": "Vendor end-of-support date — the advisor will surface devices approaching EOL.",
     "types": {
       "server": "Server",
       "desktop": "Desktop",
@@ -296,6 +300,9 @@
       "portCount": "Port count",
       "firmware": "Firmware",
       "snmpCommunity": "SNMP community",
+      "assetTag": "Asset tag",
+      "warrantyExpiresAt": "Warranty expires",
+      "eolDate": "End-of-life date",
       "description": "Description"
     },
     "new": "New switch",
@@ -306,7 +313,8 @@
     "ports": "Ports",
     "links": "Links",
     "portStats": "{used} of {total} ports in use",
-    "snmpCommunityHint": "Stored as-is in the database. Only visible to administrators."
+    "snmpCommunityHint": "Stored as-is in the database. Only visible to administrators.",
+    "eolHint": "Vendor end-of-support date — the advisor will surface switches approaching EOL."
   },
   "port": {
     "label": "Port",
@@ -380,6 +388,9 @@
     "revoke": "Revoke",
     "namePlaceholder": "e.g. ansible-prod",
     "nameHint": "A short label to help you recognise the token later.",
+    "expiresAtHint": "Optional expiry date. Leave blank for a token that never expires (still revocable manually).",
+    "invalidExpiry": "Invalid date format.",
+    "expiryInPast": "Expiry must be in the future.",
     "copied": "Token copied to clipboard.",
     "copyFailed": "Could not access the clipboard — copy the token manually.",
     "revokedToast": "Token revoked.",
@@ -392,7 +403,8 @@
       "prefix": "Prefix",
       "created": "Created",
       "lastUsed": "Last used",
-      "status": "Status"
+      "status": "Status",
+      "expiresAt": "Expires"
     },
     "status": {
       "active": "Active",
