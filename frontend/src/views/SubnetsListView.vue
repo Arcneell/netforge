@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2 } from 'lucide-vue-next'
+import { List, Network, Plus, Pencil, Trash2 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -10,9 +10,13 @@ import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import VlanBadge from '@/components/VlanBadge.vue'
 import SubnetEditor from '@/components/editors/SubnetEditor.vue'
+import SubnetTreeRow from '@/components/SubnetTreeRow.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { subnetsApi, vlansApi } from '@/api'
 import type { Subnet, Vlan } from '@/api'
+import type { SubnetTreeNode } from '@/api/endpoints/subnets'
+import { vrfsApi } from '@/api/endpoints/vrfs'
+import type { Vrf } from '@/api/endpoints/vrfs'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -31,6 +35,19 @@ const pageSize = 50
 const loading = ref(false)
 
 const vlansById = ref<Map<number, Vlan>>(new Map())
+const vrfs = ref<Vrf[]>([])
+// Filter chip values:
+//   undefined → show every subnet across all VRFs (default list mode)
+//   0         → show only the global-scope subnets (vrf_id IS NULL)
+//   N (>0)    → show only the subnets in VRF N
+// The tree view re-uses the same filter; it always shows a single scope at
+// a time (global by default, or a specific VRF when picked).
+const vrfFilter = ref<number | undefined>(undefined)
+
+const viewMode = ref<'list' | 'tree'>('list')
+const tree = ref<SubnetTreeNode[]>([])
+const treeLoading = ref(false)
+const collapsed = ref<Set<number>>(new Set())
 
 const editorOpen = ref(false)
 const editing = ref<Subnet | null>(null)
@@ -40,11 +57,26 @@ const deleting = ref(false)
 async function load() {
   loading.value = true
   try {
-    const res = await subnetsApi.list({ page: page.value, page_size: pageSize })
+    const res = await subnetsApi.list({
+      page: page.value,
+      page_size: pageSize,
+      vrf_id: vrfFilter.value,
+    })
     items.value = res.items
     total.value = res.total
   } finally {
     loading.value = false
+  }
+}
+
+async function loadTree() {
+  treeLoading.value = true
+  try {
+    // Map the chip back to the tree endpoint: undefined / 0 = global.
+    const scope = vrfFilter.value && vrfFilter.value > 0 ? vrfFilter.value : 0
+    tree.value = await subnetsApi.tree(scope)
+  } finally {
+    treeLoading.value = false
   }
 }
 
@@ -53,9 +85,49 @@ async function loadVlans() {
   vlansById.value = new Map(res.items.map((v) => [v.id, v]))
 }
 
+async function loadVrfs() {
+  try {
+    vrfs.value = await vrfsApi.list()
+  } catch {
+    // Non-blocking — UI just hides the picker if the call failed.
+    vrfs.value = []
+  }
+}
+
+function onVrfFilterChange(value: number | undefined) {
+  vrfFilter.value = value
+  page.value = 1
+  if (viewMode.value === 'tree') {
+    loadTree()
+  } else {
+    load()
+  }
+}
+
+function switchView(mode: 'list' | 'tree') {
+  viewMode.value = mode
+  if (mode === 'tree') {
+    loadTree()
+  } else {
+    load()
+  }
+}
+
+function toggleNode(id: number) {
+  if (collapsed.value.has(id)) collapsed.value.delete(id)
+  else collapsed.value.add(id)
+  // Force reactivity — Set mutations don't auto-trigger.
+  collapsed.value = new Set(collapsed.value)
+}
+
+function openSubnet(id: number) {
+  router.push(`/subnets/${id}`)
+}
+
 onMounted(() => {
   load()
   loadVlans()
+  loadVrfs()
 })
 
 function onNew() {
@@ -116,7 +188,88 @@ const columns: DataTableColumn[] = [
       </template>
     </PageHeader>
 
+    <!-- View toggle + VRF filter -->
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+      <div
+        class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
+        role="tablist"
+      >
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="viewMode === 'list'"
+          :class="[
+            'px-3 h-8 rounded text-sm font-medium transition inline-flex items-center gap-1.5',
+            viewMode === 'list'
+              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+              : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+          ]"
+          @click="switchView('list')"
+        >
+          <List class="w-3.5 h-3.5" aria-hidden="true" />
+          {{ t('subnet.viewList') }}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="viewMode === 'tree'"
+          :class="[
+            'px-3 h-8 rounded text-sm font-medium transition inline-flex items-center gap-1.5',
+            viewMode === 'tree'
+              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+              : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+          ]"
+          @click="switchView('tree')"
+        >
+          <Network class="w-3.5 h-3.5" aria-hidden="true" />
+          {{ t('subnet.viewTree') }}
+        </button>
+      </div>
+
+      <label class="text-sm inline-flex items-center gap-2">
+        <span class="text-xs uppercase tracking-wider text-fg-muted font-semibold">
+          {{ t('subnet.vrfFilter') }}
+        </span>
+        <select
+          :value="vrfFilter === undefined ? '' : String(vrfFilter)"
+          class="h-8 px-2 rounded border border-border bg-surface text-sm"
+          @change="
+            (e) => {
+              const v = (e.target as HTMLSelectElement).value
+              onVrfFilterChange(v === '' ? undefined : Number(v))
+            }
+          "
+        >
+          <option value="">{{ viewMode === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal') }}</option>
+          <option value="0">{{ t('subnet.vrfFilterGlobal') }}</option>
+          <option v-for="v in vrfs" :key="v.id" :value="v.id">{{ v.name }}</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- Tree view -->
+    <div v-if="viewMode === 'tree'" class="nf-card overflow-hidden">
+      <div v-if="treeLoading" class="p-6 text-center text-fg-muted text-sm">
+        {{ t('common.loading') }}
+      </div>
+      <div v-else-if="tree.length === 0" class="p-6 text-center text-fg-muted text-sm">
+        {{ t('subnet.treeEmpty') }}
+      </div>
+      <ul v-else class="divide-y divide-border/50">
+        <SubnetTreeRow
+          v-for="node in tree"
+          :key="node.id"
+          :node="node"
+          :collapsed="collapsed"
+          :depth="0"
+          @toggle="toggleNode"
+          @open="openSubnet"
+        />
+      </ul>
+    </div>
+
     <DataTable
+      v-else
       :columns="columns"
       :rows="items"
       :loading="loading"

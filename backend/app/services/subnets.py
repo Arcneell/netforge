@@ -34,6 +34,7 @@ async def list_subnets(
     page: PageParams,
     site_id: int | None = None,
     vlan_id: int | None = None,
+    vrf_id: int | None = None,
 ) -> tuple[list[Subnet], int]:
     base = select(Subnet)
     count_q = select(func.count()).select_from(Subnet)
@@ -43,6 +44,16 @@ async def list_subnets(
     if vlan_id is not None:
         base = base.where(Subnet.vlan_id == vlan_id)
         count_q = count_q.where(Subnet.vlan_id == vlan_id)
+    if vrf_id is not None:
+        # Special value 0 means "global scope" (vrf_id IS NULL) — the
+        # router translates the explicit `?vrf_id=0` so admins can browse
+        # only the unscoped subnets.
+        if vrf_id == 0:
+            base = base.where(Subnet.vrf_id.is_(None))
+            count_q = count_q.where(Subnet.vrf_id.is_(None))
+        else:
+            base = base.where(Subnet.vrf_id == vrf_id)
+            count_q = count_q.where(Subnet.vrf_id == vrf_id)
 
     total = (await db.execute(count_q)).scalar() or 0
     result = await db.execute(
@@ -73,9 +84,63 @@ def _validate_dhcp_range(cidr: str, payload: dict) -> None:
             )
 
 
+async def _validate_parent(
+    db: AsyncSession,
+    *,
+    cidr: str,
+    vrf_id: int | None,
+    parent_subnet_id: int | None,
+    self_id: int | None = None,
+) -> None:
+    """Three checks when a parent is set:
+      1. The parent exists.
+      2. It lives in the same VRF (mixing routing scopes makes no sense).
+      3. The child CIDR is strictly contained in the parent CIDR.
+    Plus a structural guard: a subnet cannot be its own parent.
+    """
+    if parent_subnet_id is None:
+        return
+    if self_id is not None and self_id == parent_subnet_id:
+        business_rule(
+            "INVALID_PARENT",
+            "A subnet cannot be its own parent.",
+            details={"subnet_id": self_id},
+        )
+    parent = await db.get(Subnet, parent_subnet_id)
+    if parent is None:
+        business_rule(
+            "INVALID_PARENT",
+            f"Parent subnet {parent_subnet_id} does not exist.",
+            details={"parent_subnet_id": parent_subnet_id},
+        )
+    if parent.vrf_id != vrf_id:
+        business_rule(
+            "INVALID_PARENT",
+            "Parent and child subnet must live in the same VRF.",
+            details={
+                "parent_vrf_id": parent.vrf_id,
+                "child_vrf_id": vrf_id,
+            },
+        )
+    child_net = IPv4Network(cidr, strict=False)
+    parent_net = IPv4Network(str(parent.cidr), strict=False)
+    if not (child_net.subnet_of(parent_net) and child_net != parent_net):
+        business_rule(
+            "INVALID_PARENT",
+            f"{cidr} is not strictly contained in parent {parent_net}.",
+            details={"child_cidr": str(child_net), "parent_cidr": str(parent_net)},
+        )
+
+
 async def create_subnet(db: AsyncSession, payload: SubnetCreate) -> Subnet:
     data = payload.model_dump()
     _validate_dhcp_range(data["cidr"], data)
+    await _validate_parent(
+        db,
+        cidr=data["cidr"],
+        vrf_id=data.get("vrf_id"),
+        parent_subnet_id=data.get("parent_subnet_id"),
+    )
     subnet = Subnet(**data)
     db.add(subnet)
     with catch_integrity_errors():
@@ -97,6 +162,17 @@ async def update_subnet(
         "dhcp_range_end": patch.get("dhcp_range_end", subnet.dhcp_range_end),
     }
     _validate_dhcp_range(cidr, merged)
+    # If parent/vrf change, re-run containment + same-VRF checks against
+    # the new effective values.
+    new_vrf = patch.get("vrf_id", subnet.vrf_id)
+    new_parent = patch.get("parent_subnet_id", subnet.parent_subnet_id)
+    await _validate_parent(
+        db,
+        cidr=str(cidr),
+        vrf_id=new_vrf,
+        parent_subnet_id=new_parent,
+        self_id=subnet.id,
+    )
     for field, value in patch.items():
         setattr(subnet, field, value)
     with catch_integrity_errors():
@@ -199,6 +275,59 @@ async def compute_utilization(
         "used_pct": (consumed * 100 // usable) if usable > 0 else 0,
         **{f"status_{k}": v for k, v in by_status.items()},
     }
+
+
+async def build_subnet_tree(
+    db: AsyncSession, vrf_id: int | None
+) -> list[dict]:
+    """Return the subnet hierarchy as a list of root nodes.
+
+    `vrf_id` filters the scope: `None` returns the global VRF tree,
+    a specific id returns that VRF's tree. We always fetch every subnet
+    in scope in one query and assemble in Python — Postgres recursive
+    CTEs are overkill for a tree that's at most a few hundred nodes.
+
+    A "root" is a subnet whose `parent_subnet_id` is either NULL or
+    points outside the current scope (e.g. a deleted parent that hasn't
+    been cleaned up). Sibling order is ascending by CIDR.
+    """
+    base = select(Subnet)
+    base = (
+        base.where(Subnet.vrf_id.is_(None))
+        if vrf_id is None
+        else base.where(Subnet.vrf_id == vrf_id)
+    )
+    result = await db.execute(base)
+    rows: list[Subnet] = list(result.scalars().all())
+
+    by_id: dict[int, Subnet] = {s.id: s for s in rows}
+    children_of: dict[int | None, list[Subnet]] = {}
+    for s in rows:
+        # If the parent isn't in scope, treat it as a root for this view.
+        parent_key = (
+            s.parent_subnet_id
+            if s.parent_subnet_id in by_id
+            else None
+        )
+        children_of.setdefault(parent_key, []).append(s)
+
+    # Sort siblings by CIDR (lexicographic on canonical form is fine for
+    # IPv4 — Postgres CIDR stores in canonical form anyway).
+    for siblings in children_of.values():
+        siblings.sort(key=lambda s: str(s.cidr))
+
+    def node_for(s: Subnet) -> dict:
+        return {
+            "id": s.id,
+            "cidr": str(s.cidr),
+            "site_id": s.site_id,
+            "vrf_id": s.vrf_id,
+            "parent_subnet_id": s.parent_subnet_id,
+            "description": s.description,
+            "children": [node_for(c) for c in children_of.get(s.id, [])],
+        }
+
+    return [node_for(s) for s in children_of.get(None, [])]
 
 
 async def list_subnet_ips(

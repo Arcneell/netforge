@@ -32,6 +32,7 @@ from app.routers import (
     switches,
     topology,
     vlans,
+    vrfs,
     webhooks,
 )
 from app.services.audit import (
@@ -210,6 +211,7 @@ def create_app() -> FastAPI:
     app.include_router(sites.router, prefix="/api")
     app.include_router(rooms.router, prefix="/api")
     app.include_router(vlans.router, prefix="/api")
+    app.include_router(vrfs.router, prefix="/api")
     app.include_router(subnets.router, prefix="/api")
     app.include_router(ips.router, prefix="/api")
     app.include_router(devices.router, prefix="/api")

@@ -208,6 +208,7 @@
       "gateway": "Gateway",
       "vlan": "VLAN",
       "site": "Site",
+      "parent": "Parent subnet",
       "description": "Description",
       "dhcp": "DHCP",
       "dhcpEnabled": "DHCP enabled",
@@ -223,6 +224,12 @@
     "empty": "No subnets yet — create one to start planning your IP space.",
     "viewGrid": "Grid view",
     "viewTable": "Table view",
+    "viewList": "List",
+    "viewTree": "Tree",
+    "vrfFilter": "VRF",
+    "vrfFilterAll": "All scopes",
+    "vrfFilterGlobal": "Global",
+    "treeEmpty": "No subnets in this scope — create one to get started.",
     "exportCsv": "Export CSV",
     "nextFree": "Next free IP",
     "nextFreeFound": "Next free address: {address}",
@@ -380,7 +387,8 @@
     "roomsTab": "Rooms",
     "tokensTab": "API tokens",
     "aiTab": "AI",
-    "webhooksTab": "Webhooks"
+    "webhooksTab": "Webhooks",
+    "vrfsTab": "VRFs"
   },
   "webhooks": {
     "subtitle": "POST inventory mutations to your own systems. Each event is signed with HMAC-SHA256 over the body (header X-Netforge-Signature).",
@@ -429,6 +437,25 @@
     "empty": {
       "title": "No webhooks",
       "description": "Configure HTTP subscribers to receive entity-change events in real time."
+    }
+  },
+  "vrf": {
+    "label": "VRF",
+    "labelPlural": "VRFs",
+    "subtitle": "Routing-table isolation. Subnets in different VRFs may overlap; subnets inside one VRF can't.",
+    "new": "New VRF",
+    "edit": "Edit VRF",
+    "rdHint": "Optional BGP route distinguisher, e.g. 65000:42 — leave blank if you don't run BGP.",
+    "confirmDeleteTitle": "Delete VRF \"{name}\"?",
+    "confirmDeleteMessage": "Subnets still assigned to this VRF will block the delete — clear them first.",
+    "fields": {
+      "name": "Name",
+      "rd": "Route distinguisher",
+      "description": "Description"
+    },
+    "empty": {
+      "title": "No VRFs",
+      "description": "Create a VRF when you need overlapping CIDRs for tenant or env isolation."
     }
   },
   "apiTokens": {

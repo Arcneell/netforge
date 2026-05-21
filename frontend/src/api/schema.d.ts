@@ -256,6 +256,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vrfs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Vrfs */
+        get: operations["list_vrfs_api_vrfs_get"];
+        put?: never;
+        /** Create Vrf */
+        post: operations["create_vrf_api_vrfs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vrfs/{vrf_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Vrf */
+        get: operations["get_vrf_api_vrfs__vrf_id__get"];
+        /** Update Vrf */
+        put: operations["update_vrf_api_vrfs__vrf_id__put"];
+        post?: never;
+        /** Delete Vrf */
+        delete: operations["delete_vrf_api_vrfs__vrf_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/subnets": {
         parameters: {
             query?: never;
@@ -268,6 +305,27 @@ export interface paths {
         put?: never;
         /** Create Subnet */
         post: operations["create_subnet_api_subnets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subnets/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Subnet Tree
+         * @description Hierarchical view of the subnets in one VRF. Roots first, depth-first
+         *     children. Operators with no VRFs configured just see the global tree.
+         */
+        get: operations["subnet_tree_api_subnets_tree_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2349,6 +2407,10 @@ export interface components {
             vlan_id?: number | null;
             /** Site Id */
             site_id: number;
+            /** Vrf Id */
+            vrf_id?: number | null;
+            /** Parent Subnet Id */
+            parent_subnet_id?: number | null;
             /** Description */
             description?: string | null;
             /**
@@ -2401,6 +2463,10 @@ export interface components {
             vlan_id?: number | null;
             /** Site Id */
             site_id: number;
+            /** Vrf Id */
+            vrf_id?: number | null;
+            /** Parent Subnet Id */
+            parent_subnet_id?: number | null;
             /** Description */
             description?: string | null;
             /**
@@ -2425,6 +2491,33 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * SubnetTreeNode
+         * @description One node of the subnet hierarchy tree.
+         *
+         *     `children` is depth-first; siblings ordered by CIDR ascending. Root
+         *     nodes are the subnets that have no parent (or whose parent rests in a
+         *     different VRF — orphaned children float back to the top of their VRF).
+         */
+        SubnetTreeNode: {
+            /** Id */
+            id: number;
+            /** Cidr */
+            cidr: string;
+            /** Site Id */
+            site_id: number;
+            /** Vrf Id */
+            vrf_id: number | null;
+            /** Parent Subnet Id */
+            parent_subnet_id: number | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Children
+             * @default []
+             */
+            children: components["schemas"]["SubnetTreeNode"][];
+        };
         /** SubnetUpdate */
         SubnetUpdate: {
             /** Cidr */
@@ -2435,6 +2528,10 @@ export interface components {
             vlan_id?: number | null;
             /** Site Id */
             site_id?: number | null;
+            /** Vrf Id */
+            vrf_id?: number | null;
+            /** Parent Subnet Id */
+            parent_subnet_id?: number | null;
             /** Description */
             description?: string | null;
             /** Dhcp Enabled */
@@ -2733,6 +2830,45 @@ export interface components {
             description?: string | null;
             /** Color */
             color?: string | null;
+        };
+        /** VrfCreate */
+        VrfCreate: {
+            /** Name */
+            name: string;
+            /** Rd */
+            rd?: string | null;
+            /** Description */
+            description?: string | null;
+        };
+        /** VrfRead */
+        VrfRead: {
+            /** Name */
+            name: string;
+            /** Rd */
+            rd?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** VrfUpdate */
+        VrfUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Rd */
+            rd?: string | null;
+            /** Description */
+            description?: string | null;
         };
     };
     responses: never;
@@ -3410,11 +3546,161 @@ export interface operations {
             };
         };
     };
+    list_vrfs_api_vrfs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VrfRead"][];
+                };
+            };
+        };
+    };
+    create_vrf_api_vrfs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VrfCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VrfRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vrf_api_vrfs__vrf_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vrf_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VrfRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_vrf_api_vrfs__vrf_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vrf_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VrfUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VrfRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_vrf_api_vrfs__vrf_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vrf_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_subnets_api_subnets_get: {
         parameters: {
             query?: {
                 site_id?: number | null;
                 vlan_id?: number | null;
+                /** @description Filter by VRF. Use `0` to fetch only global-scope subnets. */
+                vrf_id?: number | null;
                 page?: number;
                 page_size?: number;
             };
@@ -3464,6 +3750,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubnetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    subnet_tree_api_subnets_tree_get: {
+        parameters: {
+            query?: {
+                /** @description VRF scope. Omit or pass `0` for the global VRF. */
+                vrf_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubnetTreeNode"][];
                 };
             };
             /** @description Validation Error */

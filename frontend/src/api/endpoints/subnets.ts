@@ -13,11 +13,31 @@ import type {
 export interface SubnetFilters extends PageParams {
   site_id?: number
   vlan_id?: number
+  /** 0 = global scope only; positive = that VRF only. Omit for all. */
+  vrf_id?: number
+}
+
+export interface SubnetTreeNode {
+  id: number
+  cidr: string
+  site_id: number
+  vrf_id: number | null
+  parent_subnet_id: number | null
+  description: string | null
+  children: SubnetTreeNode[]
 }
 
 export const subnetsApi = {
   list(filters: SubnetFilters = {}): Promise<Page<Subnet>> {
     return request<Page<Subnet>>({ method: 'GET', url: '/subnets', params: filters })
+  },
+  /** Hierarchical view. `vrf_id` omitted or 0 = global scope. */
+  tree(vrf_id?: number): Promise<SubnetTreeNode[]> {
+    return request<SubnetTreeNode[]>({
+      method: 'GET',
+      url: '/subnets/tree',
+      params: vrf_id !== undefined ? { vrf_id } : undefined,
+    })
   },
   get(id: number): Promise<Subnet> {
     return request<Subnet>({ method: 'GET', url: `/subnets/${id}` })

@@ -29,6 +29,19 @@ class Subnet(Base, TimestampMixin):
         ForeignKey("sites.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    # Routing-table scope. NULL = global VRF. Two subnets in different VRFs
+    # may share an overlapping CIDR — the GiST exclusion is partitioned by
+    # `vrf_id` (see migration 0010).
+    vrf_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vrfs.id", ondelete="RESTRICT"),
+    )
+    # Optional self-reference for hierarchical IPAM. A child subnet must
+    # fit within its parent (enforced in the service layer); breaking the
+    # parent link is allowed via SET NULL since orphans are still valid
+    # standalone subnets.
+    parent_subnet_id: Mapped[int | None] = mapped_column(
+        ForeignKey("subnets.id", ondelete="SET NULL"),
+    )
     description: Mapped[str | None] = mapped_column(Text)
     dhcp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     dhcp_range_start: Mapped[str | None] = mapped_column(INET)
@@ -39,4 +52,14 @@ class Subnet(Base, TimestampMixin):
     ips: Mapped[list[Ip]] = relationship(
         back_populates="subnet",
         cascade="all, delete-orphan",
+    )
+    parent: Mapped[Subnet | None] = relationship(
+        "Subnet",
+        remote_side="Subnet.id",
+        back_populates="children",
+    )
+    children: Mapped[list[Subnet]] = relationship(
+        "Subnet",
+        back_populates="parent",
+        cascade="save-update",
     )

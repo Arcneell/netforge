@@ -1,0 +1,182 @@
+"""VRF + subnet-hierarchy unit tests — pure-Python, no DB.
+
+The DB-side bits (the per-VRF GiST exclusion that lets two CIDRs coexist in
+different VRFs) need a real Postgres and are covered by the integration
+suite. Here we exercise the service-layer guards:
+  - parent must exist, live in the same VRF, contain the child CIDR;
+  - a subnet cannot be its own parent;
+  - the tree builder gathers depth-first roots and orders siblings by CIDR.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from fastapi import HTTPException
+
+from app.models.subnet import Subnet
+from app.services import subnets as service
+
+
+def _subnet(
+    *,
+    id: int,
+    cidr: str,
+    vrf_id: int | None = None,
+    parent_subnet_id: int | None = None,
+    site_id: int = 1,
+) -> Subnet:
+    return Subnet(
+        id=id,
+        cidr=cidr,
+        site_id=site_id,
+        vrf_id=vrf_id,
+        parent_subnet_id=parent_subnet_id,
+        dhcp_enabled=False,
+    )
+
+
+# --- _validate_parent ------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_validate_parent_noop_when_no_parent() -> None:
+    db = AsyncMock()
+    # Should not call db.get and must not raise.
+    await service._validate_parent(
+        db, cidr="10.0.0.0/24", vrf_id=None, parent_subnet_id=None
+    )
+    db.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_validate_parent_rejects_self_reference() -> None:
+    db = AsyncMock()
+    with pytest.raises(HTTPException) as exc:
+        await service._validate_parent(
+            db,
+            cidr="10.0.0.0/24",
+            vrf_id=None,
+            parent_subnet_id=42,
+            self_id=42,
+        )
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"]["code"] == "INVALID_PARENT"
+
+
+@pytest.mark.asyncio
+async def test_validate_parent_rejects_missing_parent() -> None:
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=None)
+    with pytest.raises(HTTPException) as exc:
+        await service._validate_parent(
+            db, cidr="10.0.0.0/24", vrf_id=None, parent_subnet_id=99
+        )
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_validate_parent_rejects_vrf_mismatch() -> None:
+    parent = _subnet(id=1, cidr="10.0.0.0/16", vrf_id=2)
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=parent)
+    with pytest.raises(HTTPException) as exc:
+        await service._validate_parent(
+            db, cidr="10.0.1.0/24", vrf_id=3, parent_subnet_id=1
+        )
+    assert exc.value.detail["error"]["code"] == "INVALID_PARENT"
+
+
+@pytest.mark.asyncio
+async def test_validate_parent_rejects_non_contained_child() -> None:
+    parent = _subnet(id=1, cidr="10.0.0.0/24", vrf_id=None)
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=parent)
+    with pytest.raises(HTTPException) as exc:
+        await service._validate_parent(
+            db, cidr="192.168.0.0/24", vrf_id=None, parent_subnet_id=1
+        )
+    assert exc.value.detail["error"]["code"] == "INVALID_PARENT"
+
+
+@pytest.mark.asyncio
+async def test_validate_parent_rejects_identical_cidr() -> None:
+    """Containment is *strict* — a child must be smaller than its parent."""
+    parent = _subnet(id=1, cidr="10.0.0.0/24", vrf_id=None)
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=parent)
+    with pytest.raises(HTTPException):
+        await service._validate_parent(
+            db, cidr="10.0.0.0/24", vrf_id=None, parent_subnet_id=1
+        )
+
+
+@pytest.mark.asyncio
+async def test_validate_parent_accepts_strictly_contained_child() -> None:
+    parent = _subnet(id=1, cidr="10.0.0.0/16", vrf_id=None)
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=parent)
+    # Should not raise.
+    await service._validate_parent(
+        db, cidr="10.0.5.0/24", vrf_id=None, parent_subnet_id=1
+    )
+
+
+# --- build_subnet_tree -----------------------------------------------------
+
+
+def _mock_db_with_subnets(subnets: list[Subnet]) -> AsyncMock:
+    scalars = MagicMock()
+    scalars.all = MagicMock(return_value=subnets)
+    result = MagicMock()
+    result.scalars = MagicMock(return_value=scalars)
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    return db
+
+
+@pytest.mark.asyncio
+async def test_tree_empty_when_no_subnets_in_scope() -> None:
+    db = _mock_db_with_subnets([])
+    assert await service.build_subnet_tree(db, vrf_id=None) == []
+
+
+@pytest.mark.asyncio
+async def test_tree_groups_children_under_parent() -> None:
+    root = _subnet(id=1, cidr="10.0.0.0/16")
+    child_a = _subnet(id=2, cidr="10.0.1.0/24", parent_subnet_id=1)
+    child_b = _subnet(id=3, cidr="10.0.2.0/24", parent_subnet_id=1)
+    grandchild = _subnet(id=4, cidr="10.0.1.128/25", parent_subnet_id=2)
+    db = _mock_db_with_subnets([root, child_a, child_b, grandchild])
+
+    tree = await service.build_subnet_tree(db, vrf_id=None)
+    assert len(tree) == 1
+    assert tree[0]["id"] == 1
+    assert [c["id"] for c in tree[0]["children"]] == [2, 3]
+    assert tree[0]["children"][0]["children"][0]["id"] == 4
+
+
+@pytest.mark.asyncio
+async def test_tree_promotes_orphaned_children_to_roots() -> None:
+    """When a child's parent is outside the current scope (e.g. a deleted
+    parent), the tree builder should still surface the child as a root —
+    otherwise it'd disappear from the UI."""
+    orphan = _subnet(id=5, cidr="10.0.3.0/24", parent_subnet_id=999)
+    db = _mock_db_with_subnets([orphan])
+
+    tree = await service.build_subnet_tree(db, vrf_id=None)
+    assert len(tree) == 1
+    assert tree[0]["id"] == 5
+
+
+@pytest.mark.asyncio
+async def test_tree_sorts_siblings_by_cidr() -> None:
+    root = _subnet(id=1, cidr="10.0.0.0/16")
+    child_b = _subnet(id=2, cidr="10.0.5.0/24", parent_subnet_id=1)
+    child_a = _subnet(id=3, cidr="10.0.1.0/24", parent_subnet_id=1)
+    db = _mock_db_with_subnets([root, child_b, child_a])
+
+    tree = await service.build_subnet_tree(db, vrf_id=None)
+    ordered = [c["cidr"] for c in tree[0]["children"]]
+    assert ordered == ["10.0.1.0/24", "10.0.5.0/24"]
