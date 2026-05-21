@@ -203,7 +203,8 @@ function bucketLabel(b: UsageBucket, dimension: 'kind' | 'provider'): string {
             {{ t('ai.usage.latency') }}
           </dt>
           <dd class="text-2xl font-semibold tabular-nums mt-1">
-            {{ formatNumber(report.total.avg_latency_ms) }}<span class="text-sm">ms</span>
+            {{ formatNumber(report.total.avg_latency_ms) }}
+            <span class="text-sm">ms</span>
           </dd>
           <p class="text-[11px] text-fg-muted mt-0.5">{{ t('ai.usage.latencyHint') }}</p>
         </div>

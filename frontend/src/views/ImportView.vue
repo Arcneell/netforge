@@ -95,13 +95,8 @@ async function submit() {
     // a stale mapping from accidentally rewriting a different file's
     // headers when the user switches entities between mapping and upload.
     const mapping =
-      pendingMappingEntity.value === entity.value ? pendingMapping.value ?? undefined : undefined
-    const result = await importsApi.upload(
-      entity.value,
-      file.value,
-      dryRun.value,
-      mapping,
-    )
+      pendingMappingEntity.value === entity.value ? (pendingMapping.value ?? undefined) : undefined
+    const result = await importsApi.upload(entity.value, file.value, dryRun.value, mapping)
     report.value = result
     lastEntity.value = entity.value
     // Single-shot use — clear so a follow-up import on the same entity
@@ -336,14 +331,20 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
         <HelpTooltip :text="t('import.help')" placement="bottom" />
       </template>
       <template #actions>
-        <Button variant="ghost" @click="mappingOpen = true">
-          <Wand2 class="w-4 h-4" aria-hidden="true" />
-          {{ t('ai.csvMapping.openButton') }}
-        </Button>
-        <Button variant="secondary" @click="downloadAll">
-          <Download class="w-4 h-4" aria-hidden="true" />
-          {{ t('import.downloadAll') }}
-        </Button>
+        <div class="inline-flex items-center gap-1">
+          <Button variant="ghost" @click="mappingOpen = true">
+            <Wand2 class="w-4 h-4" aria-hidden="true" />
+            {{ t('ai.csvMapping.openButton') }}
+          </Button>
+          <HelpTooltip :text="t('import.helpMapping')" />
+        </div>
+        <div class="inline-flex items-center gap-1">
+          <Button variant="secondary" @click="downloadAll">
+            <Download class="w-4 h-4" aria-hidden="true" />
+            {{ t('import.downloadAll') }}
+          </Button>
+          <HelpTooltip :text="t('import.helpDownloadAll')" />
+        </div>
       </template>
     </PageHeader>
 
@@ -521,8 +522,11 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
             type="checkbox"
             class="mt-0.5 h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
           />
-          <span class="text-sm">
-            <span class="text-fg font-medium">{{ t('import.dryRun') }}</span>
+          <span class="text-sm flex-1">
+            <span class="inline-flex items-center gap-1">
+              <span class="text-fg font-medium">{{ t('import.dryRun') }}</span>
+              <HelpTooltip :text="t('import.helpDryRun')" />
+            </span>
             <span class="block text-xs text-fg-muted">{{ t('import.bulk.dryRunHint') }}</span>
           </span>
         </label>
@@ -567,7 +571,10 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
     <div v-else class="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
       <section class="nf-card p-5 space-y-5">
         <div>
-          <label class="block text-sm font-medium text-fg mb-1.5">{{ t('import.entity') }}</label>
+          <label class="text-sm font-medium text-fg mb-1.5 flex items-center gap-1.5">
+            <span>{{ t('import.entity') }}</span>
+            <HelpTooltip :text="t('import.helpEntity')" />
+          </label>
           <Select
             :model-value="entity"
             :options="entityOptions"
@@ -592,8 +599,11 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
             type="checkbox"
             class="mt-0.5 h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
           />
-          <span class="text-sm">
-            <span class="text-fg font-medium">{{ t('import.dryRun') }}</span>
+          <span class="text-sm flex-1">
+            <span class="inline-flex items-center gap-1">
+              <span class="text-fg font-medium">{{ t('import.dryRun') }}</span>
+              <HelpTooltip :text="t('import.helpDryRun')" />
+            </span>
             <span class="block text-xs text-fg-muted">{{ t('import.dryRunHint') }}</span>
           </span>
         </label>
@@ -603,10 +613,13 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
             <Upload class="w-4 h-4" aria-hidden="true" />
             {{ dryRun ? t('import.submitDryRun') : t('import.submit') }}
           </Button>
-          <Button variant="secondary" :disabled="submitting" @click="downloadTemplate">
-            <Download class="w-4 h-4" aria-hidden="true" />
-            {{ t('import.exportTemplate') }}
-          </Button>
+          <div class="inline-flex items-center gap-1">
+            <Button variant="secondary" :disabled="submitting" @click="downloadTemplate">
+              <Download class="w-4 h-4" aria-hidden="true" />
+              {{ t('import.exportTemplate') }}
+            </Button>
+            <HelpTooltip :text="t('import.helpExportTemplate')" />
+          </div>
         </div>
         <p class="text-xs text-fg-muted -mt-3">{{ t('import.exportTemplateHint') }}</p>
       </section>

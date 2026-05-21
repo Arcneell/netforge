@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import VlanBadge from '@/components/VlanBadge.vue'
 import { devicesApi, portsApi, vlansApi } from '@/api'
 import type { Device, Port, PortAdminStatus, PortMode, PortUpdate, Vlan } from '@/api'
@@ -173,12 +174,18 @@ async function removeTagged(vlanId: number) {
   >
     <form class="grid grid-cols-2 gap-4" @submit="onSubmit">
       <FormField :label="t('port.fields.label')">
+        <template #help>
+          <HelpTooltip :text="t('port.help.label')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.label" placeholder="uplink-core-01" autocomplete="off" />
         </template>
       </FormField>
 
       <FormField :label="t('port.fields.mode')">
+        <template #help>
+          <HelpTooltip :text="t('port.help.mode')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -190,6 +197,9 @@ async function removeTagged(vlanId: number) {
       </FormField>
 
       <FormField :label="t('port.fields.nativeVlan')">
+        <template #help>
+          <HelpTooltip :text="t('port.help.nativeVlan')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -201,6 +211,9 @@ async function removeTagged(vlanId: number) {
       </FormField>
 
       <FormField :label="t('port.fields.adminStatus')">
+        <template #help>
+          <HelpTooltip :text="t('port.help.adminStatus')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -212,6 +225,9 @@ async function removeTagged(vlanId: number) {
       </FormField>
 
       <FormField class="col-span-2" :label="t('port.fields.connectedDevice')">
+        <template #help>
+          <HelpTooltip :text="t('port.help.connectedDevice')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -233,8 +249,11 @@ async function removeTagged(vlanId: number) {
 
       <!-- Tagged VLANs editor (separate from the main form save — uses dedicated endpoints) -->
       <div class="col-span-2 mt-2 border-t border-border pt-4">
-        <p class="text-xs font-medium text-fg-muted uppercase tracking-wide mb-2">
-          {{ t('port.fields.taggedVlans') }}
+        <p
+          class="text-xs font-medium text-fg-muted uppercase tracking-wide mb-2 flex items-center gap-1"
+        >
+          <span>{{ t('port.fields.taggedVlans') }}</span>
+          <HelpTooltip :text="t('port.help.taggedVlans')" />
         </p>
         <div class="flex flex-wrap gap-2 mb-3 min-h-[1.5rem]">
           <span

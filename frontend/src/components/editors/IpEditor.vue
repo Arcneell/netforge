@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { devicesApi, ipsApi } from '@/api'
 import type { Device, Ip, IpCreate, IpStatus, IpUpdate, Subnet } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -158,6 +159,9 @@ async function onDelete() {
   <Modal :open="open" :title="isEdit ? t('ip.edit') : t('ip.new')" size="md" @close="emit('close')">
     <form class="grid grid-cols-2 gap-4" @submit="onSubmit">
       <FormField :label="t('ip.fields.address')" :error="errors.address" required>
+        <template #help>
+          <HelpTooltip :text="t('ip.help.address')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"
@@ -172,6 +176,9 @@ async function onDelete() {
       </FormField>
 
       <FormField :label="t('ip.fields.status')" required>
+        <template #help>
+          <HelpTooltip :text="t('ip.help.status')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"
@@ -183,12 +190,18 @@ async function onDelete() {
       </FormField>
 
       <FormField :label="t('ip.fields.hostname')">
+        <template #help>
+          <HelpTooltip :text="t('ip.help.hostname')" />
+        </template>
         <template #default="{ id }">
           <Input :id="id" v-model="form.hostname" placeholder="srv-app-01" autocomplete="off" />
         </template>
       </FormField>
 
       <FormField :label="t('ip.fields.mac')" :error="errors.mac">
+        <template #help>
+          <HelpTooltip :text="t('ip.help.mac')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"
@@ -202,6 +215,9 @@ async function onDelete() {
       </FormField>
 
       <FormField class="col-span-2" :label="t('ip.fields.device')">
+        <template #help>
+          <HelpTooltip :text="t('ip.help.device')" />
+        </template>
         <template #default="{ id }">
           <Select
             :id="id"

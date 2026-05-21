@@ -7,6 +7,7 @@ import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import DeviceEditor from '@/components/editors/DeviceEditor.vue'
@@ -113,6 +114,9 @@ const columns: DataTableColumn[] = [
 <template>
   <div class="p-4 sm:p-6 max-w-7xl mx-auto">
     <PageHeader :title="t('device.labelPlural')" :subtitle="t('device.subtitle')">
+      <template #help>
+        <HelpTooltip :text="t('device.pageHelp')" placement="bottom" />
+      </template>
       <template #actions>
         <Button v-if="isAdmin" variant="primary" @click="onNew">
           <Plus class="w-4 h-4" aria-hidden="true" />

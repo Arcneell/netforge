@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { sitesApi } from '@/api'
 import type { Site, SiteCreate, SiteUpdate } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -100,6 +101,9 @@ async function onSubmit(e: Event) {
   >
     <form class="grid grid-cols-2 gap-4" @submit="onSubmit">
       <FormField :label="t('site.fields.code')" :error="errors.code" required>
+        <template #help>
+          <HelpTooltip :text="t('site.help.code')" />
+        </template>
         <template #default="{ id, invalid }">
           <Input
             :id="id"

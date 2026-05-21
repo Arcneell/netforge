@@ -261,12 +261,7 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
             <HelpTooltip :text="t('apiTokens.help.expiry')" />
           </template>
           <template #default="{ id }">
-            <Input
-              :id="id"
-              v-model="newExpiresAt"
-              type="datetime-local"
-              autocomplete="off"
-            />
+            <Input :id="id" v-model="newExpiresAt" type="datetime-local" autocomplete="off" />
           </template>
         </FormField>
         <p class="text-xs text-fg-muted -mt-2">{{ t('apiTokens.expiresAtHint') }}</p>

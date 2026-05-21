@@ -18,6 +18,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Select from '@/components/ui/Select.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import TopologyCanvas, { type LayoutName } from '@/components/TopologyCanvas.vue'
@@ -251,6 +252,9 @@ async function onLinkSaved() {
 <template>
   <div class="p-6 max-w-[100rem] mx-auto h-full flex flex-col">
     <PageHeader :title="t('nav.topology')" :subtitle="t('topology.subtitle')">
+      <template #help>
+        <HelpTooltip :text="t('topology.help')" placement="bottom" />
+      </template>
       <template #actions>
         <div class="w-44">
           <Select

@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { vlansApi } from '@/api'
 import type { Vlan, VlanCreate, VlanUpdate } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -133,6 +134,9 @@ async function onSubmit(e: Event) {
     <form class="flex flex-col gap-4" @submit="onSubmit">
       <div class="grid grid-cols-2 gap-3">
         <FormField :label="t('vlan.fields.vlanId')" :error="errors.vlan_id" required>
+          <template #help>
+            <HelpTooltip :text="t('vlan.help.vlanId')" />
+          </template>
           <template #default="{ id, invalid }">
             <Input
               :id="id"
@@ -147,6 +151,9 @@ async function onSubmit(e: Event) {
           </template>
         </FormField>
         <FormField :label="t('vlan.fields.color')" :error="errors.color">
+          <template #help>
+            <HelpTooltip :text="t('vlan.help.color')" />
+          </template>
           <template #default="{ id, invalid }">
             <div class="flex items-center gap-2">
               <input

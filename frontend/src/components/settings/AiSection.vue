@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { CheckCircle2, Sparkles, XCircle, Zap } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import AiSchedulesSection from '@/components/settings/AiSchedulesSection.vue'
 import AiUsageSection from '@/components/settings/AiUsageSection.vue'
 import { aiApi, type AIStatus, type AITestResult } from '@/api'
@@ -66,7 +67,10 @@ const providerLabel = computed(() => {
           <Sparkles class="w-5 h-5" aria-hidden="true" />
         </span>
         <div class="flex-1 min-w-0">
-          <h2 class="text-lg font-semibold tracking-tight">{{ t('ai.settings.title') }}</h2>
+          <h2 class="text-lg font-semibold tracking-tight inline-flex items-center gap-1.5">
+            <span>{{ t('ai.settings.title') }}</span>
+            <HelpTooltip :text="t('ai.settings.help.section')" />
+          </h2>
           <p class="text-sm text-fg-muted mt-1 max-w-2xl leading-relaxed">
             {{ t('ai.settings.description') }}
           </p>
@@ -104,7 +108,10 @@ const providerLabel = computed(() => {
       <div class="mt-6 pt-5 border-t border-border/70 dark:border-border/40">
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p class="text-sm font-semibold">{{ t('ai.settings.testTitle') }}</p>
+            <p class="text-sm font-semibold inline-flex items-center gap-1.5">
+              <span>{{ t('ai.settings.testTitle') }}</span>
+              <HelpTooltip :text="t('ai.settings.help.test')" />
+            </p>
             <p class="text-xs text-fg-muted mt-1">{{ t('ai.settings.testDescription') }}</p>
           </div>
           <Button
