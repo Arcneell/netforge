@@ -43,6 +43,9 @@ interface Form {
   model: string
   serial: string
   room_id: number | null
+  asset_tag: string
+  warranty_expires_at: string
+  eol_date: string
   description: string
 }
 
@@ -53,6 +56,9 @@ const form = reactive<Form>({
   model: '',
   serial: '',
   room_id: null,
+  asset_tag: '',
+  warranty_expires_at: '',
+  eol_date: '',
   description: '',
 })
 const errors = reactive<Partial<Record<keyof Form, string | null>>>({})
@@ -73,6 +79,9 @@ watch(
     form.model = d?.model ?? ''
     form.serial = d?.serial ?? ''
     form.room_id = d?.room_id ?? null
+    form.asset_tag = d?.asset_tag ?? ''
+    form.warranty_expires_at = d?.warranty_expires_at ?? ''
+    form.eol_date = d?.eol_date ?? ''
     form.description = d?.description ?? ''
     Object.keys(errors).forEach((k) => ((errors as Record<string, string | null>)[k] = null))
     submitError.value = null
@@ -111,6 +120,9 @@ async function onSubmit(e: Event) {
       model: form.model.trim() || null,
       serial: form.serial.trim() || null,
       room_id: form.room_id && form.room_id !== 0 ? form.room_id : null,
+      asset_tag: form.asset_tag.trim() || null,
+      warranty_expires_at: form.warranty_expires_at || null,
+      eol_date: form.eol_date || null,
       description: form.description.trim() || null,
     }
     let saved: Device
@@ -177,9 +189,25 @@ async function onSubmit(e: Event) {
         </template>
       </FormField>
 
-      <FormField class="col-span-2" :label="t('device.fields.serial')">
+      <FormField :label="t('device.fields.serial')">
         <template #default="{ id }">
           <Input :id="id" v-model="form.serial" autocomplete="off" />
+        </template>
+      </FormField>
+      <FormField :label="t('device.fields.assetTag')">
+        <template #default="{ id }">
+          <Input :id="id" v-model="form.asset_tag" placeholder="NF-001234" autocomplete="off" />
+        </template>
+      </FormField>
+
+      <FormField :label="t('device.fields.warrantyExpiresAt')">
+        <template #default="{ id }">
+          <Input :id="id" v-model="form.warranty_expires_at" type="date" autocomplete="off" />
+        </template>
+      </FormField>
+      <FormField :label="t('device.fields.eolDate')" :hint="t('device.eolHint')">
+        <template #default="{ id }">
+          <Input :id="id" v-model="form.eol_date" type="date" autocomplete="off" />
         </template>
       </FormField>
 

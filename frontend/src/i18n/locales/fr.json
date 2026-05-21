@@ -264,11 +264,15 @@
       "model": "Modèle",
       "serial": "N° de série",
       "room": "Salle",
+      "assetTag": "Étiquette inventaire",
+      "warrantyExpiresAt": "Fin de garantie",
+      "eolDate": "Date de fin de vie",
       "description": "Description"
     },
     "new": "Nouvel équipement",
     "edit": "Modifier l'équipement",
     "empty": "Aucun équipement pour le moment.",
+    "eolHint": "Date d'arrêt de support constructeur — l'advisor signalera les équipements approchant cette date.",
     "types": {
       "server": "Serveur",
       "desktop": "Poste fixe",
@@ -296,6 +300,9 @@
       "portCount": "Nombre de ports",
       "firmware": "Firmware",
       "snmpCommunity": "Communauté SNMP",
+      "assetTag": "Étiquette inventaire",
+      "warrantyExpiresAt": "Fin de garantie",
+      "eolDate": "Date de fin de vie",
       "description": "Description"
     },
     "new": "Nouveau commutateur",
@@ -306,7 +313,8 @@
     "ports": "Ports",
     "links": "Liens",
     "portStats": "{used} ports utilisés sur {total}",
-    "snmpCommunityHint": "Stockée telle quelle. Visible uniquement par les administrateurs."
+    "snmpCommunityHint": "Stockée telle quelle. Visible uniquement par les administrateurs.",
+    "eolHint": "Date d'arrêt de support constructeur — l'advisor signalera les équipements approchant cette date."
   },
   "port": {
     "label": "Port",
@@ -380,6 +388,9 @@
     "revoke": "Révoquer",
     "namePlaceholder": "ex. ansible-prod",
     "nameHint": "Un libellé court pour vous aider à reconnaître le jeton plus tard.",
+    "expiresAtHint": "Date d'expiration optionnelle. Laissez vide pour un jeton sans expiration (révocable manuellement).",
+    "invalidExpiry": "Format de date invalide.",
+    "expiryInPast": "L'expiration doit être dans le futur.",
     "copied": "Jeton copié dans le presse-papiers.",
     "copyFailed": "Impossible d'accéder au presse-papiers — copiez le jeton manuellement.",
     "revokedToast": "Jeton révoqué.",
@@ -392,7 +403,8 @@
       "prefix": "Préfixe",
       "created": "Créé le",
       "lastUsed": "Dernière utilisation",
-      "status": "Statut"
+      "status": "Statut",
+      "expiresAt": "Expiration"
     },
     "status": {
       "active": "Actif",

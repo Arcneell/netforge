@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,6 +27,9 @@ class DeviceBase(BaseModel):
     model: str | None = Field(default=None, max_length=100)
     serial: str | None = Field(default=None, max_length=100)
     room_id: int | None = Field(default=None, gt=0)
+    asset_tag: str | None = Field(default=None, max_length=50)
+    warranty_expires_at: date | None = None
+    eol_date: date | None = None
     description: str | None = None
 
 
@@ -40,6 +44,9 @@ class DeviceUpdate(BaseModel):
     model: str | None = Field(default=None, max_length=100)
     serial: str | None = Field(default=None, max_length=100)
     room_id: int | None = Field(default=None, gt=0)
+    asset_tag: str | None = Field(default=None, max_length=50)
+    warranty_expires_at: date | None = None
+    eol_date: date | None = None
     description: str | None = None
 
 

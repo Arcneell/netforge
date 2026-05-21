@@ -96,6 +96,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Tokens
+         * @description Tokens owned by the calling user, most recent first. Includes revoked
+         *     rows so the user can audit what was issued historically.
+         */
+        get: operations["list_my_tokens_api_auth_tokens_get"];
+        put?: never;
+        /**
+         * Create My Token
+         * @description Mint a new API token for the calling user. The plaintext is returned
+         *     **once** in the response body — never again. The token inherits the
+         *     caller's role, so demoting / disabling the user immediately limits what
+         *     the token can do.
+         */
+        post: operations["create_my_token_api_auth_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke My Token
+         * @description Revoke a token. Idempotent on already-revoked tokens — only returns
+         *     404 if the id is unknown or owned by someone else.
+         */
+        delete: operations["revoke_my_token_api_auth_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sites": {
         parameters: {
             query?: never;
@@ -431,7 +480,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Tagged Vlans
+         * @description Return the VLANs tagged on a trunk port. Powers the PortEditor UI
+         *     so the modal can show the current set on open (instead of an empty
+         *     list that the user has to rebuild from memory).
+         */
+        get: operations["list_tagged_vlans_api_ports__port_id__vlans_get"];
         put?: never;
         /** Add Tagged Vlan */
         post: operations["add_tagged_vlan_api_ports__port_id__vlans_post"];
@@ -476,6 +531,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/links/by-name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Link By Name
+         * @description Same as POST /api/links but addresses ports by (switch_name, number)
+         *     instead of numeric ids. Convenience path for the topology editor UI.
+         */
+        post: operations["create_link_by_name_api_links_by_name_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/links/{link_id}": {
         parameters: {
             query?: never;
@@ -485,7 +561,12 @@ export interface paths {
         };
         /** Get Link */
         get: operations["get_link_api_links__link_id__get"];
-        put?: never;
+        /**
+         * Update Link
+         * @description Patch link metadata (type, speed, description). Endpoints are
+         *     immutable — to change the connected ports, delete and recreate.
+         */
+        put: operations["update_link_api_links__link_id__put"];
         post?: never;
         /** Delete Link */
         delete: operations["delete_link_api_links__link_id__delete"];
@@ -562,6 +643,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/imports/detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect Csv
+         * @description Inspect a CSV's header row and guess which entity it belongs to.
+         */
+        post: operations["detect_csv_api_imports_detect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Bulk
+         * @description Import many CSVs at once (or a single ZIP of CSVs).
+         *
+         *     Each file is auto-routed to the matching entity importer based on its
+         *     header row. Files run in dependency order, inside one transaction; any
+         *     failure rolls the whole batch back. `dry_run=true` always rolls back.
+         */
+        post: operations["import_bulk_api_imports_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/{entity}": {
         parameters: {
             query?: never;
@@ -571,8 +696,61 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import Entity */
+        /**
+         * Import Entity
+         * @description Import one CSV. The optional `column_map` is a JSON dict
+         *     `{csv_column: netforge_field | null}` — when present the header row is
+         *     rewritten in-memory before parsing. This is what backs the AI mapping
+         *     assistant: the operator pastes their CSV, the LLM proposes the mapping,
+         *     and the import is replayed with that mapping applied automatically.
+         */
         post: operations["import_entity_api_imports__entity__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exports/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Audit
+         * @description Stream the audit log as CSV. Same filters as `GET /api/audit`. Admin-only
+         *     because the audit log is — `/api/audit` already requires admin and we
+         *     keep the same surface here.
+         */
+        get: operations["export_audit_api_exports_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exports/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export All
+         * @description Bundle every entity's CSV into a single ZIP archive.
+         *
+         *     The archive is structured exactly like what `POST /api/imports/bulk`
+         *     accepts (one `<entity>.csv` per member, headers matching the importer),
+         *     so it doubles as a logical backup and as a round-trip-ready snapshot.
+         */
+        get: operations["export_all_api_exports_all_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -596,10 +774,640 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description Reports current AI configuration. Never raises — even when disabled
+         *     we return a 200 with `enabled=false` so the UI can branch cleanly.
+         */
+        get: operations["get_status_api_ai_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Connection
+         * @description Tiny ping call to the configured provider. Used by the Settings UI
+         *     to verify "is my API key valid?" without burning tokens on a full scan.
+         */
+        post: operations["test_connection_api_ai_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/suggestions/links/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Links */
+        post: operations["scan_links_api_ai_suggestions_links_scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/suggestions/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Suggestions */
+        get: operations["list_suggestions_api_ai_suggestions_links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/suggestions/{suggestion_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept */
+        post: operations["accept_api_ai_suggestions__suggestion_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/suggestions/{suggestion_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject */
+        post: operations["reject_api_ai_suggestions__suggestion_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Insights
+         * @description Latest cached advisor report. Empty when no run has ever succeeded.
+         */
+        get: operations["get_insights_api_ai_insights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/insights/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Insights
+         * @description Run a fresh advisor scan. Replaces the "latest" set in one transaction.
+         */
+        post: operations["refresh_insights_api_ai_insights_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Ai
+         * @description Ask one free-text question grounded in the live inventory.
+         */
+        post: operations["ask_ai_api_ai_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/integrity-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Integrity Checks
+         * @description Run the deterministic integrity checks (no LLM round-trip).
+         *
+         *     Always returns a 200 — even when AI is disabled this endpoint stays up
+         *     because it does not call any external provider. `Accept-Language`
+         *     drives the issue titles + descriptions (FR/EN baked in).
+         */
+        get: operations["get_integrity_checks_api_ai_integrity_checks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage
+         * @description Aggregated AI usage over the last `days` days.
+         *
+         *     Always returns a 200 (even when AI is disabled) — the data is historical;
+         *     an admin who turned the feature off should still be able to see what they
+         *     spent before.
+         */
+        get: operations["get_usage_api_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/csv/suggest-mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Csv Mapping
+         * @description Ask the model to guess which NetForge field each CSV column maps to.
+         *
+         *     Pure suggestion — the operator still renames their headers and runs the
+         *     canonical import pipeline. Counts against the AI rate limit because it
+         *     burns a full LLM call.
+         */
+        post: operations["suggest_csv_mapping_api_ai_csv_suggest_mapping_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Schedules
+         * @description List configured schedules. UI tolerates an empty list — kinds without
+         *     a row have never been configured and default to disabled.
+         */
+        get: operations["list_schedules_api_ai_schedules_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/schedules/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upsert Schedule
+         * @description Create or update the schedule row for `kind`. Bounds enforced by the
+         *     DB check constraint + pydantic; we just route the call.
+         */
+        put: operations["upsert_schedule_api_ai_schedules__kind__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Drafts
+         * @description Return drafts, newest first. The UI typically filters to pending.
+         */
+        get: operations["list_drafts_api_ai_drafts_get"];
+        put?: never;
+        /**
+         * Create Draft
+         * @description Ask the LLM to draft one CRUD action from a free-text prompt.
+         *
+         *     NEVER executes the action — the resulting row sits at `status=pending`
+         *     until an admin POSTs to `/drafts/{id}/apply`.
+         */
+        post: operations["create_draft_api_ai_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/drafts/{draft_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Draft Route
+         * @description Execute the draft against the inventory. Idempotent in the sense
+         *     that the second call returns 409 — the first apply marks the row
+         *     `applied`.
+         *
+         *     Error mapping:
+         *         404 — draft not found
+         *         409 — draft already applied/rejected, OR a DB-level conflict raised
+         *               by the applier (subnet overlap, duplicate site code, missing
+         *               referenced VLAN, …). The draft row is marked `failed` and the
+         *               `error_message` is surfaced to the operator.
+         *         502 — anything else (transient DB error, unexpected internal bug).
+         *               The draft is also marked `failed`; the message is in `detail`
+         *               so the UI can show it.
+         */
+        post: operations["apply_draft_route_api_ai_drafts__draft_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/drafts/{draft_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Draft Route
+         * @description Mark the draft as rejected — the operator declined to apply it.
+         */
+        post: operations["reject_draft_route_api_ai_drafts__draft_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/insights/export.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Insights Pdf
+         * @description Render the latest advisor report as a PDF.
+         *
+         *     Gated on `AI_ENABLED` — same pattern as the rest of the advisor surface.
+         *     Returns 404 when AI is disabled or when no advisor run has ever
+         *     succeeded (matches the empty state the UI already handles). The PDF is
+         *     rendered in the operator's UI language — FR/EN, falls back to EN.
+         */
+        get: operations["export_insights_pdf_api_ai_insights_export_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/query/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Ai Stream
+         * @description Server-Sent-Events variant of `/api/ai/query`.
+         *
+         *     The client receives incremental `delta` frames as the model writes,
+         *     plus a final `done` frame carrying token usage + latency. Tool calls
+         *     are NOT used in this path — the answer is Markdown text only (entity
+         *     references stay inline). The non-streaming endpoint remains available
+         *     for callers that need the structured `referenced_entities` chips.
+         */
+        post: operations["ask_ai_stream_api_ai_query_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AIScheduleRead
+         * @description Configuration of one recurring AI task.
+         */
+        AIScheduleRead: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Interval Minutes */
+            interval_minutes: number;
+            /** Webhook Url */
+            webhook_url: string | null;
+            /** Webhook Severity Threshold */
+            webhook_severity_threshold: string;
+            /** Last Run At */
+            last_run_at: string | null;
+            /** Last Run Id */
+            last_run_id: number | null;
+        };
+        /**
+         * AIScheduleUpsert
+         * @description Body of PUT /api/ai/schedules/{kind}.
+         *
+         *     `enabled` may be flipped without touching the other fields. The bounds
+         *     on `interval_minutes` mirror the DB check constraint.
+         */
+        AIScheduleUpsert: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Interval Minutes
+             * @default 1440
+             */
+            interval_minutes: number;
+            /** Webhook Url */
+            webhook_url?: string | null;
+            /**
+             * Webhook Severity Threshold
+             * @default warning
+             */
+            webhook_severity_threshold: string;
+        };
+        /**
+         * AIStatusRead
+         * @description Light status response so the UI can hide AI features when disabled.
+         *
+         *     `enabled` is the master switch; the granular sub-flags let the operator
+         *     keep some AI features but disable others (e.g. read-only mode that
+         *     keeps the advisor but kills the NL-to-action drafts surface).
+         */
+        AIStatusRead: {
+            /** Enabled */
+            enabled: boolean;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /**
+             * Drafts Enabled
+             * @default true
+             */
+            drafts_enabled: boolean;
+            /**
+             * Scheduler Enabled
+             * @default true
+             */
+            scheduler_enabled: boolean;
+        };
+        /**
+         * AITestResult
+         * @description Result of POST /api/ai/test — a single ping call to the configured
+         *     provider to verify the API key and model name are valid before letting
+         *     the user trigger a real (more expensive) scan.
+         */
+        AITestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * ActionDraftCreate
+         * @description Body of POST /api/ai/drafts. The operator types a free-text request;
+         *     the server asks the LLM to draft one CRUD action.
+         */
+        ActionDraftCreate: {
+            /** Prompt */
+            prompt: string;
+        };
+        /**
+         * ActionDraftRead
+         * @description One drafted action awaiting (or past) review.
+         */
+        ActionDraftRead: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number | null;
+            /** Prompt */
+            prompt: string;
+            /** Intent */
+            intent: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+            /** Error Message */
+            error_message: string | null;
+            /** Applied Resource */
+            applied_resource: string | null;
+            /** Applied By User Id */
+            applied_by_user_id: number | null;
+            /** Applied At */
+            applied_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * AdvisorReportRead
+         * @description Summary returned by POST /api/ai/insights/refresh.
+         */
+        AdvisorReportRead: {
+            /** Run Id */
+            run_id: number;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Raw Count */
+            raw_count: number;
+            /** Persisted Count */
+            persisted_count: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+        };
+        /** ApiTokenCreate */
+        ApiTokenCreate: {
+            /** Name */
+            name: string;
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /**
+         * ApiTokenCreated
+         * @description Returned by POST — includes the plaintext exactly once. Do not store
+         *     or log this value; the client is expected to copy it immediately.
+         */
+        ApiTokenCreated: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Token */
+            token: string;
+        };
+        /**
+         * ApiTokenRead
+         * @description Metadata only — the plaintext is never re-exposed after creation.
+         */
+        ApiTokenRead: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
         /**
          * AuditAction
          * @enum {string}
@@ -630,6 +1438,21 @@ export interface components {
              */
             created_at: string;
         };
+        /** Body_detect_csv_api_imports_detect_post */
+        Body_detect_csv_api_imports_detect_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_import_bulk_api_imports_bulk_post */
+        Body_import_bulk_api_imports_bulk_post: {
+            /** Files */
+            files: string[];
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
         /** Body_import_entity_api_imports__entity__post */
         Body_import_entity_api_imports__entity__post: {
             /** File */
@@ -639,6 +1462,118 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+            /** Column Map */
+            column_map?: string | null;
+        };
+        /**
+         * BulkImportFileReport
+         * @description Per-file outcome inside a bulk import. `detected_entity` is None when
+         *     auto-detection failed; in that case `error_rows` carries the reason.
+         */
+        BulkImportFileReport: {
+            /** Filename */
+            filename: string;
+            /** Detected Entity */
+            detected_entity: string | null;
+            /** Parsed Rows */
+            parsed_rows: number;
+            /** Ok Rows */
+            ok_rows: number;
+            /** Error Rows */
+            error_rows: components["schemas"]["ImportErrorRow"][];
+        };
+        /**
+         * BulkImportReport
+         * @description Aggregated result of a multi-CSV import. `applied=True` means every
+         *     file committed; any error in any file rolls the whole batch back.
+         */
+        BulkImportReport: {
+            /** Files */
+            files: components["schemas"]["BulkImportFileReport"][];
+            /** Total Parsed Rows */
+            total_parsed_rows: number;
+            /** Total Ok Rows */
+            total_ok_rows: number;
+            /** Applied */
+            applied: boolean;
+        };
+        /**
+         * CsvColumnMapping
+         * @description One column → field decision.
+         */
+        CsvColumnMapping: {
+            /** Csv Column */
+            csv_column: string;
+            /** Suggested Field */
+            suggested_field: string | null;
+            /** Confidence */
+            confidence: number;
+            /** Notes */
+            notes: string;
+        };
+        /**
+         * CsvMappingRequest
+         * @description Body of POST /api/ai/csv/suggest-mapping.
+         *
+         *     `entity` is one of the import-pipeline entities (sites, vlans, …).
+         *     `csv_columns` is the foreign header row as-is. `sample_rows` is a few
+         *     sample lines aligned with the headers — the LLM uses the cell shape
+         *     (CIDR vs IP, MAC notation, boolean encoding) to disambiguate.
+         */
+        CsvMappingRequest: {
+            /** Entity */
+            entity: string;
+            /** Csv Columns */
+            csv_columns: string[];
+            /** Sample Rows */
+            sample_rows?: string[][];
+        };
+        /**
+         * CsvMappingResponse
+         * @description Response of POST /api/ai/csv/suggest-mapping.
+         */
+        CsvMappingResponse: {
+            /** Entity */
+            entity: string;
+            /** Columns */
+            columns: components["schemas"]["CsvColumnMapping"][];
+            /** Missing Required Fields */
+            missing_required_fields: string[];
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+        };
+        /**
+         * DetectReport
+         * @description Result of inspecting a CSV's header row to guess which entity it
+         *     belongs to. `entity` is None when no entity has all its required columns
+         *     in the file — `missing_required` then lists what would be needed for the
+         *     closest candidate so the user can fix the file.
+         */
+        DetectReport: {
+            /** Entity */
+            entity: string | null;
+            /** Confidence */
+            confidence: number;
+            /** Headers */
+            headers: string[];
+            /** Matched Required */
+            matched_required: string[];
+            /** Missing Required */
+            missing_required: string[];
+            /** Unknown Headers */
+            unknown_headers: string[];
+            /** Candidates */
+            candidates: {
+                [key: string]: number;
+            };
         };
         /** DeviceCreate */
         DeviceCreate: {
@@ -653,6 +1588,12 @@ export interface components {
             serial?: string | null;
             /** Room Id */
             room_id?: number | null;
+            /** Asset Tag */
+            asset_tag?: string | null;
+            /** Warranty Expires At */
+            warranty_expires_at?: string | null;
+            /** Eol Date */
+            eol_date?: string | null;
             /** Description */
             description?: string | null;
         };
@@ -669,6 +1610,12 @@ export interface components {
             serial?: string | null;
             /** Room Id */
             room_id?: number | null;
+            /** Asset Tag */
+            asset_tag?: string | null;
+            /** Warranty Expires At */
+            warranty_expires_at?: string | null;
+            /** Eol Date */
+            eol_date?: string | null;
             /** Description */
             description?: string | null;
             /** Id */
@@ -692,6 +1639,12 @@ export interface components {
             serial?: string | null;
             /** Room Id */
             room_id?: number | null;
+            /** Asset Tag */
+            asset_tag?: string | null;
+            /** Warranty Expires At */
+            warranty_expires_at?: string | null;
+            /** Eol Date */
+            eol_date?: string | null;
             /** Description */
             description?: string | null;
         };
@@ -726,6 +1679,90 @@ export interface components {
             error_rows: components["schemas"]["ImportErrorRow"][];
             /** Applied */
             applied: boolean;
+        };
+        /**
+         * InsightEntityRef
+         * @description Free-shape reference to one of the indexed entities. `name` is the
+         *     LLM's best guess at the time of the run — kept on the row so a deleted
+         *     entity still renders a readable chip.
+         */
+        InsightEntityRef: {
+            /** Type */
+            type: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name?: string | null;
+        };
+        /** InsightRead */
+        InsightRead: {
+            /** Id */
+            id: number;
+            /** Run Id */
+            run_id: number;
+            /** Severity */
+            severity: string;
+            /** Category */
+            category: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Recommendation */
+            recommendation: string;
+            /** Affected Entities */
+            affected_entities?: components["schemas"]["InsightEntityRef"][] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * InsightsResponse
+         * @description Latest insights with the run metadata that produced them.
+         *
+         *     `run_id` is None when no advisor has ever been run successfully — the
+         *     UI uses that to show the empty state ("Run the advisor to get started").
+         *     `run_created_at` is the timestamp of that run, so the UI can render a
+         *     "generated 3 days ago" hint and nudge the operator to re-run when the
+         *     report is stale.
+         */
+        InsightsResponse: {
+            /** Run Id */
+            run_id: number | null;
+            /** Run Created At */
+            run_created_at?: string | null;
+            /** Insights */
+            insights: components["schemas"]["InsightRead"][];
+        };
+        /**
+         * IntegrityIssueRead
+         * @description A deterministic check finding. Same surface as `InsightRead` so the
+         *     frontend re-uses the existing card components without branching.
+         */
+        IntegrityIssueRead: {
+            /** Severity */
+            severity: string;
+            /** Category */
+            category: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Recommendation */
+            recommendation: string;
+            /** Affected Entities */
+            affected_entities: components["schemas"]["InsightEntityRef"][];
+        };
+        /**
+         * IntegrityReportRead
+         * @description Wrapper for the integrity-checks endpoint. Empty list when nothing
+         *     is wrong — the UI renders the "all clear" state.
+         */
+        IntegrityReportRead: {
+            /** Issues */
+            issues: components["schemas"]["IntegrityIssueRead"][];
         };
         /** IpCreate */
         IpCreate: {
@@ -810,6 +1847,31 @@ export interface components {
             /** Description */
             description?: string | null;
         };
+        /**
+         * LinkCreateByName
+         * @description Create a link by (switch name, port number) — what the topology UI
+         *     actually has on hand. The service resolves the two endpoints to port ids
+         *     and delegates to the standard create path.
+         *
+         *     Kept separate from `LinkCreate` so the existing IDs-only contract and its
+         *     tests are untouched, and CSV import / scripted callers can keep using
+         *     whichever shape is most convenient.
+         */
+        LinkCreateByName: {
+            /** Switch A */
+            switch_a: string;
+            /** Port A */
+            port_a: number;
+            /** Switch B */
+            switch_b: string;
+            /** Port B */
+            port_b: number;
+            link_type: components["schemas"]["LinkType"];
+            /** Speed Mbps */
+            speed_mbps?: number | null;
+            /** Description */
+            description?: string | null;
+        };
         /** LinkRead */
         LinkRead: {
             /** Port A Id */
@@ -825,10 +1887,69 @@ export interface components {
             id: number;
         };
         /**
+         * LinkSuggestionRead
+         * @description Pending / resolved AI suggestion exposed to the client.
+         *
+         *     The denormalised `*_label` / `*_switch_name` fields are filled by
+         *     `services.ai.suggest_links.serialize_for_read` — the frontend would
+         *     otherwise have to fetch every port individually to render the panel.
+         *     Missing labels (port deleted between scan + read) come back as None.
+         */
+        LinkSuggestionRead: {
+            /** Id */
+            id: number;
+            /** Port A Id */
+            port_a_id: number;
+            /** Port B Id */
+            port_b_id: number;
+            /** Port A Label */
+            port_a_label?: string | null;
+            /** Port B Label */
+            port_b_label?: string | null;
+            /** Switch A Name */
+            switch_a_name?: string | null;
+            /** Switch B Name */
+            switch_b_name?: string | null;
+            /** Link Type */
+            link_type: string;
+            /** Confidence */
+            confidence: number;
+            /** Reasoning */
+            reasoning: string;
+            /** Status */
+            status: string;
+            /** Accepted Link Id */
+            accepted_link_id: number | null;
+            /** Resolved By User Id */
+            resolved_by_user_id: number | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
          * LinkType
          * @enum {string}
          */
         LinkType: "copper" | "fiber" | "dac" | "virtual";
+        /**
+         * LinkUpdate
+         * @description Only metadata is mutable here. Changing which ports a link connects is
+         *     *not* an update — delete the link and recreate it. This mirrors the way
+         *     the underlying `(port_a_id, port_b_id)` tuple is the unique key in the DB,
+         *     so an "update the ports" PUT would actually be a replace from the DB's
+         *     point of view.
+         */
+        LinkUpdate: {
+            link_type?: components["schemas"]["LinkType"] | null;
+            /** Speed Mbps */
+            speed_mbps?: number | null;
+            /** Description */
+            description?: string | null;
+        };
         /** NextFreeIpResponse */
         NextFreeIpResponse: {
             /** Address */
@@ -996,6 +2117,67 @@ export interface components {
             /** Notes */
             notes?: string | null;
         };
+        /**
+         * QueryAnswerRead
+         * @description One-shot answer to a natural-language question.
+         */
+        QueryAnswerRead: {
+            /** Answer */
+            answer: string;
+            /** Referenced Entities */
+            referenced_entities: components["schemas"]["QueryEntityRef"][];
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+        };
+        /**
+         * QueryEntityRef
+         * @description Same shape as InsightEntityRef — kept as a separate class so future
+         *     NL-query-specific fields (e.g. confidence per chip) can be added without
+         *     co-evolving the advisor schema.
+         */
+        QueryEntityRef: {
+            /** Type */
+            type: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * QueryHistoryTurn
+         * @description One past turn the client wants the model to remember. The server is
+         *     stateless — the frontend owns the conversation, replays the last few
+         *     turns on each request, and decides when to "start a new chat" (i.e. send
+         *     an empty `history`).
+         */
+        QueryHistoryTurn: {
+            /** Role */
+            role: string;
+            /** Text */
+            text: string;
+        };
+        /**
+         * QueryRequest
+         * @description Body of POST /api/ai/query.
+         *
+         *     `history` lets the operator have a follow-up conversation — capped at 10
+         *     turns (≈ 5 user/assistant pairs) so the prompt doesn't balloon. Older
+         *     turns are dropped client-side.
+         */
+        QueryRequest: {
+            /** Question */
+            question: string;
+            /** History */
+            history?: components["schemas"]["QueryHistoryTurn"][];
+        };
         /** RoomCreate */
         RoomCreate: {
             /** Site Id */
@@ -1025,6 +2207,30 @@ export interface components {
             /** Description */
             description?: string | null;
         };
+        /**
+         * ScanReportRead
+         * @description Summary returned after a /scan call.
+         */
+        ScanReportRead: {
+            /** Run Id */
+            run_id: number;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Raw Count */
+            raw_count: number;
+            /** Persisted Count */
+            persisted_count: number;
+            /** Skipped Count */
+            skipped_count: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+        };
         /** SearchResponse */
         SearchResponse: {
             /** Results */
@@ -1036,7 +2242,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "ip" | "device" | "switch" | "port";
+            type: "ip" | "device" | "switch" | "port" | "site" | "room" | "vlan" | "subnet";
             /** Id */
             id: number;
             /** Label */
@@ -1215,6 +2421,12 @@ export interface components {
             firmware_version?: string | null;
             /** Snmp Community */
             snmp_community?: string | null;
+            /** Asset Tag */
+            asset_tag?: string | null;
+            /** Warranty Expires At */
+            warranty_expires_at?: string | null;
+            /** Eol Date */
+            eol_date?: string | null;
             /** Description */
             description?: string | null;
         };
@@ -1240,6 +2452,12 @@ export interface components {
             firmware_version?: string | null;
             /** Snmp Community */
             snmp_community?: string | null;
+            /** Asset Tag */
+            asset_tag?: string | null;
+            /** Warranty Expires At */
+            warranty_expires_at?: string | null;
+            /** Eol Date */
+            eol_date?: string | null;
             /** Description */
             description?: string | null;
             /** Id */
@@ -1275,6 +2493,12 @@ export interface components {
             firmware_version?: string | null;
             /** Snmp Community */
             snmp_community?: string | null;
+            /** Asset Tag */
+            asset_tag?: string | null;
+            /** Warranty Expires At */
+            warranty_expires_at?: string | null;
+            /** Eol Date */
+            eol_date?: string | null;
             /** Description */
             description?: string | null;
         };
@@ -1337,6 +2561,57 @@ export interface components {
             nodes: components["schemas"]["TopologyNode"][];
             /** Edges */
             edges: components["schemas"]["TopologyEdge"][];
+        };
+        /**
+         * UsageBucketRead
+         * @description Generic dimension bucket. `key` is "YYYY-MM-DD" for day, the enum value
+         *     for kind, the provider name otherwise.
+         */
+        UsageBucketRead: {
+            /** Key */
+            key: string;
+            totals: components["schemas"]["UsageTotalRead"];
+        };
+        /**
+         * UsageReportRead
+         * @description Response of GET /api/ai/usage. Empty `by_*` lists when the window has
+         *     no calls — the UI uses that to render the "no usage yet" state.
+         */
+        UsageReportRead: {
+            /** Window Days */
+            window_days: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            total: components["schemas"]["UsageTotalRead"];
+            /** By Day */
+            by_day: components["schemas"]["UsageBucketRead"][];
+            /** By Kind */
+            by_kind: components["schemas"]["UsageBucketRead"][];
+            /** By Provider */
+            by_provider: components["schemas"]["UsageBucketRead"][];
+        };
+        /**
+         * UsageTotalRead
+         * @description Aggregate counters for one bucket (or the whole window).
+         */
+        UsageTotalRead: {
+            /** Calls */
+            calls: number;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Success */
+            success: number;
+            /** Failure */
+            failure: number;
+            /** Avg Latency Ms */
+            avg_latency_ms: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -1495,6 +2770,88 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_my_tokens_api_auth_tokens_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenRead"][];
+                };
+            };
+        };
+    };
+    create_my_token_api_auth_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_my_token_api_auth_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2791,6 +4148,37 @@ export interface operations {
             };
         };
     };
+    list_tagged_vlans_api_ports__port_id__vlans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                port_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VlanRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_tagged_vlan_api_ports__port_id__vlans_post: {
         parameters: {
             query?: never;
@@ -2920,6 +4308,39 @@ export interface operations {
             };
         };
     };
+    create_link_by_name_api_links_by_name_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkCreateByName"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_link_api_links__link_id__get: {
         parameters: {
             query?: never;
@@ -2930,6 +4351,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_link_api_links__link_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -2985,6 +4441,7 @@ export interface operations {
             query?: {
                 entity?: string | null;
                 entity_id?: number | null;
+                action?: components["schemas"]["AuditAction"] | null;
                 user_id?: number | null;
                 from?: string | null;
                 to?: string | null;
@@ -3110,6 +4567,72 @@ export interface operations {
             };
         };
     };
+    detect_csv_api_imports_detect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_detect_csv_api_imports_detect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_bulk_api_imports_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_bulk_api_imports_bulk_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     import_entity_api_imports__entity__post: {
         parameters: {
             query?: never;
@@ -3145,6 +4668,62 @@ export interface operations {
             };
         };
     };
+    export_audit_api_exports_audit_get: {
+        parameters: {
+            query?: {
+                entity?: string | null;
+                entity_id?: number | null;
+                action?: components["schemas"]["AuditAction"] | null;
+                user_id?: number | null;
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_all_api_exports_all_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     export_entity_api_exports__entity__get: {
         parameters: {
             query?: never;
@@ -3155,6 +4734,578 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_status_api_ai_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIStatusRead"];
+                };
+            };
+        };
+    };
+    test_connection_api_ai_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITestResult"];
+                };
+            };
+        };
+    };
+    scan_links_api_ai_suggestions_links_scan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "accept-language"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_suggestions_api_ai_suggestions_links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkSuggestionRead"][];
+                };
+            };
+        };
+    };
+    accept_api_ai_suggestions__suggestion_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_api_ai_suggestions__suggestion_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkSuggestionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_insights_api_ai_insights_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsightsResponse"];
+                };
+            };
+        };
+    };
+    refresh_insights_api_ai_insights_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "accept-language"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdvisorReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_ai_api_ai_query_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "accept-language"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryAnswerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_integrity_checks_api_ai_integrity_checks_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "accept-language"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrityReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_usage_api_ai_usage_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_csv_mapping_api_ai_csv_suggest_mapping_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "accept-language"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsvMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_schedules_api_ai_schedules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIScheduleRead"][];
+                };
+            };
+        };
+    };
+    upsert_schedule_api_ai_schedules__kind__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIScheduleUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drafts_api_ai_drafts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionDraftRead"][];
+                };
+            };
+        };
+    };
+    create_draft_api_ai_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "accept-language"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionDraftCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_draft_route_api_ai_drafts__draft_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_draft_route_api_ai_drafts__draft_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_insights_pdf_api_ai_insights_export_pdf_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "accept-language"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_ai_stream_api_ai_query_stream_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "accept-language"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueryRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

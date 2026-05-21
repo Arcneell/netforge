@@ -57,10 +57,17 @@ class Port(Base, TimestampMixin):
         default=PortAdminStatus.up,
     )
     connected_device_id: Mapped[int | None] = mapped_column(
-        ForeignKey("devices.id", ondelete="SET NULL")
+        ForeignKey("devices.id", ondelete="SET NULL"),
+        # Reverse lookup "find every port plugged into device X" is a common
+        # operation (device detail, suggest-links sanity checks). Without an
+        # index it's a full ports scan.
+        index=True,
     )
     connected_ip_id: Mapped[int | None] = mapped_column(
-        ForeignKey("ips.id", ondelete="SET NULL")
+        ForeignKey("ips.id", ondelete="SET NULL"),
+        # Same rationale — used by integrity._check_orphan_assigned_ips and
+        # the management-IP rendering on switch detail.
+        index=True,
     )
     notes: Mapped[str | None] = mapped_column(Text)
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, Text
+from sqlalchemy import CheckConstraint, Date, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,12 +27,18 @@ class Switch(Base, TimestampMixin):
     serial: Mapped[str | None] = mapped_column(String(100))
     management_ip: Mapped[str | None] = mapped_column(INET)
     room_id: Mapped[int | None] = mapped_column(
-        ForeignKey("rooms.id", ondelete="RESTRICT")
+        ForeignKey("rooms.id", ondelete="RESTRICT"),
+        # Same rationale as devices.room_id: Postgres doesn't auto-index FK
+        # columns and the topology view filters here on every render.
+        index=True,
     )
     rack_position: Mapped[str | None] = mapped_column(String(20))
     port_count: Mapped[int] = mapped_column(nullable=False)
     firmware_version: Mapped[str | None] = mapped_column(String(50))
     snmp_community: Mapped[str | None] = mapped_column(String(100))
+    asset_tag: Mapped[str | None] = mapped_column(String(50))
+    warranty_expires_at: Mapped[date | None] = mapped_column(Date)
+    eol_date: Mapped[date | None] = mapped_column(Date)
     description: Mapped[str | None] = mapped_column(Text)
 
     room: Mapped[Room | None] = relationship(back_populates="switches")
