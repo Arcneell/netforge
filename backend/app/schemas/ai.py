@@ -97,6 +97,12 @@ class InsightRead(BaseModel):
     recommendation: str
     affected_entities: list[InsightEntityRef] | None = None
     created_at: datetime
+    # How many consecutive recent advisor runs this finding has appeared
+    # in (including the current one). 1 = brand-new, ≥ 2 = recurring.
+    # Computed at query time by `advisor.compute_insight_streaks`; never
+    # stored, so a re-run on an unchanged topology produces a higher
+    # number without backfilling old rows.
+    streak_count: int = 1
 
 
 class AdvisorReportRead(BaseModel):

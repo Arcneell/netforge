@@ -601,6 +601,8 @@
       "liteContextHint": "N'envoie au modèle que les identifiants (sites, salles, switches, vlans, subnets), sans descriptions, notes, MAC, vendor/modèle ni adresses. Idéal pour les questions structurelles. À désactiver si la question porte sur le contenu de ces champs."
     },
     "advisor": {
+      "recurringBadge": "Récurrent ×{n}",
+      "streakTooltip": "Ce constat est apparu sur {n} runs consécutifs — un correctif ou un acknowledge est attendu.",
       "tab": "Conseiller IA",
       "subtitle": "Analyse de votre infrastructure : SPOF, capacité, sécurité, segmentation.",
       "refresh": "Relancer l'analyse",

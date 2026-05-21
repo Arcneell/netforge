@@ -601,6 +601,8 @@
       "liteContextHint": "Sends only identifiers (sites, rooms, switches, vlans, subnets) to the model — no descriptions, notes, MACs, vendor/model, or addresses. Great for structural questions. Turn off if the question is about content in those fields."
     },
     "advisor": {
+      "recurringBadge": "Recurring ×{n}",
+      "streakTooltip": "This finding has appeared in {n} consecutive runs — a fix or an explicit acknowledgement is overdue.",
       "tab": "AI advisor",
       "subtitle": "Infrastructure review: SPOF, capacity, security, segmentation.",
       "refresh": "Re-run analysis",

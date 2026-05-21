@@ -52,7 +52,11 @@ from app.schemas.ai import (
 from app.schemas.link import LinkRead
 from app.services.ai import AIProviderError, AIUnsupportedFeatureError, get_provider
 from app.services.ai.actions import apply_draft, draft_action, reject_draft
-from app.services.ai.advisor import list_latest_insights, run_advisor
+from app.services.ai.advisor import (
+    compute_insight_streaks,
+    list_latest_insights,
+    run_advisor,
+)
 from app.services.ai.csv_mapping import list_canonical_fields, run_mapping_suggestion
 from app.services.ai.integrity import run_all_checks
 from app.services.ai.locale import language_instruction as _lang_for
@@ -249,13 +253,29 @@ async def reject(
     dependencies=[Depends(require_role(UserRole.admin))],
 )
 async def get_insights(db: AsyncSession = Depends(get_db)) -> InsightsResponse:
-    """Latest cached advisor report. Empty when no run has ever succeeded."""
+    """Latest cached advisor report. Empty when no run has ever succeeded.
+
+    Each insight is annotated with a `streak_count` — how many consecutive
+    recent runs it has appeared in. Operators can use the count to
+    distinguish a brand-new finding from one that's been ignored for
+    several runs in a row.
+    """
     _require_ai_enabled()
     run_id, run_created_at, items = await list_latest_insights(db)
+    streaks: dict[int, int] = {}
+    if run_id is not None and items:
+        streaks = await compute_insight_streaks(
+            db, current_run_id=run_id, current_items=items
+        )
+    reads: list[InsightRead] = []
+    for i in items:
+        read = InsightRead.model_validate(i)
+        read.streak_count = streaks.get(i.id, 1)
+        reads.append(read)
     return InsightsResponse(
         run_id=run_id,
         run_created_at=run_created_at,
-        insights=[InsightRead.model_validate(i) for i in items],
+        insights=reads,
     )
 
 

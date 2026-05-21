@@ -304,3 +304,97 @@ async def list_latest_insights(
         .all()
     )
     return run_id, created_at, items
+
+
+# Number of previous successful advisor runs we look back through when
+# computing how often a finding has recurred. 4 = roughly a week of daily
+# runs, which is enough to spot "this SPOF has been ignored for a week"
+# without dragging the SELECT into pagination territory on busy installs.
+_STREAK_LOOKBACK = 4
+
+
+def _streak_key(item: InfraInsight) -> tuple[str, str]:
+    """The matching key used to decide that two insights from different runs
+    refer to the same underlying finding.
+
+    `(category, title)` is the stable signature — the advisor prompt is
+    deterministic enough that a recurring problem (e.g. "SPOF: SW-CORE-01
+    is the only path to room R-102") produces the same title across runs
+    when the underlying topology hasn't changed. Affected-entity matching
+    would be more precise but the LLM occasionally rewords the title or
+    swaps the entity order, which we'd rather treat as the same finding.
+    """
+    return (item.category.value, item.title.strip().lower())
+
+
+async def compute_insight_streaks(
+    db: AsyncSession,
+    *,
+    current_run_id: int,
+    current_items: list[InfraInsight],
+) -> dict[int, int]:
+    """For every insight in `current_items`, count how many consecutive
+    previous advisor runs (back to a `_STREAK_LOOKBACK`-deep window) also
+    produced a matching insight. Returns `{insight_id: streak_count}` —
+    the count includes the current run, so a brand-new finding gets `1`
+    and one that's been around for three runs gets `3`.
+
+    The query: pull the IDs of the most recent successful advisor runs
+    (excluding the current one) in one SELECT, then for each, fetch the
+    `(category, title)` tuples and check intersection with the current
+    run's tuples. Two SELECTs total, both cheap because they index on
+    `run_id`.
+    """
+    if not current_items:
+        return {}
+
+    # Walk back through previous successful advisor runs, stopping the
+    # first time a current-finding doesn't appear — that's where its
+    # streak ends.
+    prev_run_rows = (
+        await db.execute(
+            select(AIRunLog.id)
+            .where(
+                AIRunLog.kind == AIRunKind.advisor,
+                AIRunLog.success.is_(True),
+                AIRunLog.id != current_run_id,
+            )
+            .order_by(desc(AIRunLog.created_at))
+            .limit(_STREAK_LOOKBACK)
+        )
+    ).all()
+    prev_run_ids = [int(r[0]) for r in prev_run_rows]
+
+    streaks: dict[int, int] = {item.id: 1 for item in current_items}
+    if not prev_run_ids:
+        return streaks
+
+    # Fetch all prior keys in one shot (grouped client-side), so we don't
+    # pay N SELECTs for N runs back. The total is bounded:
+    # `_STREAK_LOOKBACK * (advisor max insights = 20)` rows.
+    prior_rows = (
+        await db.execute(
+            select(InfraInsight.run_id, InfraInsight.category, InfraInsight.title)
+            .where(InfraInsight.run_id.in_(prev_run_ids))
+        )
+    ).all()
+    per_run_keys: dict[int, set[tuple[str, str]]] = {}
+    for row_run_id, category, title in prior_rows:
+        per_run_keys.setdefault(int(row_run_id), set()).add(
+            (
+                category.value if hasattr(category, "value") else str(category),
+                str(title).strip().lower(),
+            )
+        )
+
+    # `prev_run_ids` is already in newest-first order; iterate forward in
+    # time. For each current finding, increment the streak only while the
+    # finding keeps appearing in consecutive prior runs.
+    for item in current_items:
+        key = _streak_key(item)
+        for prev_id in prev_run_ids:
+            if key in per_run_keys.get(prev_id, set()):
+                streaks[item.id] += 1
+            else:
+                break
+    return streaks

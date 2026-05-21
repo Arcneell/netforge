@@ -401,6 +401,13 @@ function entityLabel(e: InsightEntityRef): string {
                       {{ severityLabel(ins.severity) }}
                     </Badge>
                     <Badge tone="muted">{{ t(categoryLabelKey[ins.category] ?? '') }}</Badge>
+                    <Badge
+                      v-if="ins.streak_count && ins.streak_count >= 2"
+                      tone="danger"
+                      :title="t('ai.advisor.streakTooltip', { n: ins.streak_count })"
+                    >
+                      {{ t('ai.advisor.recurringBadge', { n: ins.streak_count }) }}
+                    </Badge>
                   </div>
                   <h3 class="text-base font-semibold tracking-tight mt-2">{{ ins.title }}</h3>
                 </div>

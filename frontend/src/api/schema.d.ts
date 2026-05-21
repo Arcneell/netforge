@@ -916,6 +916,11 @@ export interface paths {
         /**
          * Get Insights
          * @description Latest cached advisor report. Empty when no run has ever succeeded.
+         *
+         *     Each insight is annotated with a `streak_count` — how many consecutive
+         *     recent runs it has appeared in. Operators can use the count to
+         *     distinguish a brand-new finding from one that's been ignored for
+         *     several runs in a row.
          */
         get: operations["get_insights_api_ai_insights_get"];
         put?: never;
@@ -1739,6 +1744,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Streak Count
+             * @default 1
+             */
+            streak_count: number;
         };
         /**
          * InsightsResponse
