@@ -65,6 +65,16 @@ async def subnet_tree(
         ge=0,
         description="VRF scope. Omit or pass `0` for the global VRF.",
     ),
+    auto_group_prefix: int = Query(
+        default=16,
+        ge=0,
+        le=31,
+        description=(
+            "Wrap flat root subnets sharing a /N supernet under a synthetic "
+            "virtual parent so the tree shows real hierarchy. Pass `0` to "
+            "disable and get the raw flat list of roots."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> list[SubnetTreeNode]:
     """Hierarchical view of the subnets in one VRF. Roots first, depth-first
@@ -72,7 +82,9 @@ async def subnet_tree(
     # The service treats None as "global" but the OpenAPI `Query(ge=0)`
     # accepts a literal 0 too — normalise here.
     scope = None if vrf_id in (None, 0) else vrf_id
-    raw = await service.build_subnet_tree(db, scope)
+    raw = await service.build_subnet_tree(
+        db, scope, auto_group_prefix=auto_group_prefix or None
+    )
     return [SubnetTreeNode.model_validate(n) for n in raw]
 
 

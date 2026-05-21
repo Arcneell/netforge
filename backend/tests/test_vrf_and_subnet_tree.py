@@ -152,7 +152,51 @@ def _mock_db_with_subnets(
 @pytest.mark.asyncio
 async def test_tree_empty_when_no_subnets_in_scope() -> None:
     db = _mock_db_with_subnets([])
-    assert await service.build_subnet_tree(db, vrf_id=None) == []
+    assert await service.build_subnet_tree(db, vrf_id=None, auto_group_prefix=None) == []
+
+
+# --- auto-group: synthetic /N supernets when no explicit parents exist ----
+
+
+@pytest.mark.asyncio
+async def test_auto_group_wraps_flat_roots_sharing_a_slash16() -> None:
+    """Two flat /24 roots that share the same /16 supernet must be wrapped
+    under a synthetic /16 parent so the tree view shows real hierarchy
+    even on deployments that never set `parent_subnet_id`."""
+    a = _subnet(id=1, cidr="10.10.10.0/24")
+    b = _subnet(id=2, cidr="10.10.20.0/24")
+    db = _mock_db_with_subnets([a, b])
+
+    tree = await service.build_subnet_tree(db, vrf_id=None, auto_group_prefix=16)
+    assert len(tree) == 1
+    parent = tree[0]
+    assert parent["cidr"] == "10.10.0.0/16"
+    assert parent["synthetic"] is True
+    assert parent["id"] < 0  # synthetic ids stay negative
+    assert [c["id"] for c in parent["children"]] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_auto_group_keeps_singletons_at_the_root() -> None:
+    """A single subnet in a /16 has nothing to group with — wrapping it
+    in a synthetic supernet would just add visual noise."""
+    a = _subnet(id=1, cidr="10.10.10.0/24")
+    db = _mock_db_with_subnets([a])
+
+    tree = await service.build_subnet_tree(db, vrf_id=None, auto_group_prefix=16)
+    assert len(tree) == 1
+    assert tree[0]["id"] == 1
+    assert tree[0].get("synthetic", False) is False
+
+
+@pytest.mark.asyncio
+async def test_auto_group_disabled_returns_flat_roots() -> None:
+    a = _subnet(id=1, cidr="10.10.10.0/24")
+    b = _subnet(id=2, cidr="10.10.20.0/24")
+    db = _mock_db_with_subnets([a, b])
+
+    tree = await service.build_subnet_tree(db, vrf_id=None, auto_group_prefix=None)
+    assert [n["id"] for n in tree] == [1, 2]
 
 
 @pytest.mark.asyncio
@@ -163,7 +207,7 @@ async def test_tree_groups_children_under_parent() -> None:
     grandchild = _subnet(id=4, cidr="10.0.1.128/25", parent_subnet_id=2)
     db = _mock_db_with_subnets([root, child_a, child_b, grandchild])
 
-    tree = await service.build_subnet_tree(db, vrf_id=None)
+    tree = await service.build_subnet_tree(db, vrf_id=None, auto_group_prefix=None)
     assert len(tree) == 1
     assert tree[0]["id"] == 1
     assert [c["id"] for c in tree[0]["children"]] == [2, 3]
@@ -178,7 +222,7 @@ async def test_tree_promotes_orphaned_children_to_roots() -> None:
     orphan = _subnet(id=5, cidr="10.0.3.0/24", parent_subnet_id=999)
     db = _mock_db_with_subnets([orphan])
 
-    tree = await service.build_subnet_tree(db, vrf_id=None)
+    tree = await service.build_subnet_tree(db, vrf_id=None, auto_group_prefix=None)
     assert len(tree) == 1
     assert tree[0]["id"] == 5
 
@@ -190,7 +234,7 @@ async def test_tree_sorts_siblings_by_cidr() -> None:
     child_a = _subnet(id=3, cidr="10.0.1.0/24", parent_subnet_id=1)
     db = _mock_db_with_subnets([root, child_b, child_a])
 
-    tree = await service.build_subnet_tree(db, vrf_id=None)
+    tree = await service.build_subnet_tree(db, vrf_id=None, auto_group_prefix=None)
     ordered = [c["cidr"] for c in tree[0]["children"]]
     assert ordered == ["10.0.1.0/24", "10.0.5.0/24"]
 

@@ -30,6 +30,9 @@ export interface SubnetTreeNode {
   usable: number
   /** Number of `Ip` rows actually recorded in this subnet. */
   used: number
+  /** True for virtual supernets synthesised by the backend's auto-group:
+   * no DB row, can't be opened in the editor, and `id` is negative. */
+  synthetic?: boolean
   children: SubnetTreeNode[]
 }
 

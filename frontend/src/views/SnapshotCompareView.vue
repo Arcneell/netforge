@@ -88,38 +88,44 @@ function statusTone(status: string): 'success' | 'primary' | 'warning' | 'danger
       </template>
     </PageHeader>
 
-    <!-- Range pickers -->
+    <!-- Range pickers. Help triggers live next to the labels but OUTSIDE the
+         `<label>` wrappers — otherwise clicking `?` activates the label and
+         focuses (and on Safari, blurs) the bound input. Codex P2 on #71. -->
     <div class="nf-card p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-      <label class="text-sm">
-        <span
+      <div class="text-sm">
+        <div
           class="text-xs uppercase tracking-wider text-fg-muted font-semibold mb-1 flex items-center gap-1"
         >
-          <span>{{ t('snapshots.compare.from') }}</span>
+          <label for="snapshot-from">{{ t('snapshots.compare.from') }}</label>
           <HelpTooltip :text="t('snapshots.compare.helpFrom')" />
-        </span>
-        <Input v-model="fromTs" type="datetime-local" autocomplete="off" />
-      </label>
-      <label class="text-sm">
-        <span class="block text-xs uppercase tracking-wider text-fg-muted font-semibold mb-1">
+        </div>
+        <Input id="snapshot-from" v-model="fromTs" type="datetime-local" autocomplete="off" />
+      </div>
+      <div class="text-sm">
+        <label
+          for="snapshot-to"
+          class="block text-xs uppercase tracking-wider text-fg-muted font-semibold mb-1"
+        >
           {{ t('snapshots.compare.to') }}
-        </span>
-        <Input v-model="toTs" type="datetime-local" autocomplete="off" />
-      </label>
-      <label class="text-sm">
-        <span
+        </label>
+        <Input id="snapshot-to" v-model="toTs" type="datetime-local" autocomplete="off" />
+      </div>
+      <div class="text-sm">
+        <div
           class="text-xs uppercase tracking-wider text-fg-muted font-semibold mb-1 flex items-center gap-1"
         >
-          <span>{{ t('snapshots.compare.entity') }}</span>
+          <label for="snapshot-entity">{{ t('snapshots.compare.entity') }}</label>
           <HelpTooltip :text="t('snapshots.compare.helpEntity')" />
-        </span>
+        </div>
         <select
+          id="snapshot-entity"
           v-model="entityFilter"
           class="w-full h-9 px-2 rounded border border-border bg-surface text-sm"
         >
           <option value="">{{ t('common.all') }}</option>
           <option v-for="e in entityOptions" :key="e" :value="e">{{ e }}</option>
         </select>
-      </label>
+      </div>
       <div class="flex items-center gap-2">
         <Button variant="primary" :loading="loading" @click="run">
           <Search class="w-4 h-4" aria-hidden="true" />
