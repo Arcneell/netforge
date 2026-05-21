@@ -514,6 +514,23 @@
       "description": "Créez des commutateurs et des liens inter-commutateurs pour les voir apparaître ici."
     }
   },
+  "cable": {
+    "label": "Câble",
+    "create": "Attacher un câble",
+    "save": "Enregistrer le câble",
+    "delete": "Détacher",
+    "fields": {
+      "label": "Étiquette",
+      "length": "Longueur (m)",
+      "color": "Couleur",
+      "vendor": "Fabricant",
+      "partNumber": "Référence",
+      "serial": "Numéro de série",
+      "installedOn": "Installé le",
+      "lastTestedOn": "Testé le",
+      "notes": "Notes"
+    }
+  },
   "link": {
     "new": "Nouveau lien",
     "edit": "Modifier le lien",

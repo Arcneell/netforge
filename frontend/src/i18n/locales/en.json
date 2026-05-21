@@ -514,6 +514,23 @@
       "description": "Create switches and inter-switch links to see them appear here."
     }
   },
+  "cable": {
+    "label": "Cable",
+    "create": "Attach cable",
+    "save": "Save cable",
+    "delete": "Detach",
+    "fields": {
+      "label": "Label",
+      "length": "Length (m)",
+      "color": "Color",
+      "vendor": "Vendor",
+      "partNumber": "Part number",
+      "serial": "Serial",
+      "installedOn": "Installed on",
+      "lastTestedOn": "Last tested on",
+      "notes": "Notes"
+    }
+  },
   "link": {
     "new": "New link",
     "edit": "Edit link",
