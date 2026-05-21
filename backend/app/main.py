@@ -43,8 +43,8 @@ from app.services.audit import (
     register_audit_listeners,
 )
 from app.services.webhooks import (
-    dispatch_pending_in_background,
-    refresh_dispatch_enabled,
+    dispatch_committed_in_background,
+    take_committed,
     take_pending,
 )
 from app.utils.request import client_ip
@@ -70,14 +70,6 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     from app.services.ai.scheduler import start_scheduler, stop_scheduler
 
     start_scheduler()
-    # One-shot probe so the webhook dispatcher can short-circuit when no
-    # operator has configured a subscriber. The router refreshes this on
-    # every CRUD; we only need to seed it at boot.
-    try:
-        await refresh_dispatch_enabled()
-    except Exception:
-        # Never block startup on a DB hiccup — webhook dispatch is best-effort.
-        logger.exception("webhook dispatch state probe failed at startup")
     try:
         yield
     finally:
@@ -128,9 +120,10 @@ class _RequestLogMiddleware:
         try:
             await self.app(scope, receive, send_with_request_id)
         except Exception:
-            # The request blew up — drop any queued webhook events so we
-            # don't ping subscribers about a transaction that rolled back.
+            # Crash path: drop everything still queued so subscribers never
+            # see events from a transaction the framework abandoned.
             take_pending()
+            take_committed()
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.exception(
                 "request.error rid=%s %s %s duration_ms=%d",
@@ -140,15 +133,12 @@ class _RequestLogMiddleware:
                 duration_ms,
             )
             raise
-        # Successful or client-error response: dispatch the webhooks queued
-        # by the audit listener during this request. 4xx responses still
-        # fire — a failed DELETE that nonetheless wrote something would be
-        # a bug elsewhere, but if mutations happened the subscribers must
-        # see them. We only suppress on 5xx (treated as "may have rolled back").
-        if status_holder["code"] < 500:
-            dispatch_pending_in_background()
-        else:
-            take_pending()
+        # Dispatch events that survived a session commit. Anything still in
+        # `_pending` belongs to a flush that never committed (e.g. CSV import
+        # `dry_run=true`) — drop it. The HTTP status no longer gates dispatch
+        # because session lifecycle is the source of truth (see services.webhooks).
+        take_pending()
+        dispatch_committed_in_background()
         duration_ms = int((time.monotonic() - start) * 1000)
         logger.info(
             "request rid=%s %s %s status=%d duration_ms=%d",

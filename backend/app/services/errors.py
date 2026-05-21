@@ -43,7 +43,20 @@ def business_rule(code: str, message: str, details: dict | None = None) -> NoRet
 # Stable codes returned for known DB-level constraint violations.
 # Routers can rely on these to surface helpful messages in the UI.
 _CONSTRAINT_CODES: dict[str, tuple[str, str]] = {
-    # Subnets
+    # Subnets — the GiST exclusion was split into two scoped constraints in
+    # migration 0010 (one for the global VRF, one keyed by vrf_id). Both
+    # map to the same user-facing SUBNET_OVERLAP code so the UI logic
+    # doesn't need to know which scope tripped.
+    "subnets_no_overlap_global": (
+        "SUBNET_OVERLAP",
+        "This CIDR overlaps an existing subnet.",
+    ),
+    "subnets_no_overlap_vrf": (
+        "SUBNET_OVERLAP",
+        "This CIDR overlaps another subnet in the same VRF.",
+    ),
+    # Legacy name — kept so downgraded installs still surface the friendly
+    # error. Harmless when only the new constraints are present.
     "subnets_no_overlap": (
         "SUBNET_OVERLAP",
         "This CIDR overlaps an existing subnet.",
