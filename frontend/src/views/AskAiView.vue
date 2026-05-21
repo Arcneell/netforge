@@ -37,6 +37,13 @@ const status = ref<AIStatus | null>(null)
 const turns = ref<Turn[]>([])
 const input = ref('')
 const pending = ref(false)
+// Lite-context toggle: ask the backend to send a stripped snapshot
+// (identifiers only — no vendor / model / serial / notes / descriptions /
+// MACs / addresses). Cuts tokens ~10× and keeps free-text out of the
+// outbound request, at the cost of any answer that needs free-text.
+// Off by default — the verbose mode is the right default for a fresh
+// session, and operators who care opt-in per session.
+const liteContext = ref(false)
 const transcriptRef = ref<HTMLDivElement | null>(null)
 let nextId = 1
 
@@ -162,7 +169,9 @@ async function streamAnswer(
   history: QueryHistoryTurn[],
   onDelta: DeltaCallback,
 ): Promise<StreamOutcome> {
-  const resp = await aiApi.askStream(question, history)
+  const resp = await aiApi.askStream(question, history, {
+    liteContext: liteContext.value,
+  })
   if (!resp.ok || !resp.body) {
     throw new Error(`stream rejected: HTTP ${resp.status}`)
   }
@@ -454,26 +463,40 @@ onMounted(loadStatus)
     </div>
 
     <!-- Composer -->
-    <form class="nf-card p-3 flex items-end gap-2 mt-auto" @submit.prevent="send">
-      <textarea
-        v-model="input"
-        rows="2"
-        class="flex-1 resize-none bg-transparent text-sm px-2 py-1.5 focus:outline-none placeholder:text-fg-muted"
-        :placeholder="t('ai.askView.placeholder')"
-        :disabled="!status?.enabled || pending"
-        :aria-label="t('ai.askView.placeholder')"
-        @keydown="onEnter"
-      />
-      <Button
-        type="submit"
-        variant="primary"
-        shape="pill"
-        :loading="pending"
-        :disabled="!input.trim() || !status?.enabled"
+    <form class="nf-card p-3 flex flex-col gap-2 mt-auto" @submit.prevent="send">
+      <div class="flex items-end gap-2">
+        <textarea
+          v-model="input"
+          rows="2"
+          class="flex-1 resize-none bg-transparent text-sm px-2 py-1.5 focus:outline-none placeholder:text-fg-muted"
+          :placeholder="t('ai.askView.placeholder')"
+          :disabled="!status?.enabled || pending"
+          :aria-label="t('ai.askView.placeholder')"
+          @keydown="onEnter"
+        />
+        <Button
+          type="submit"
+          variant="primary"
+          shape="pill"
+          :loading="pending"
+          :disabled="!input.trim() || !status?.enabled"
+        >
+          <Send class="w-4 h-4" aria-hidden="true" />
+          {{ t('ai.askView.send') }}
+        </Button>
+      </div>
+      <label
+        class="flex items-center gap-2 text-xs text-fg-muted cursor-pointer select-none px-2"
+        :title="t('ai.askView.liteContextHint')"
       >
-        <Send class="w-4 h-4" aria-hidden="true" />
-        {{ t('ai.askView.send') }}
-      </Button>
+        <input
+          v-model="liteContext"
+          type="checkbox"
+          class="rounded border-border accent-primary-600"
+          :disabled="pending"
+        />
+        <span>{{ t('ai.askView.liteContextLabel') }}</span>
+      </label>
     </form>
 
     <p v-if="status && !status.enabled" class="text-xs text-fg-muted mt-2 text-center">

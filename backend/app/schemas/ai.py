@@ -142,10 +142,19 @@ class QueryRequest(BaseModel):
 
     `history` lets the operator have a follow-up conversation — capped at 10
     turns (≈ 5 user/assistant pairs) so the prompt doesn't balloon. Older
-    turns are dropped client-side."""
+    turns are dropped client-side.
+
+    `lite_context`, when true, strips the inventory snapshot down to bare
+    identifiers (id + name + code + parent id where relevant) before
+    handing it to the model. Useful for token-cost-sensitive deployments
+    or privacy-conscious operators who don't want vendor / model / MAC /
+    serial details leaving their network. The model can still answer
+    structural questions ("what's on VLAN 10?") but loses the ability to
+    reason over free-text fields it no longer receives."""
 
     question: str = Field(min_length=2, max_length=1000)
     history: list[QueryHistoryTurn] = Field(default_factory=list, max_length=10)
+    lite_context: bool = False
 
 
 class QueryEntityRef(BaseModel):

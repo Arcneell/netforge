@@ -596,7 +596,9 @@
       "disabledHint": "L'assistant IA est désactivé. Activez-le dans Réglages → IA pour poser des questions.",
       "newChat": "Nouvelle conversation",
       "emptyAnswer": "(Réponse vide — relancez la question si nécessaire.)",
-      "incompleteAnswer": "(Réponse interrompue — le modèle s'est arrêté en cours de route.)"
+      "incompleteAnswer": "(Réponse interrompue — le modèle s'est arrêté en cours de route.)",
+      "liteContextLabel": "Mode contexte léger (moins de tokens, sans champs libres)",
+      "liteContextHint": "N'envoie au modèle que les identifiants (sites, salles, switches, vlans, subnets), sans descriptions, notes, MAC, vendor/modèle ni adresses. Idéal pour les questions structurelles. À désactiver si la question porte sur le contenu de ces champs."
     },
     "advisor": {
       "tab": "Conseiller IA",

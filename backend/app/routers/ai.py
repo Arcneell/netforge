@@ -788,6 +788,7 @@ async def ask_ai_stream(
                 question=payload.question,
                 history=[t.model_dump() for t in payload.history],
                 language_instruction=_lang_for(accept_language),
+                lite_context=payload.lite_context,
             ):
                 # SSE wire format: `event:` line is optional, `data:` line
                 # carries the JSON body, blank line terminates the frame.

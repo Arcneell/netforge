@@ -8,6 +8,9 @@ detectors that don't need a network round-trip or a token budget:
 - Switches with `port_count = 0` or no `Port` rows.
 - VLANs without any subnet referencing them.
 - Case-insensitive port-label collisions inside a single switch.
+- **Subnets ≥ 90% full** — capacity warning so operators see the squeeze
+  coming instead of getting blindsided by a DHCP exhaustion.
+- **Switches ≥ 90% port utilisation** — same idea on the port side.
 
 Each detector returns zero or more `IntegrityIssue` dicts shaped exactly
 like the LLM `Insight` payload, so the Vue card components can render
@@ -17,6 +20,7 @@ either source without branching.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from ipaddress import IPv4Network
 from typing import Any
 
 from sqlalchemy import func, select
@@ -24,11 +28,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.core import Site
 from app.models.ip import Ip, IpStatus
-from app.models.port import Port
+from app.models.port import Port, PortMode
 from app.models.subnet import Subnet
 from app.models.switch import Switch
 from app.models.vlan import Vlan
 from app.services.ai.locale import _parse_primary_tag
+
+# A subnet or switch crossing this threshold is worth a `warning` insight.
+# 90% is the cliff most ops teams target — past it, ad-hoc allocations
+# start failing and recovery is painful.
+_CAPACITY_WARN_PCT = 90
 
 # Embedded translation table — these strings are server-rendered (no LLM
 # call, so the language_instruction shim used elsewhere doesn't apply) and
@@ -90,6 +99,28 @@ _STRINGS: dict[str, dict[str, str]] = {
             "Ouvrez la vue détail du switch et renommez les doublons pour qu'ils "
             "reflètent le rôle réel de chaque port."
         ),
+        "subnet_capacity_title": "Subnet `{cidr}` rempli à {pct}%",
+        "subnet_capacity_desc": (
+            "{used}/{usable} adresses utiles sont consommées sur `{cidr}`. "
+            "À ce rythme, la prochaine attribution risque d'échouer faute de "
+            "place — planifiez un découpage ou un /23 plus large avant la "
+            "saturation."
+        ),
+        "subnet_capacity_reco": (
+            "Soit attribuez un subnet additionnel à ce VLAN/site, soit migrez "
+            "vers un préfixe plus large (`/23` au lieu de `/24` par exemple). "
+            "L'advisor LLM peut suggérer un découpage adapté à votre topologie."
+        ),
+        "switch_port_capacity_title": "Switch `{switch}` à {pct}% de ports utilisés",
+        "switch_port_capacity_desc": (
+            "{used}/{total} ports actifs ou raccordés sur `{switch}`. Quand un "
+            "switch passe les 90% il n'y a plus de marge pour brancher un "
+            "nouvel équipement sans rejouer le câblage."
+        ),
+        "switch_port_capacity_reco": (
+            "Prévoyez un châssis additionnel ou un module d'extension, ou "
+            "auditez les ports `disabled` pour récupérer de la capacité."
+        ),
         "fallback_port_default_name": "port {n}",
     },
     "en": {
@@ -147,6 +178,27 @@ _STRINGS: dict[str, dict[str, str]] = {
             "Open the switch detail view and rename the duplicates to reflect "
             "each port's actual role."
         ),
+        "subnet_capacity_title": "Subnet `{cidr}` is {pct}% full",
+        "subnet_capacity_desc": (
+            "{used}/{usable} usable addresses consumed on `{cidr}`. At this "
+            "rate the next allocation may fail for lack of space — plan a "
+            "split or a larger prefix before exhaustion."
+        ),
+        "subnet_capacity_reco": (
+            "Either allocate an additional subnet for this VLAN/site, or "
+            "renumber to a larger prefix (e.g. `/23` instead of `/24`). The "
+            "LLM advisor can suggest a split tailored to your topology."
+        ),
+        "switch_port_capacity_title": "Switch `{switch}` is at {pct}% port usage",
+        "switch_port_capacity_desc": (
+            "{used}/{total} ports are active or patched on `{switch}`. Past "
+            "90% there's no headroom left to plug in a new device without "
+            "reshuffling cabling."
+        ),
+        "switch_port_capacity_reco": (
+            "Plan for an extra chassis or a stack module, or audit the "
+            "`disabled` ports to reclaim capacity."
+        ),
         "fallback_port_default_name": "port {n}",
     },
 }
@@ -195,6 +247,8 @@ async def run_all_checks(
     issues.extend(await _check_switches_without_ports(db, locale))
     issues.extend(await _check_vlans_without_subnet(db, locale))
     issues.extend(await _check_port_label_collisions(db, locale))
+    issues.extend(await _check_subnet_capacity(db, locale))
+    issues.extend(await _check_switch_port_capacity(db, locale))
     # Sort: critical → warning → info, then keep insertion order within each.
     rank = {"critical": 0, "warning": 1, "info": 2}
     issues.sort(key=lambda i: rank.get(i.severity, 99))
@@ -408,6 +462,124 @@ async def _check_port_label_collisions(db: AsyncSession, locale: str) -> list[In
                 ),
                 recommendation=_t(locale, "port_label_dup_reco"),
                 affected_entities=entities,
+            )
+        )
+    return issues
+
+
+async def _check_subnet_capacity(db: AsyncSession, locale: str) -> list[IntegrityIssue]:
+    """A subnet at >= 90% of usable IPs assigned is one bad week away from
+    running out. We count any IP whose status is `assigned` or `dhcp` against
+    the subnet's usable address space (the CIDR's full host count minus 2
+    for network + broadcast — /31 and /32 keep all addresses)."""
+    subnets = (await db.execute(select(Subnet))).scalars().all()
+    if not subnets:
+        return []
+    # Group IPs by subnet in one query so we don't do N+1.
+    counts: dict[int, int] = {}
+    rows = (
+        await db.execute(
+            select(Ip.subnet_id, func.count(Ip.id))
+            .where(Ip.status.in_([IpStatus.assigned, IpStatus.dhcp]))
+            .group_by(Ip.subnet_id)
+        )
+    ).all()
+    for subnet_id, n in rows:
+        if subnet_id is not None:
+            counts[int(subnet_id)] = int(n)
+
+    issues: list[IntegrityIssue] = []
+    for subnet in subnets:
+        try:
+            net = IPv4Network(str(subnet.cidr), strict=False)
+        except ValueError:
+            continue
+        # Usable host count: prefix /31 and /32 are point-to-point / loopback
+        # special cases where every address is usable; otherwise subtract
+        # network + broadcast.
+        usable = net.num_addresses if net.prefixlen >= 31 else net.num_addresses - 2
+        if usable <= 0:
+            continue
+        used = counts.get(subnet.id, 0)
+        pct = (used * 100) // usable
+        if pct < _CAPACITY_WARN_PCT:
+            continue
+        issues.append(
+            IntegrityIssue(
+                severity="warning" if pct < 100 else "critical",
+                category="capacity",
+                title=_t(locale, "subnet_capacity_title", cidr=str(subnet.cidr), pct=pct),
+                description=_t(
+                    locale,
+                    "subnet_capacity_desc",
+                    cidr=str(subnet.cidr),
+                    used=used,
+                    usable=usable,
+                ),
+                recommendation=_t(locale, "subnet_capacity_reco"),
+                affected_entities=[
+                    {"type": "subnet", "id": subnet.id, "name": str(subnet.cidr)}
+                ],
+            )
+        )
+    return issues
+
+
+async def _check_switch_port_capacity(db: AsyncSession, locale: str) -> list[IntegrityIssue]:
+    """A switch with >= 90% of its ports actually in use has no headroom to
+    plug something new in. We count a port as "in use" if it's either
+    connected to a device, in trunk/hybrid mode, or carrying a tagged-VLAN
+    list — anything that isn't a blank `access`-mode port sitting idle.
+    `disabled` ports DON'T count: those are reclaimable capacity."""
+    switches = (await db.execute(select(Switch))).scalars().all()
+    if not switches:
+        return []
+    # Pull all the per-switch port aggregates in one go. A port counts as
+    # "in use" if it has a device wired in, or it's a trunk/hybrid carrying
+    # something. Idle `access`-mode ports and `disabled` ports are
+    # reclaimable, so they don't count.
+    rows = (
+        await db.execute(
+            select(
+                Port.switch_id,
+                func.count(Port.id).label("total"),
+                func.count(Port.id).filter(
+                    (Port.connected_device_id.is_not(None))
+                    | (Port.mode.in_([PortMode.trunk, PortMode.hybrid]))
+                ).label("in_use"),
+            )
+            .group_by(Port.switch_id)
+        )
+    ).all()
+    aggregates = {int(r.switch_id): r for r in rows}
+    issues: list[IntegrityIssue] = []
+    for sw in switches:
+        agg = aggregates.get(sw.id)
+        # If no Port rows exist the dedicated check already flags it as a
+        # warning; we don't double-up here.
+        if not agg or agg.total == 0:
+            continue
+        # Effective capacity = total ports minus the reclaimable disabled
+        # ones; in_use already excludes those because they're mode=disabled.
+        # We compute the headline percentage against `total` so the operator
+        # number matches the rack-view stats they already see.
+        pct = (int(agg.in_use) * 100) // int(agg.total)
+        if pct < _CAPACITY_WARN_PCT:
+            continue
+        issues.append(
+            IntegrityIssue(
+                severity="warning" if pct < 100 else "critical",
+                category="capacity",
+                title=_t(locale, "switch_port_capacity_title", switch=sw.name, pct=pct),
+                description=_t(
+                    locale,
+                    "switch_port_capacity_desc",
+                    switch=sw.name,
+                    used=int(agg.in_use),
+                    total=int(agg.total),
+                ),
+                recommendation=_t(locale, "switch_port_capacity_reco"),
+                affected_entities=[{"type": "switch", "id": sw.id, "name": sw.name}],
             )
         )
     return issues

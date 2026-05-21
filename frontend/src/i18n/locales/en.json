@@ -596,7 +596,9 @@
       "disabledHint": "The AI assistant is disabled. Enable it in Settings → AI to ask questions.",
       "newChat": "New conversation",
       "emptyAnswer": "(Empty answer — try re-asking if needed.)",
-      "incompleteAnswer": "(Answer interrupted — the model stopped before finishing.)"
+      "incompleteAnswer": "(Answer interrupted — the model stopped before finishing.)",
+      "liteContextLabel": "Lite-context mode (fewer tokens, no free-text fields)",
+      "liteContextHint": "Sends only identifiers (sites, rooms, switches, vlans, subnets) to the model — no descriptions, notes, MACs, vendor/model, or addresses. Great for structural questions. Turn off if the question is about content in those fields."
     },
     "advisor": {
       "tab": "AI advisor",
