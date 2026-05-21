@@ -9,6 +9,8 @@ import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
 import { sitesApi, subnetsApi, vlansApi } from '@/api'
 import type { Site, Subnet, SubnetCreate, SubnetUpdate, Vlan } from '@/api'
+import { vrfsApi } from '@/api/endpoints/vrfs'
+import type { Vrf } from '@/api/endpoints/vrfs'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 
 const props = defineProps<{
@@ -28,6 +30,8 @@ interface Form {
   gateway: string
   vlan_id: number | null
   site_id: number | null
+  vrf_id: number | null
+  parent_subnet_id: number | null
   description: string
   dhcp_enabled: boolean
   dhcp_range_start: string
@@ -39,6 +43,8 @@ const form = reactive<Form>({
   gateway: '',
   vlan_id: null,
   site_id: null,
+  vrf_id: null,
+  parent_subnet_id: null,
   description: '',
   dhcp_enabled: false,
   dhcp_range_start: '',
@@ -50,6 +56,10 @@ const saving = ref(false)
 
 const sites = ref<Site[]>([])
 const vlans = ref<Vlan[]>([])
+const vrfs = ref<Vrf[]>([])
+// Parent picker — same VRF as the current form. Loaded lazily because most
+// installs don't use hierarchical IPAM and the picker stays hidden anyway.
+const candidateParents = ref<Subnet[]>([])
 const loadingRefs = ref(false)
 
 const isEdit = computed(() => !!props.subnet)
@@ -60,14 +70,29 @@ async function loadDropdowns() {
   if (loadingRefs.value) return
   loadingRefs.value = true
   try {
-    const [s, v] = await Promise.all([
+    const [s, v, vr] = await Promise.all([
       sitesApi.list({ page_size: 200 }),
       vlansApi.list({ page_size: 200 }),
+      vrfsApi.list().catch(() => [] as Vrf[]),
     ])
     sites.value = s.items
     vlans.value = v.items
+    vrfs.value = vr
   } finally {
     loadingRefs.value = false
+  }
+}
+
+// Reload the parent candidates whenever the chosen VRF changes, so the
+// picker only ever offers subnets in the same routing scope (matches the
+// server-side `_validate_parent` rule).
+async function loadParentCandidates() {
+  const scope = form.vrf_id ?? 0  // 0 = global
+  try {
+    const res = await subnetsApi.list({ page_size: 200, vrf_id: scope })
+    candidateParents.value = res.items.filter((s) => s.id !== props.subnet?.id)
+  } catch {
+    candidateParents.value = []
   }
 }
 
@@ -80,6 +105,9 @@ watch(
     form.gateway = props.subnet?.gateway ?? ''
     form.vlan_id = props.subnet?.vlan_id ?? null
     form.site_id = props.subnet?.site_id ?? null
+    form.vrf_id = props.subnet?.vrf_id ?? null
+    form.parent_subnet_id = props.subnet?.parent_subnet_id ?? null
+    loadParentCandidates()
     form.description = props.subnet?.description ?? ''
     form.dhcp_enabled = props.subnet?.dhcp_enabled ?? false
     form.dhcp_range_start = props.subnet?.dhcp_range_start ?? ''
@@ -95,6 +123,14 @@ const siteOptions = computed(() =>
 const vlanOptions = computed(() => [
   { value: 0, label: t('common.none') },
   ...vlans.value.map((v) => ({ value: v.id, label: `${v.vlan_id} — ${v.name}` })),
+])
+const vrfOptions = computed(() => [
+  { value: 0, label: t('subnet.vrfFilterGlobal') },
+  ...vrfs.value.map((v) => ({ value: v.id, label: v.name })),
+])
+const parentOptions = computed(() => [
+  { value: 0, label: t('common.none') },
+  ...candidateParents.value.map((s) => ({ value: s.id, label: s.cidr })),
 ])
 
 function validate(): boolean {
@@ -126,6 +162,11 @@ async function onSubmit(e: Event) {
       gateway: form.gateway.trim() || null,
       vlan_id: form.vlan_id && form.vlan_id !== 0 ? form.vlan_id : null,
       site_id: form.site_id!,
+      vrf_id: form.vrf_id && form.vrf_id !== 0 ? form.vrf_id : null,
+      parent_subnet_id:
+        form.parent_subnet_id && form.parent_subnet_id !== 0
+          ? form.parent_subnet_id
+          : null,
       description: form.description.trim() || null,
       dhcp_enabled: form.dhcp_enabled,
       dhcp_range_start: form.dhcp_range_start.trim() || null,
@@ -202,6 +243,37 @@ async function onSubmit(e: Event) {
             :model-value="form.vlan_id ?? 0"
             :options="vlanOptions"
             @update:model-value="(v) => (form.vlan_id = v === 0 ? null : Number(v))"
+          />
+        </template>
+      </FormField>
+
+      <FormField :label="t('vrf.label')">
+        <template #default="{ id }">
+          <Select
+            :id="id"
+            :model-value="form.vrf_id ?? 0"
+            :options="vrfOptions"
+            @update:model-value="
+              (v) => {
+                form.vrf_id = v === 0 ? null : Number(v)
+                // Changing VRF invalidates the current parent — clear + reload.
+                form.parent_subnet_id = null
+                loadParentCandidates()
+              }
+            "
+          />
+        </template>
+      </FormField>
+
+      <FormField :label="t('subnet.fields.parent')">
+        <template #default="{ id }">
+          <Select
+            :id="id"
+            :model-value="form.parent_subnet_id ?? 0"
+            :options="parentOptions"
+            @update:model-value="
+              (v) => (form.parent_subnet_id = v === 0 ? null : Number(v))
+            "
           />
         </template>
       </FormField>

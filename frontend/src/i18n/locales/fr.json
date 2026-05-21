@@ -208,6 +208,7 @@
       "gateway": "Passerelle",
       "vlan": "VLAN",
       "site": "Site",
+      "parent": "Subnet parent",
       "description": "Description",
       "dhcp": "DHCP",
       "dhcpEnabled": "DHCP activé",
@@ -223,6 +224,12 @@
     "empty": "Aucun sous-réseau — créez-en un pour planifier votre plan d'adressage.",
     "viewGrid": "Vue grille",
     "viewTable": "Vue tableau",
+    "viewList": "Liste",
+    "viewTree": "Arbre",
+    "vrfFilter": "VRF",
+    "vrfFilterAll": "Tous les scopes",
+    "vrfFilterGlobal": "Global",
+    "treeEmpty": "Aucun subnet dans ce scope — créez-en un pour commencer.",
     "exportCsv": "Exporter CSV",
     "nextFree": "Prochaine IP libre",
     "nextFreeFound": "Prochaine adresse libre : {address}",
@@ -380,7 +387,8 @@
     "roomsTab": "Salles",
     "tokensTab": "Jetons API",
     "aiTab": "Intelligence artificielle",
-    "webhooksTab": "Webhooks"
+    "webhooksTab": "Webhooks",
+    "vrfsTab": "VRF"
   },
   "webhooks": {
     "subtitle": "POST des mutations d'inventaire vers vos propres systèmes. Chaque évènement est signé en HMAC-SHA256 sur le corps (entête X-Netforge-Signature).",
@@ -429,6 +437,25 @@
     "empty": {
       "title": "Aucun webhook",
       "description": "Configurez des abonnés HTTP pour recevoir les évènements en temps réel."
+    }
+  },
+  "vrf": {
+    "label": "VRF",
+    "labelPlural": "VRF",
+    "subtitle": "Isolation de tables de routage. Des subnets dans des VRF différents peuvent se chevaucher ; à l'intérieur d'un VRF, non.",
+    "new": "Nouveau VRF",
+    "edit": "Modifier le VRF",
+    "rdHint": "Route distinguisher BGP optionnel, p. ex. 65000:42 — laissez vide si vous ne faites pas de BGP.",
+    "confirmDeleteTitle": "Supprimer le VRF « {name} » ?",
+    "confirmDeleteMessage": "Les subnets encore rattachés à ce VRF bloqueront la suppression — détachez-les d'abord.",
+    "fields": {
+      "name": "Nom",
+      "rd": "Route distinguisher",
+      "description": "Description"
+    },
+    "empty": {
+      "title": "Aucun VRF",
+      "description": "Créez un VRF quand vous avez besoin de CIDR qui se chevauchent (isolation tenant ou env)."
     }
   },
   "apiTokens": {
