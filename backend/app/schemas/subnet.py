@@ -85,6 +85,10 @@ class SubnetTreeNode(BaseModel):
     `children` is depth-first; siblings ordered by CIDR ascending. Root
     nodes are the subnets that have no parent (or whose parent rests in a
     different VRF — orphaned children float back to the top of their VRF).
+
+    `vlan_id`, `gateway`, `usable` and `used` are populated by the service
+    so the UI tree row can render the VLAN badge, gateway and fill-rate
+    bar without a follow-up fetch per node.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -92,8 +96,12 @@ class SubnetTreeNode(BaseModel):
     cidr: str
     site_id: int
     vrf_id: int | None
+    vlan_id: int | None = None
     parent_subnet_id: int | None
     description: str | None
+    gateway: str | None = None
+    usable: int = 0
+    used: int = 0
     children: list[SubnetTreeNode] = []
 
 
