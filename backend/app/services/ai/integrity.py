@@ -536,16 +536,24 @@ async def _check_switch_port_capacity(db: AsyncSession, locale: str) -> list[Int
         return []
     # Pull all the per-switch port aggregates in one go. A port counts as
     # "in use" if it has a device wired in, or it's a trunk/hybrid carrying
-    # something. Idle `access`-mode ports and `disabled` ports are
-    # reclaimable, so they don't count.
+    # something — AND its mode is not `disabled`. The mode/connected check
+    # used to be an OR which let a port that was administratively disabled
+    # but still had a stale `connected_device_id` from a prior assignment
+    # inflate the count and trip false 90% warnings (port updates don't
+    # normalise `connected_device_id` on a mode flip — that's a separate
+    # cleanup). Idle `access`-mode ports without a device also don't count
+    # — they're reclaimable headroom.
     rows = (
         await db.execute(
             select(
                 Port.switch_id,
                 func.count(Port.id).label("total"),
                 func.count(Port.id).filter(
-                    (Port.connected_device_id.is_not(None))
-                    | (Port.mode.in_([PortMode.trunk, PortMode.hybrid]))
+                    Port.mode != PortMode.disabled,
+                    (
+                        Port.connected_device_id.is_not(None)
+                        | Port.mode.in_([PortMode.trunk, PortMode.hybrid])
+                    ),
                 ).label("in_use"),
             )
             .group_by(Port.switch_id)

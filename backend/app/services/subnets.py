@@ -161,9 +161,14 @@ async def compute_utilization(
     on subnets larger than `_MAX_HOSTS_FOR_SCAN`. Just two SELECTs: one to
     fetch the subnet row, one aggregated count grouped by status.
 
-    Returned counts cover every `Ip` row attached to the subnet — the
-    caller derives the free count as `usable - sum(by_status.values())`.
-    The /31 and /32 special cases match the integrity check (RFC 3021).
+    Counts are restricted to *host-usable* addresses so the numbers align
+    with the `/ips` view: on prefixes shorter than /31 we exclude rows
+    that happen to land on the network or broadcast address (nothing
+    prevents an operator from creating an `Ip` row at the boundary today
+    — see GiST overlap exclusion which only checks overlap, not bounds).
+    /31 and /32 keep every address per RFC 3021 / loopback. Without this
+    filter `used_pct` could exceed 100 when boundary addresses were
+    present, which Codex flagged on PR #59.
     """
     subnet = await get_subnet(db, subnet_id)
     network = IPv4Network(subnet.cidr, strict=False)
@@ -171,13 +176,17 @@ async def compute_utilization(
         network.num_addresses if network.prefixlen >= 31 else network.num_addresses - 2
     )
 
-    counts_rows = (
-        await db.execute(
-            select(Ip.status, func.count(Ip.id))
-            .where(Ip.subnet_id == subnet_id)
-            .group_by(Ip.status)
+    base = select(Ip.status, func.count(Ip.id)).where(Ip.subnet_id == subnet_id)
+    if network.prefixlen < 31:
+        # Exclude the network + broadcast addresses from the count so the
+        # ratio matches `usable`. We compare on the canonical string form
+        # because `Ip.address` is INET and asyncpg round-trips strings.
+        base = base.where(
+            Ip.address != str(network.network_address),
+            Ip.address != str(network.broadcast_address),
         )
-    ).all()
+
+    counts_rows = (await db.execute(base.group_by(Ip.status))).all()
     by_status: dict[str, int] = {"assigned": 0, "reserved": 0, "dhcp": 0}
     for status_val, count in counts_rows:
         key = status_val.value if hasattr(status_val, "value") else str(status_val)

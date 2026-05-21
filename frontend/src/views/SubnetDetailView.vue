@@ -14,7 +14,7 @@ import IpEditor from '@/components/editors/IpEditor.vue'
 import SubnetEditor from '@/components/editors/SubnetEditor.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import { useStoredRef } from '@/composables/useStoredRef'
-import { ipsApi, subnetsApi, vlansApi } from '@/api'
+import { ApiError, ipsApi, subnetsApi, vlansApi } from '@/api'
 import type { Ip, Subnet, SubnetIpEntry, SubnetUtilization, Vlan } from '@/api'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
@@ -61,10 +61,17 @@ async function load() {
     try {
       const list = await subnetsApi.ips(id.value)
       ips.value = list.ips
-    } catch {
-      // Subnet too large for full enumeration — utilisation header still
-      // tells the operator what they need to know.
-      ips.value = []
+    } catch (err) {
+      // Only swallow the size cap — every other failure (network, auth,
+      // 500) must surface to the user so an empty grid isn't mistaken for
+      // a real empty subnet. SUBNET_TOO_LARGE is the deliberate server-side
+      // refusal to materialise the whole address space for prefixes wider
+      // than /20.
+      if (err instanceof ApiError && err.code === 'SUBNET_TOO_LARGE') {
+        ips.value = []
+      } else {
+        throw err
+      }
     }
   } catch (err) {
     void describe(err)

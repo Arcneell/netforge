@@ -151,17 +151,23 @@ async def run_query(
     question: str,
     language_instruction: str | None = None,
     history: list[dict] | None = None,
+    lite_context: bool = False,
 ) -> QueryAnswer:
     """Answer one natural-language question grounded in the live inventory.
 
     `language_instruction` carries the user's UI locale so the markdown
     answer comes back in the same language the user is reading. `history`
     is an optional list of past `{role, text}` dicts (server-stateless —
-    the client replays the conversation each turn).
+    the client replays the conversation each turn). `lite_context` mirrors
+    the streaming variant (see `_lite_snapshot`) — without honouring it
+    here the toggle would advertise privacy / token-cost savings on the
+    schema but silently leak free-text fields on the non-streaming path.
     """
     settings = get_settings()
     provider = get_provider()
     context, _was_cached = await build_topology_context_cached(db)
+    if lite_context:
+        context = _lite_snapshot(context)
     payload = json.dumps(context, separators=(",", ":"), default=str)
     system = SYSTEM_PROMPT + (f"\n\n{language_instruction}" if language_instruction else "")
 

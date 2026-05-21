@@ -229,6 +229,28 @@ async def test_switch_port_capacity_flags_over_90pct() -> None:
 
 
 @pytest.mark.asyncio
+async def test_switch_port_capacity_excludes_disabled_ports_with_stale_device() -> None:
+    """Regression for Codex P2 on PR #58: a port that's been administratively
+    disabled but still carries a `connected_device_id` from a previous
+    assignment must NOT count toward `in_use`. We simulate the aggregate the
+    DB would now return (with the `mode != disabled` filter applied) and
+    verify the detector treats the switch as 5/48 (10%), well below the
+    90% threshold, instead of the pre-fix 6/48 that would still creep up.
+
+    The aggregate value is what the DB returns AFTER the filter — the test
+    pins the contract, not the SQL itself."""
+    sw = SimpleNamespace(id=10, name="SW-X")
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalars([sw]),
+            _all_rows([SimpleNamespace(switch_id=10, total=48, in_use=5)]),
+        ]
+    )
+    assert await _check_switch_port_capacity(db, "en") == []
+
+
+@pytest.mark.asyncio
 async def test_switch_port_capacity_ignores_switches_without_ports() -> None:
     """A switch with no Port rows is already handled by the dedicated
     `_check_switches_without_ports` detector — the capacity one must not
