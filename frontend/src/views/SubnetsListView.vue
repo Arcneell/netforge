@@ -12,6 +12,7 @@ import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import VlanBadge from '@/components/VlanBadge.vue'
 import SubnetEditor from '@/components/editors/SubnetEditor.vue'
 import SubnetTreeRow from '@/components/SubnetTreeRow.vue'
+import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { subnetsApi, vlansApi } from '@/api'
 import type { Subnet, Vlan } from '@/api'
@@ -21,7 +22,6 @@ import type { Vrf } from '@/api/endpoints/vrfs'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
-import { parseCidr } from '@/utils/cidr'
 
 const { t } = useI18n()
 const { isAdmin } = useAuth()
@@ -160,20 +160,12 @@ async function confirmDelete() {
   }
 }
 
-function totalHosts(cidr: string): string {
-  try {
-    return parseCidr(cidr).total.toLocaleString()
-  } catch {
-    return '—'
-  }
-}
-
 const columns: DataTableColumn[] = [
   { key: 'cidr', label: t('subnet.fields.cidr'), cellClass: 'font-mono' },
   { key: 'vlan_id', label: t('subnet.fields.vlan'), cellClass: 'w-40' },
   { key: 'gateway', label: t('subnet.fields.gateway'), hideOnSm: true, cellClass: 'font-mono' },
   { key: 'description', label: t('subnet.fields.description'), hideOnSm: true },
-  { key: 'total', label: t('subnet.fields.total'), align: 'right', cellClass: 'w-24 font-mono' },
+  { key: 'usage', label: t('subnet.fields.usage'), cellClass: 'w-40' },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-32' },
 ]
 </script>
@@ -263,11 +255,12 @@ const columns: DataTableColumn[] = [
       </div>
       <ul v-else class="divide-y divide-border/50">
         <SubnetTreeRow
-          v-for="node in tree"
+          v-for="(node, idx) in tree"
           :key="node.id"
           :node="node"
           :collapsed="collapsed"
           :depth="0"
+          :is-last="idx === tree.length - 1"
           :vlans-by-id="vlansById"
           @toggle="toggleNode"
           @open="openSubnet"
@@ -304,7 +297,14 @@ const columns: DataTableColumn[] = [
       <template #cell-description="{ row }">
         <span class="text-fg-muted">{{ row.description || '—' }}</span>
       </template>
-      <template #cell-total="{ row }">{{ totalHosts(row.cidr) }}</template>
+      <template #cell-usage="{ row }">
+        <SubnetFillBar
+          :used="row.used ?? 0"
+          :usable="row.usable ?? 0"
+          variant="full"
+          bar-class="w-20"
+        />
+      </template>
       <template #cell-actions="{ row }">
         <div class="flex justify-end gap-1">
           <Button

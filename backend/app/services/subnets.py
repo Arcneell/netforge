@@ -29,13 +29,25 @@ from app.services.errors import business_rule, catch_integrity_errors, not_found
 _MAX_HOSTS_FOR_SCAN = 4096
 
 
+def usable_hosts(cidr: str) -> int:
+    """Number of host-usable addresses in `cidr`.
+
+    Excludes network + broadcast on /≤30 (the same accounting as
+    `compute_utilization`), and keeps both addresses on /31 (RFC 3021)
+    and /32 (loopback) so the fill bar shows 100% for those rather than
+    dividing by zero.
+    """
+    net = IPv4Network(cidr, strict=False)
+    return net.num_addresses if net.prefixlen >= 31 else max(0, net.num_addresses - 2)
+
+
 async def list_subnets(
     db: AsyncSession,
     page: PageParams,
     site_id: int | None = None,
     vlan_id: int | None = None,
     vrf_id: int | None = None,
-) -> tuple[list[Subnet], int]:
+) -> tuple[list[Subnet], int, dict[int, int]]:
     base = select(Subnet)
     count_q = select(func.count()).select_from(Subnet)
     if site_id is not None:
@@ -59,7 +71,24 @@ async def list_subnets(
     result = await db.execute(
         base.order_by(Subnet.id).offset(page.offset).limit(page.limit)
     )
-    return list(result.scalars().all()), int(total)
+    items = list(result.scalars().all())
+
+    # Per-page IP counts in one grouped SELECT — the list endpoint now
+    # carries `used` so the UI can render a fill bar without hitting the
+    # utilisation endpoint N times. Skipped when the page is empty so the
+    # IN-clause never receives an empty tuple.
+    ip_counts: dict[int, int] = {}
+    if items:
+        counts_rows = (
+            await db.execute(
+                select(Ip.subnet_id, func.count(Ip.id))
+                .where(Ip.subnet_id.in_(s.id for s in items))
+                .group_by(Ip.subnet_id)
+            )
+        ).all()
+        ip_counts = {int(sid): int(c) for sid, c in counts_rows}
+
+    return items, int(total), ip_counts
 
 
 async def get_subnet(db: AsyncSession, subnet_id: int) -> Subnet:
@@ -382,10 +411,6 @@ async def build_subnet_tree(
         dict((await db.execute(counts_q)).all()) if by_id else {}
     )
 
-    def usable_hosts(s: Subnet) -> int:
-        net = IPv4Network(s.cidr, strict=False)
-        return net.num_addresses if net.prefixlen >= 31 else max(0, net.num_addresses - 2)
-
     def node_for(s: Subnet) -> dict:
         return {
             "id": s.id,
@@ -396,7 +421,7 @@ async def build_subnet_tree(
             "parent_subnet_id": s.parent_subnet_id,
             "description": s.description,
             "gateway": None if s.gateway is None else str(s.gateway),
-            "usable": usable_hosts(s),
+            "usable": usable_hosts(str(s.cidr)),
             "used": int(ip_counts.get(s.id, 0)),
             "children": [node_for(c) for c in children_of.get(s.id, [])],
         }

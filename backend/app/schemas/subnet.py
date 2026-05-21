@@ -77,6 +77,12 @@ class SubnetRead(SubnetBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    # Populated by the list endpoint so the UI can render a fill bar
+    # without going back to the utilisation route per row. Both default
+    # to 0 so single-subnet reads (which don't pre-compute them) still
+    # validate cleanly.
+    usable: int = 0
+    used: int = 0
 
 
 class SubnetTreeNode(BaseModel):
