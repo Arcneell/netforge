@@ -124,3 +124,64 @@ async def test_list_subnet_ips_refuses_huge_subnet() -> None:
     with pytest.raises(HTTPException) as exc:
         await service.list_subnet_ips(db, 1)
     assert exc.value.detail["error"]["code"] == "SUBNET_TOO_LARGE"
+
+
+# --- compute_utilization ----------------------------------------------------
+
+
+def _mock_db_for_utilization(subnet: Subnet, status_counts: dict[str, int]) -> AsyncMock:
+    """Mock DB where execute returns aggregate (status, count) tuples."""
+    rows = [(IpStatus(k), v) for k, v in status_counts.items()]
+    result = MagicMock()
+    result.all = MagicMock(return_value=rows)
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=subnet)
+    db.execute = AsyncMock(return_value=result)
+    return db
+
+
+@pytest.mark.asyncio
+async def test_compute_utilization_on_slash_24() -> None:
+    """/24 has 254 usable hosts. With 100 assigned + 20 dhcp + 5 reserved
+    we get 125 used and free = 129. used_pct = 125 * 100 // 254 = 49."""
+    db = _mock_db_for_utilization(
+        _subnet(cidr="10.0.0.0/24"),
+        {"assigned": 100, "dhcp": 20, "reserved": 5},
+    )
+    _, util = await service.compute_utilization(db, 1)
+    assert util["usable"] == 254
+    assert util["status_assigned"] == 100
+    assert util["status_dhcp"] == 20
+    assert util["status_reserved"] == 5
+    assert util["free"] == 129  # 254 - 125
+    assert util["used_pct"] == 49  # 125 * 100 // 254
+
+
+@pytest.mark.asyncio
+async def test_compute_utilization_handles_slash_31() -> None:
+    """RFC 3021 /31 keeps both addresses as usable (no network/broadcast).
+    Two assigned IPs → 100% used. Without the /31 special case we'd report
+    `usable = 0` and a divide-by-zero — pinned so a refactor can't break it."""
+    db = _mock_db_for_utilization(
+        _subnet(cidr="10.0.0.0/31", gateway=None),
+        {"assigned": 2},
+    )
+    _, util = await service.compute_utilization(db, 1)
+    assert util["usable"] == 2
+    assert util["free"] == 0
+    assert util["used_pct"] == 100
+
+
+@pytest.mark.asyncio
+async def test_compute_utilization_works_on_large_subnet() -> None:
+    """Unlike `list_subnet_ips`, the utilisation endpoint does not refuse
+    on /16-and-up — it never enumerates the address space, just aggregates
+    counts. Operators must be able to see their fill rate on a /16."""
+    db = _mock_db_for_utilization(
+        _subnet(cidr="10.0.0.0/16", gateway=None),
+        {"assigned": 50_000},
+    )
+    _, util = await service.compute_utilization(db, 1)
+    assert util["usable"] == 65_534  # 2**16 - 2
+    assert util["status_assigned"] == 50_000
+    assert util["used_pct"] == 76  # 50000 * 100 // 65534

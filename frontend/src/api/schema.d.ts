@@ -327,6 +327,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/subnets/{subnet_id}/utilization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Subnet Utilization
+         * @description Fill-rate snapshot for one subnet. Two SELECTs, works on any prefix
+         *     length — unlike `/ips`, this endpoint does not enumerate the address
+         *     space, so it stays cheap on `/16`s and larger.
+         */
+        get: operations["subnet_utilization_api_subnets__subnet_id__utilization_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ips": {
         parameters: {
             query?: never;
@@ -2412,6 +2434,34 @@ export interface components {
             /** Dhcp Range End */
             dhcp_range_end?: string | null;
         };
+        /**
+         * SubnetUtilization
+         * @description Snapshot of how full a subnet is.
+         *
+         *     `usable` is the number of host-usable addresses (excludes network +
+         *     broadcast except on /31 and /32, per RFC 3021). The status counters
+         *     are per-IP-record counts attached to the subnet. `free = usable -
+         *     sum(status_*)` and matches the synthesised "free" rows from the
+         *     address-space scan endpoint.
+         */
+        SubnetUtilization: {
+            /** Subnet Id */
+            subnet_id: number;
+            /** Cidr */
+            cidr: string;
+            /** Usable */
+            usable: number;
+            /** Free */
+            free: number;
+            /** Used Pct */
+            used_pct: number;
+            /** Status Assigned */
+            status_assigned: number;
+            /** Status Reserved */
+            status_reserved: number;
+            /** Status Dhcp */
+            status_dhcp: number;
+        };
         /** SwitchCreate */
         SwitchCreate: {
             /** Name */
@@ -3561,6 +3611,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NextFreeIpResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    subnet_utilization_api_subnets__subnet_id__utilization_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subnet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubnetUtilization"];
                 };
             };
             /** @description Validation Error */

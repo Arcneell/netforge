@@ -100,3 +100,24 @@ class SubnetIpsResponse(BaseModel):
 
 class NextFreeIpResponse(BaseModel):
     address: str
+
+
+class SubnetUtilization(BaseModel):
+    """Snapshot of how full a subnet is.
+
+    `usable` is the number of host-usable addresses (excludes network +
+    broadcast except on /31 and /32, per RFC 3021). The status counters
+    are per-IP-record counts attached to the subnet. `free = usable -
+    sum(status_*)` and matches the synthesised "free" rows from the
+    address-space scan endpoint.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+    subnet_id: int
+    cidr: str
+    usable: int
+    free: int
+    used_pct: int
+    status_assigned: int
+    status_reserved: int
+    status_dhcp: int

@@ -7,6 +7,7 @@ import type {
   SubnetCreate,
   SubnetIpsResponse,
   SubnetUpdate,
+  SubnetUtilization,
 } from '@/api/types'
 
 export interface SubnetFilters extends PageParams {
@@ -37,5 +38,9 @@ export const subnetsApi = {
   /** Pure read — does not reserve, just suggests. */
   nextFree(id: number): Promise<NextFreeIp> {
     return request<NextFreeIp>({ method: 'POST', url: `/subnets/${id}/next-free` })
+  },
+  /** Fill-rate snapshot — cheap (two SELECTs), works on any prefix length. */
+  utilization(id: number): Promise<SubnetUtilization> {
+    return request<SubnetUtilization>({ method: 'GET', url: `/subnets/${id}/utilization` })
   },
 }
