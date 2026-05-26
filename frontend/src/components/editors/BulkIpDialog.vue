@@ -10,11 +10,7 @@ import FormField from '@/components/ui/FormField.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import { subnetsApi } from '@/api'
 import type { Subnet } from '@/api'
-import type {
-  BulkIpAction,
-  BulkIpResult,
-  BulkIpStatus,
-} from '@/api/endpoints/subnets'
+import type { BulkIpAction, BulkIpResult, BulkIpStatus } from '@/api/endpoints/subnets'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 
 const props = defineProps<{
@@ -121,7 +117,9 @@ async function apply() {
            overwrite + description fields; release hides them since they
            don't apply. -->
       <FormField :label="t('subnet.bulk.actionLabel')">
-        <div class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface">
+        <div
+          class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
+        >
           <button
             type="button"
             :aria-pressed="form.action === 'reserve'"
@@ -177,11 +175,7 @@ async function apply() {
         </FormField>
 
         <label class="flex items-start gap-2 text-sm">
-          <input
-            v-model="form.overwrite"
-            type="checkbox"
-            class="mt-0.5"
-          />
+          <input v-model="form.overwrite" type="checkbox" class="mt-0.5" />
           <span>
             <span class="font-medium">{{ t('subnet.bulk.overwrite') }}</span>
             <span class="block text-xs text-fg-muted">
@@ -222,9 +216,7 @@ async function apply() {
           :disabled="!canSubmit"
           @click="apply"
         >
-          {{
-            form.action === 'release' ? t('subnet.bulk.release') : t('subnet.bulk.applyReserve')
-          }}
+          {{ form.action === 'release' ? t('subnet.bulk.release') : t('subnet.bulk.applyReserve') }}
         </Button>
       </div>
     </template>

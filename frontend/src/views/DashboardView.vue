@@ -49,17 +49,15 @@ async function load() {
             .list({ page_size: 10 })
             .catch(() => ({ items: [] as AuditLog[], total: 0, page: 1, page_size: 10 }))
         : Promise.resolve({ items: [] as AuditLog[], total: 0, page: 1, page_size: 10 }),
-      subnetsApi
-        .capacityOverview(5)
-        .catch(
-          () =>
-            ({
-              fullest: [],
-              full: [],
-              unused: [],
-              total_subnets: 0,
-            }) as SubnetCapacityOverview,
-        ),
+      subnetsApi.capacityOverview(5).catch(
+        () =>
+          ({
+            fullest: [],
+            full: [],
+            unused: [],
+            total_subnets: 0,
+          }) as SubnetCapacityOverview,
+      ),
     ])
     counts.value = {
       subnets: subnets.total,
@@ -82,6 +80,10 @@ async function load() {
 // ("Nothing to watch", "No saturated subnets", …).
 const hasCapacity = computed(() => (capacity.value?.total_subnets ?? 0) > 0)
 
+// Bucket descriptors. Each carries its own colour family — the icon disc
+// matches the entity tiles above so the dashboard reads as one
+// composition. Tailwind's JIT picks up the full literals; avoid dynamic
+// concatenation.
 const capacityBuckets = computed(() => [
   {
     key: 'full',
@@ -89,7 +91,8 @@ const capacityBuckets = computed(() => [
     helpKey: 'dashboard.capacity.full.help',
     emptyKey: 'dashboard.capacity.full.empty',
     icon: AlertTriangle,
-    tone: 'danger' as const,
+    iconClass: 'bg-gradient-to-br from-rose-500 to-red-600',
+    barClass: 'bg-danger',
     items: capacity.value?.full ?? [],
   },
   {
@@ -98,7 +101,8 @@ const capacityBuckets = computed(() => [
     helpKey: 'dashboard.capacity.fullest.help',
     emptyKey: 'dashboard.capacity.fullest.empty',
     icon: TrendingUp,
-    tone: 'warning' as const,
+    iconClass: 'bg-gradient-to-br from-amber-500 to-orange-500',
+    barClass: 'bg-warning',
     items: capacity.value?.fullest ?? [],
   },
   {
@@ -107,7 +111,8 @@ const capacityBuckets = computed(() => [
     helpKey: 'dashboard.capacity.unused.help',
     emptyKey: 'dashboard.capacity.unused.empty',
     icon: Inbox,
-    tone: 'muted' as const,
+    iconClass: 'bg-gradient-to-br from-slate-400 to-slate-500',
+    barClass: 'bg-muted',
     items: capacity.value?.unused ?? [],
   },
 ])
@@ -220,11 +225,7 @@ const actionTone = {
     <section v-if="loading || hasCapacity" class="mb-10">
       <div class="flex items-center justify-between mb-4 px-1">
         <h2 class="text-xl font-semibold tracking-tight flex items-center gap-2">
-          <TrendingUp
-            class="w-5 h-5 text-fg-muted"
-            :stroke-width="2.25"
-            aria-hidden="true"
-          />
+          <TrendingUp class="w-5 h-5 text-fg-muted" :stroke-width="2.25" aria-hidden="true" />
           {{ t('dashboard.capacity.title') }}
         </h2>
         <span v-if="capacity" class="text-xs text-fg-muted tabular-nums">
@@ -238,23 +239,29 @@ const actionTone = {
           :key="bucket.key"
           class="nf-card overflow-hidden flex flex-col"
         >
-          <header class="px-4 py-3 border-b border-border/60 flex items-start gap-2">
-            <component
-              :is="bucket.icon"
+          <!-- Card header: gradient icon disc matches the entity tiles
+               at the top of the page so the dashboard reads as one
+               composition rather than two unrelated sections. -->
+          <header class="px-4 py-3 border-b border-border/60 flex items-center gap-3">
+            <span
               :class="[
-                'w-4 h-4 mt-0.5 flex-shrink-0',
-                bucket.tone === 'danger'
-                  ? 'text-danger'
-                  : bucket.tone === 'warning'
-                    ? 'text-warning'
-                    : 'text-fg-muted',
+                'inline-flex items-center justify-center w-9 h-9 rounded-xl shadow-sm flex-shrink-0',
+                bucket.iconClass,
               ]"
               aria-hidden="true"
-            />
+            >
+              <component :is="bucket.icon" class="w-4 h-4 text-white" :stroke-width="2.25" />
+            </span>
             <div class="min-w-0">
-              <p class="text-sm font-semibold text-fg">{{ t(bucket.titleKey) }}</p>
-              <p class="text-xs text-fg-muted mt-0.5">{{ t(bucket.helpKey) }}</p>
+              <p class="text-sm font-semibold text-fg truncate">{{ t(bucket.titleKey) }}</p>
+              <p class="text-xs text-fg-muted mt-0.5 truncate">{{ t(bucket.helpKey) }}</p>
             </div>
+            <span
+              v-if="!loading && bucket.items.length > 0"
+              class="ml-auto text-xs font-semibold tabular-nums text-fg-muted bg-muted px-2 py-0.5 rounded-full"
+            >
+              {{ bucket.items.length }}
+            </span>
           </header>
 
           <ul v-if="loading" class="divide-y divide-border/40" aria-busy="true">
@@ -265,37 +272,30 @@ const actionTone = {
               </div>
             </li>
           </ul>
-          <p
+          <div
             v-else-if="bucket.items.length === 0"
-            class="px-4 py-6 text-xs text-fg-muted text-center"
+            class="px-4 py-8 text-xs text-fg-muted text-center flex-1 flex items-center justify-center"
           >
             {{ t(bucket.emptyKey) }}
-          </p>
+          </div>
           <ul v-else class="divide-y divide-border/40">
             <li v-for="entry in bucket.items" :key="entry.id">
               <RouterLink
                 :to="`/subnets/${entry.id}`"
                 class="block px-4 py-2.5 hover:bg-surface-hover transition-colors"
               >
-                <div class="flex items-center gap-2 min-w-0">
+                <div class="flex items-center gap-2 min-w-0 mb-1.5">
                   <span class="font-mono text-sm font-medium text-fg truncate">
                     {{ entry.cidr }}
                   </span>
-                  <span class="text-xs text-fg-muted tabular-nums ml-auto flex-shrink-0">
-                    {{ entry.used_pct }}%
-                  </span>
-                </div>
-                <div class="mt-1.5 flex items-center gap-2">
                   <SubnetFillBar
                     :used="entry.used"
                     :usable="entry.usable"
-                    bar-class="flex-1"
+                    bar-class="w-20"
+                    class="ml-auto flex-shrink-0"
                   />
                 </div>
-                <p
-                  v-if="entry.description"
-                  class="mt-1 text-xs text-fg-muted truncate"
-                >
+                <p v-if="entry.description" class="text-xs text-fg-muted truncate">
                   {{ entry.description }}
                 </p>
               </RouterLink>
