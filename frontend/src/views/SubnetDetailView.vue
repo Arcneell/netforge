@@ -44,18 +44,26 @@ const view = useStoredRef<'grid' | 'table'>('netforge.subnet.view', 'grid')
 
 const editingSubnet = ref(false)
 const editingIpFor = ref<{ ip: Ip | null; address: string | null } | null>(null)
+// True when `/ips` refused to enumerate the address space because the
+// subnet is bigger than the server-side cap (`SUBNET_TOO_LARGE`). The
+// utilisation card still renders — we just hide the grid and surface
+// an explicit explanation so the operator doesn't read "empty grid" as
+// "empty subnet".
+const tooLarge = ref(false)
 
 const id = computed(() => Number(route.params.id))
 
 async function load() {
   loading.value = true
+  tooLarge.value = false
   try {
     // Fetch the subnet + utilisation in parallel — the utilisation endpoint
     // works on any prefix length (two SELECTs, no address-space scan), so
     // we always have the headline fill rate even for /20 and larger blocks.
     // The IP enumeration (`/ips`) is bounded server-side; we let it fail
     // soft on huge subnets so the page still renders with the utilisation
-    // bar and an empty grid.
+    // bar and an explicit "too large" banner instead of a confusing empty
+    // grid.
     const [s, util] = await Promise.all([
       subnetsApi.get(id.value),
       subnetsApi.utilization(id.value),
@@ -74,6 +82,7 @@ async function load() {
       // than /20.
       if (err instanceof ApiError && err.code === 'SUBNET_TOO_LARGE') {
         ips.value = []
+        tooLarge.value = true
       } else {
         throw err
       }
@@ -115,9 +124,18 @@ async function suggestNextFree() {
   try {
     const res = await subnetsApi.nextFree(subnet.value.id)
     info(t('subnet.nextFreeFound', { address: res.address }))
-    editingIpFor.value = { ip: null, address: res.address }
+    // Admins flow straight into the IP editor with the suggestion
+    // prefilled — one less click to actually assign. Viewers get the
+    // toast and nothing else; the backend endpoint is open to them too,
+    // but they have no write capability to follow up with.
+    if (isAdmin.value) {
+      editingIpFor.value = { ip: null, address: res.address }
+    }
   } catch (err) {
-    info(t('subnet.nextFreeNone'))
+    if (err instanceof ApiError && err.code === 'SUBNET_FULL') {
+      info(t('subnet.nextFreeNone'))
+      return
+    }
     void describe(err)
   }
 }
@@ -252,7 +270,10 @@ function statusKey(status: string): StatusKey {
             <Download class="w-4 h-4" aria-hidden="true" />
             {{ t('subnet.exportCsv') }}
           </Button>
-          <Button v-if="isAdmin" variant="secondary" @click="suggestNextFree">
+          <!-- "Next free" is read-only to viewers — they get the toast but
+               not the editor follow-up. Useful so a NOC operator can plan
+               an assignment before pinging the admin. -->
+          <Button variant="secondary" @click="suggestNextFree">
             <Sparkles class="w-4 h-4" aria-hidden="true" />
             {{ t('subnet.nextFree') }}
           </Button>
@@ -315,8 +336,10 @@ function statusKey(status: string): StatusKey {
 
       <!-- View toggle + table filters. Filters only matter in table view;
            the grid view stays a visual heatmap and re-rendering 4096 buttons
-           on every keystroke isn't what an operator wants. -->
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+           on every keystroke isn't what an operator wants. Hidden when the
+           subnet is too large to enumerate — the banner below explains why
+           and what to do instead. -->
+      <div v-if="!tooLarge" class="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h2 class="text-lg font-semibold">{{ t('ip.labelPlural') }}</h2>
         <div class="flex flex-wrap items-center gap-2">
           <template v-if="view === 'table'">
@@ -377,8 +400,33 @@ function statusKey(status: string): StatusKey {
         </div>
       </div>
 
+      <!-- Subnet too large to enumerate. The utilisation card above still
+           shows the fill rate (cheap COUNT, no scan), and the operator can
+           use the search/export/next-free actions — but the grid /
+           per-address table can't render the full address space. Better
+           than the previous behaviour where the grid silently rendered
+           empty, looking like the subnet had no IPs at all. -->
+      <div
+        v-if="tooLarge"
+        class="nf-card p-5 border-l-4 border-warning"
+        role="status"
+      >
+        <p class="text-sm font-semibold text-fg flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full bg-warning" aria-hidden="true" />
+          {{ t('subnet.tooLargeTitle') }}
+        </p>
+        <p class="mt-2 text-sm text-fg-muted">
+          {{ t('subnet.tooLargeBody', { cidr: subnet.cidr }) }}
+        </p>
+        <ul class="mt-3 text-sm text-fg-muted list-disc pl-5 space-y-1">
+          <li>{{ t('subnet.tooLargeHint.splitChildren') }}</li>
+          <li>{{ t('subnet.tooLargeHint.useExport') }}</li>
+          <li>{{ t('subnet.tooLargeHint.useNextFree') }}</li>
+        </ul>
+      </div>
+
       <!-- Grid view -->
-      <div v-if="view === 'grid'" class="nf-card p-4">
+      <div v-else-if="view === 'grid'" class="nf-card p-4">
         <IpGrid :ips="ips" @select="onIpClick" />
       </div>
 

@@ -253,6 +253,13 @@
     "nextFree": "Prochaine IP libre",
     "nextFreeFound": "Prochaine adresse libre : {address}",
     "nextFreeNone": "Aucune adresse libre dans ce sous-réseau.",
+    "tooLargeTitle": "Bloc trop grand pour la vue détaillée",
+    "tooLargeBody": "{cidr} contient plus de 4096 adresses. NetForge ne peut pas afficher chaque IP individuellement, mais le taux de remplissage ci-dessus reste exact et toutes les opérations de plus haut niveau restent disponibles.",
+    "tooLargeHint": {
+      "splitChildren": "Découpez ce bloc en sous-réseaux plus petits (/22 et plus précis) — chacun aura sa vue grille complète.",
+      "useExport": "Exportez la liste complète au format CSV pour un audit ponctuel.",
+      "useNextFree": "Utilisez « Prochaine IP libre » pour assigner sans parcourir la liste."
+    },
     "stats": {
       "used": "{count} utilisées",
       "free": "{count} libres",
