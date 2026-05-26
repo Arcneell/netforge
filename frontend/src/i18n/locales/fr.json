@@ -240,6 +240,10 @@
     "vrfFilter": "VRF",
     "vrfFilterAll": "Tous les scopes",
     "vrfFilterGlobal": "Global",
+    "allSites": "Tous les sites",
+    "allVlans": "Tous les VLAN",
+    "searchPlaceholder": "Rechercher CIDR, description…",
+    "clearFilters": "Réinitialiser les filtres",
     "treeEmpty": "Aucun subnet dans ce scope — créez-en un pour commencer.",
     "tree": {
       "autoGroup": "Auto",
@@ -285,6 +289,10 @@
       "dhcp": "DHCP",
       "free": "Libre"
     },
+    "statusFilter": {
+      "all": "Tous les statuts"
+    },
+    "searchPlaceholder": "Filtrer IP, hôte, MAC…",
     "help": {
       "address": "Adresse IPv4 à attribuer. Doit appartenir à ce sous-réseau et être encore libre. Non modifiable après création.",
       "status": "Réservée = bloquée mais inactive (pas d'équipement actif). Attribuée = en service. DHCP = adresse issue du pool DHCP.",

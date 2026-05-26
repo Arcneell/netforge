@@ -15,6 +15,8 @@ export interface SubnetFilters extends PageParams {
   vlan_id?: number
   /** 0 = global scope only; positive = that VRF only. Omit for all. */
   vrf_id?: number
+  /** Free-text search over CIDR + description. Trigram-indexed in DB. */
+  q?: string
 }
 
 export interface SubnetTreeNode {
