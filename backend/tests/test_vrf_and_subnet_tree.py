@@ -251,6 +251,34 @@ async def test_tree_sorts_siblings_by_cidr() -> None:
     assert ordered == ["10.0.1.0/24", "10.0.5.0/24"]
 
 
+# --- site_id / vlan_id tree filters ---------------------------------------
+#
+# Operators expect the site/VLAN dropdowns above the tree view to narrow
+# the tree just like they do in the flat list. Before this fix the tree
+# endpoint ignored those params and the frontend force-switched to list
+# mode on filter change — so the tree view was unusable with any filter
+# on. These cases pin the new behaviour.
+
+
+@pytest.mark.asyncio
+async def test_tree_orphans_matching_descendants_when_parent_filtered_out() -> None:
+    """A site/VLAN filter should still surface matching subnets even
+    when their parent doesn't match. The mock only returns the matching
+    rows (SQL WHERE handles the actual filtering); the tree builder
+    treats the out-of-scope parent as missing and floats the matching
+    child to root level."""
+    matching_child = _subnet(
+        id=2, cidr="10.0.1.0/24", parent_subnet_id=1, site_id=42
+    )
+    db = _mock_db_with_subnets([matching_child])
+    tree = await service.build_subnet_tree(
+        db, vrf_id=None, auto_group_prefix=None, site_id=42
+    )
+    assert len(tree) == 1
+    assert tree[0]["id"] == 2
+    assert tree[0]["children"] == []
+
+
 # --- _reject_vrf_move_with_children (Codex P1 on PR #64) -------------------
 
 

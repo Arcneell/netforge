@@ -89,8 +89,13 @@ async function loadTree() {
   treeLoading.value = true
   try {
     // Map the chip back to the tree endpoint: undefined / 0 = global.
-    const scope = vrfFilter.value && vrfFilter.value > 0 ? vrfFilter.value : 0
-    tree.value = await subnetsApi.tree(scope)
+    // Site + VLAN narrow the result; the backend handles the orphan
+    // promotion so filtering by a leaf VLAN still surfaces matches.
+    tree.value = await subnetsApi.tree({
+      vrf_id: vrfFilter.value && vrfFilter.value > 0 ? vrfFilter.value : 0,
+      site_id: siteFilter.value,
+      vlan_id: vlanFilter.value,
+    })
   } finally {
     treeLoading.value = false
   }
@@ -141,18 +146,14 @@ function onVrfFilterChange(value: number | undefined) {
 
 function onSiteFilterChange(value: number | undefined) {
   siteFilter.value = value
-  // Site and VLAN filters only flow into the *list* endpoint — the
-  // `/subnets/tree` request shape doesn't accept them. If the user
-  // picks one while looking at the tree, the request would silently
-  // run unfiltered and they'd think it worked. Auto-switch to list so
-  // the filter actually does what the chip says (Codex P2 on #77).
-  if (viewMode.value !== 'list') viewMode.value = 'list'
+  // Both views now respect site/vlan filters — list passes them as
+  // query params, tree passes them to `/subnets/tree` which prunes
+  // non-matching nodes and floats matching descendants to root level.
   reloadCurrentView()
 }
 
 function onVlanFilterChange(value: number | undefined) {
   vlanFilter.value = value
-  if (viewMode.value !== 'list') viewMode.value = 'list'
   reloadCurrentView()
 }
 
