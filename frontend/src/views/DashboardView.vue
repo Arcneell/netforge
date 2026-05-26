@@ -74,14 +74,13 @@ async function load() {
   }
 }
 
-// True when at least one bucket has rows. The whole section hides on
-// brand-new deployments (no subnets yet → nothing to rank) so the
-// dashboard stays clean for first-time users.
-const hasCapacityRows = computed(() => {
-  const c = capacity.value
-  if (!c) return false
-  return c.fullest.length > 0 || c.full.length > 0 || c.unused.length > 0
-})
+// Show the panel whenever there's any subnet on file. Gating on
+// "at least one bucket has rows" hid the section for healthy
+// mid-fill deployments where every subnet sits in the 1–79 % range,
+// which is the exact state most operators run in (Codex P2 on #79).
+// The empty-bucket placeholders are already the right message there
+// ("Nothing to watch", "No saturated subnets", …).
+const hasCapacity = computed(() => (capacity.value?.total_subnets ?? 0) > 0)
 
 const capacityBuckets = computed(() => [
   {
@@ -218,7 +217,7 @@ const actionTone = {
          RouterLink to the subnet detail. The whole section hides on
          empty deployments so a fresh install doesn't show three empty
          placeholders. -->
-    <section v-if="loading || hasCapacityRows" class="mb-10">
+    <section v-if="loading || hasCapacity" class="mb-10">
       <div class="flex items-center justify-between mb-4 px-1">
         <h2 class="text-xl font-semibold tracking-tight flex items-center gap-2">
           <TrendingUp
