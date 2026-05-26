@@ -240,6 +240,10 @@
     "vrfFilter": "VRF",
     "vrfFilterAll": "All scopes",
     "vrfFilterGlobal": "Global",
+    "allSites": "All sites",
+    "allVlans": "All VLANs",
+    "searchPlaceholder": "Search CIDR, description…",
+    "clearFilters": "Clear filters",
     "treeEmpty": "No subnets in this scope — create one to get started.",
     "tree": {
       "autoGroup": "Auto",
@@ -285,6 +289,10 @@
       "dhcp": "DHCP",
       "free": "Free"
     },
+    "statusFilter": {
+      "all": "All statuses"
+    },
+    "searchPlaceholder": "Filter IP, host, MAC…",
     "help": {
       "address": "IPv4 address to assign. Must belong to this subnet and not already be in use. Immutable after creation.",
       "status": "Reserved = held but inactive (no live device). Assigned = active device. DHCP = address came from the DHCP pool.",
