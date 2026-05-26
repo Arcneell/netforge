@@ -125,11 +125,15 @@ class SubnetIpEntry(BaseModel):
     """One row in the GET /api/subnets/{id}/ips response.
 
     `status` may be one of the stored statuses (`reserved`, `assigned`, `dhcp`)
-    OR the synthetic `"free"` for addresses that have no row in `ips`.
+    OR the synthetic `"free"` for addresses that have no row in `ips`. `ip_id`
+    is the primary key of the underlying `ips` row when one exists, so the
+    UI can open the editor directly without an extra `/ips?q=` lookup; it
+    stays `None` for synthetic free/dhcp rows that have no DB row at all.
     """
 
     address: str
     status: str
+    ip_id: int | None = None
     hostname: str | None = None
     mac: str | None = None
     device_id: int | None = None
