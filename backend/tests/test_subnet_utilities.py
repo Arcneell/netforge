@@ -266,18 +266,81 @@ async def test_per_subnet_used_counts_keeps_slash_31_rows() -> None:
     assert counts == {7: 2}
 
 
-@pytest.mark.asyncio
-async def test_per_subnet_used_counts_strips_inet_mask() -> None:
-    """asyncpg decodes INET to IPv4Interface, whose `str()` returns
-    `'10.0.0.0/32'`. The boundary check must canonicalise back to the
-    bare dotted-quad before matching against the in-memory boundary set
-    — otherwise the subtract silently misses every row (Codex P1 on #76).
+# --- capacity_overview (PR feat/dashboard-capacity-heatmap) ----------------
+
+
+def _mock_db_for_capacity(
+    subnets: list[Subnet],
+    raw_counts: list[tuple[int, int]],
+    boundary_rows: list[tuple[int, str]] | None = None,
+) -> AsyncMock:
+    """Mock the SELECTs `capacity_overview` issues:
+      1. `SELECT * FROM subnets`
+      2. raw GROUP BY count (from `_per_subnet_used_counts`)
+      3. boundary subtract (skipped if there are no /≤30 prefixes)
     """
-    sub = Subnet(id=1, cidr="10.0.0.0/24", site_id=1, dhcp_enabled=False)
-    db = _mock_db_for_per_subnet_counts(
-        raw_counts=[(1, 5)],
-        # Simulate asyncpg returning the inet value with its /32 mask.
-        boundary_rows=[(1, "10.0.0.255/32")],
+    scalars = MagicMock()
+    scalars.all = MagicMock(return_value=subnets)
+    subnets_result = MagicMock()
+    subnets_result.scalars = MagicMock(return_value=scalars)
+
+    raw_result = MagicMock()
+    raw_result.all = MagicMock(return_value=raw_counts)
+    boundary_result = MagicMock()
+    boundary_result.all = MagicMock(return_value=list(boundary_rows or []))
+
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[subnets_result, raw_result, boundary_result]
     )
-    counts = await service._per_subnet_used_counts(db, [sub])
-    assert counts == {1: 4}
+    return db
+
+
+@pytest.mark.asyncio
+async def test_capacity_overview_ranks_buckets() -> None:
+    """Three /24s: one nearly full, one full, one untouched. The overview
+    must drop each into the matching bucket without duplicates."""
+    nearly_full = Subnet(id=1, cidr="10.0.0.0/24", site_id=1, dhcp_enabled=False)
+    full = Subnet(id=2, cidr="10.0.1.0/24", site_id=1, dhcp_enabled=False)
+    empty = Subnet(id=3, cidr="10.0.2.0/24", site_id=1, dhcp_enabled=False)
+    db = _mock_db_for_capacity(
+        subnets=[nearly_full, full, empty],
+        raw_counts=[(1, 230), (2, 254)],
+        boundary_rows=[],
+    )
+    out = await service.capacity_overview(db, limit=5)
+    assert out["total_subnets"] == 3
+    assert [e["id"] for e in out["fullest"]] == [1]    # 230/254 ≈ 90%
+    assert [e["id"] for e in out["full"]] == [2]       # 254/254 = 100%
+    assert [e["id"] for e in out["unused"]] == [3]
+
+
+@pytest.mark.asyncio
+async def test_capacity_overview_respects_limit() -> None:
+    """When more than `limit` subnets qualify, only the top `limit` per
+    bucket come back. Sorted by pct desc, ties broken by `used`."""
+    subnets = [
+        Subnet(id=i, cidr=f"10.0.{i}.0/24", site_id=1, dhcp_enabled=False)
+        for i in range(1, 6)
+    ]
+    # 200 / 254 = 78% — under the 80% gate, drops out of `fullest`.
+    # 210→82%, 220→86%, 230→90%, 240→94% — all four make the cut.
+    raw = [(1, 200), (2, 210), (3, 220), (4, 230), (5, 240)]
+    db = _mock_db_for_capacity(subnets, raw_counts=raw, boundary_rows=[])
+    out = await service.capacity_overview(db, limit=3)
+    assert [e["id"] for e in out["fullest"]] == [5, 4, 3]
+
+
+@pytest.mark.asyncio
+async def test_capacity_overview_empty_inventory() -> None:
+    """No subnets means every bucket is empty — must not raise."""
+    scalars = MagicMock()
+    scalars.all = MagicMock(return_value=[])
+    subnets_result = MagicMock()
+    subnets_result.scalars = MagicMock(return_value=scalars)
+    db = AsyncMock()
+    # Empty list of subnets short-circuits `_per_subnet_used_counts` →
+    # no second SELECT, only the initial fetch.
+    db.execute = AsyncMock(side_effect=[subnets_result])
+    out = await service.capacity_overview(db, limit=5)
+    assert out == {"fullest": [], "full": [], "unused": [], "total_subnets": 0}

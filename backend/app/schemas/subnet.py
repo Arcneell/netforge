@@ -149,6 +149,36 @@ class NextFreeIpResponse(BaseModel):
     address: str
 
 
+class SubnetCapacityEntry(BaseModel):
+    """One row in the dashboard capacity overview — a flat summary of a
+    single subnet's fill rate. Cheap to compute (no address-space scan),
+    so we can rank a few hundred subnets in a single request."""
+
+    id: int
+    cidr: str
+    site_id: int
+    vrf_id: int | None = None
+    description: str | None = None
+    usable: int
+    used: int
+    used_pct: int
+
+
+class SubnetCapacityOverview(BaseModel):
+    """Top-N rankings the dashboard uses to surface "where should I look
+    next?" — three buckets cover daily-ops triage:
+      - `fullest`: nearly-full subnets that may run out of headroom.
+      - `full`:    at 100% — already a capacity incident waiting to happen.
+      - `unused`:  0 IPs recorded — either dead space to reclaim or
+                   undocumented inventory.
+    Each list is sorted server-side; the caller doesn't have to re-sort."""
+
+    fullest: list[SubnetCapacityEntry]
+    full: list[SubnetCapacityEntry]
+    unused: list[SubnetCapacityEntry]
+    total_subnets: int
+
+
 class SubnetUtilization(BaseModel):
     """Snapshot of how full a subnet is.
 

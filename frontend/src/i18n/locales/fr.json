@@ -160,6 +160,25 @@
       "title": "Activité récente",
       "empty": "Aucun changement enregistré.",
       "viewAll": "Voir le journal complet"
+    },
+    "capacity": {
+      "title": "Points chauds de capacité",
+      "subtitle": "{n} sous-réseaux suivis",
+      "full": {
+        "title": "Saturés",
+        "help": "Sous-réseaux à 100 %.",
+        "empty": "Aucun sous-réseau saturé."
+      },
+      "fullest": {
+        "title": "Presque pleins",
+        "help": "Entre 80 % et 99 % de remplissage.",
+        "empty": "Aucun sous-réseau à surveiller."
+      },
+      "unused": {
+        "title": "Inutilisés",
+        "help": "Aucune IP enregistrée — espace à récupérer ou inventaire à documenter.",
+        "empty": "Tous les sous-réseaux ont au moins une IP."
+      }
     }
   },
   "site": {
