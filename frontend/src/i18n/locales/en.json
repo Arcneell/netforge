@@ -253,6 +253,13 @@
     "nextFree": "Next free IP",
     "nextFreeFound": "Next free address: {address}",
     "nextFreeNone": "No free address left in this subnet.",
+    "tooLargeTitle": "Block too large for per-address view",
+    "tooLargeBody": "{cidr} contains more than 4096 addresses. NetForge can't render each IP individually, but the fill rate above stays accurate and every higher-level operation still works.",
+    "tooLargeHint": {
+      "splitChildren": "Split this block into smaller subnets (/22 or tighter) — each gets its full grid view.",
+      "useExport": "Export the full list to CSV for one-off audits.",
+      "useImport": "Bulk-register IPs via the CSV importer — it writes rows directly without enumerating the address space."
+    },
     "stats": {
       "used": "{count} used",
       "free": "{count} free",
