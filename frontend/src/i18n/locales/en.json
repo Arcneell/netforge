@@ -266,9 +266,7 @@
     "treeEmpty": "No subnets in this scope — create one to get started.",
     "tree": {
       "autoGroup": "Auto",
-      "containedCount": "{n} subnet(s) in this range",
-      "rootDropHint": "Drop here to detach a subnet from its parent.",
-      "reparented": "Subnet reparented."
+      "containedCount": "{n} subnet(s) in this range"
     },
     "exportCsv": "Export CSV",
     "nextFree": "Next free IP",

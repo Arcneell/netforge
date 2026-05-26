@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowUpFromLine, List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
+import { List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -89,8 +89,13 @@ async function loadTree() {
   treeLoading.value = true
   try {
     // Map the chip back to the tree endpoint: undefined / 0 = global.
-    const scope = vrfFilter.value && vrfFilter.value > 0 ? vrfFilter.value : 0
-    tree.value = await subnetsApi.tree(scope)
+    // Site + VLAN narrow the result; the backend handles the orphan
+    // promotion so filtering by a leaf VLAN still surfaces matches.
+    tree.value = await subnetsApi.tree({
+      vrf_id: vrfFilter.value && vrfFilter.value > 0 ? vrfFilter.value : 0,
+      site_id: siteFilter.value,
+      vlan_id: vlanFilter.value,
+    })
   } finally {
     treeLoading.value = false
   }
@@ -141,18 +146,14 @@ function onVrfFilterChange(value: number | undefined) {
 
 function onSiteFilterChange(value: number | undefined) {
   siteFilter.value = value
-  // Site and VLAN filters only flow into the *list* endpoint — the
-  // `/subnets/tree` request shape doesn't accept them. If the user
-  // picks one while looking at the tree, the request would silently
-  // run unfiltered and they'd think it worked. Auto-switch to list so
-  // the filter actually does what the chip says (Codex P2 on #77).
-  if (viewMode.value !== 'list') viewMode.value = 'list'
+  // Both views now respect site/vlan filters — list passes them as
+  // query params, tree passes them to `/subnets/tree` which prunes
+  // non-matching nodes and floats matching descendants to root level.
   reloadCurrentView()
 }
 
 function onVlanFilterChange(value: number | undefined) {
   vlanFilter.value = value
-  if (viewMode.value !== 'list') viewMode.value = 'list'
   reloadCurrentView()
 }
 
@@ -202,44 +203,6 @@ function toggleNode(id: number) {
 
 function openSubnet(id: number) {
   router.push(`/subnets/${id}`)
-}
-
-// Drag-and-drop reparenting. The DnD MIME mirrors the constant declared
-// inside `SubnetTreeRow.vue` — kept in sync by inspection. If we ever
-// add a second drop source we should move it to a shared module.
-const DRAG_MIME = 'application/x-netforge-subnet-id'
-const rootDropActive = ref(false)
-
-async function onReparent(payload: { childId: number; parentId: number | null }) {
-  try {
-    await subnetsApi.update(payload.childId, { parent_subnet_id: payload.parentId })
-    success(t('subnet.tree.reparented'))
-    // Reload both the tree and the flat list so a follow-up view switch
-    // shows fresh data — the parent column on the flat list is not yet
-    // rendered, but the cache underneath stays correct.
-    loadTree()
-    if (viewMode.value === 'list') load()
-  } catch (err) {
-    void describe(err)
-  }
-}
-
-function onRootDragOver(ev: DragEvent) {
-  if (!ev.dataTransfer || !ev.dataTransfer.types.includes(DRAG_MIME)) return
-  ev.preventDefault()
-  ev.dataTransfer.dropEffect = 'move'
-  rootDropActive.value = true
-}
-
-function onRootDrop(ev: DragEvent) {
-  rootDropActive.value = false
-  if (!ev.dataTransfer) return
-  const raw = ev.dataTransfer.getData(DRAG_MIME)
-  if (!raw) return
-  const childId = Number(raw)
-  if (!Number.isFinite(childId)) return
-  ev.preventDefault()
-  onReparent({ childId, parentId: null })
 }
 
 onMounted(() => {
@@ -432,7 +395,8 @@ const columns: DataTableColumn[] = [
       </Button>
     </div>
 
-    <!-- Tree view -->
+    <!-- Tree view. Read-only hierarchical view — `parent_subnet_id` is
+         editable from the subnet form, not by dragging rows. -->
     <div v-if="viewMode === 'tree'" class="nf-card overflow-hidden">
       <div v-if="treeLoading" class="p-6 text-center text-fg-muted text-sm">
         {{ t('common.loading') }}
@@ -440,44 +404,19 @@ const columns: DataTableColumn[] = [
       <div v-else-if="tree.length === 0" class="p-6 text-center text-fg-muted text-sm">
         {{ t('subnet.treeEmpty') }}
       </div>
-      <template v-else>
-        <!-- Top-level drop zone: drag any node here to detach it from
-             its current parent (the move sets `parent_subnet_id = null`).
-             Visible only to admins so viewers don't see a drop affordance
-             that does nothing. The dashed outline pattern is the
-             internet's universal "this is a drop target" cue — operators
-             recognise it on first hover. -->
-        <div
-          v-if="isAdmin"
-          :class="[
-            'mx-3 mt-3 mb-2 px-4 py-3 rounded-md border border-dashed flex items-center justify-center gap-2 text-xs font-medium transition-colors',
-            rootDropActive
-              ? 'border-primary-500 bg-primary-500/10 text-primary-700 dark:text-primary-300'
-              : 'border-border bg-muted/30 text-fg-muted',
-          ]"
-          @dragover="onRootDragOver"
-          @dragleave="rootDropActive = false"
-          @drop="onRootDrop"
-        >
-          <ArrowUpFromLine class="w-3.5 h-3.5" aria-hidden="true" />
-          {{ t('subnet.tree.rootDropHint') }}
-        </div>
-        <ul class="divide-y divide-border/50">
-          <SubnetTreeRow
-            v-for="(node, idx) in tree"
-            :key="node.id"
-            :node="node"
-            :collapsed="collapsed"
-            :depth="0"
-            :is-last="idx === tree.length - 1"
-            :vlans-by-id="vlansById"
-            :can-reparent="isAdmin"
-            @toggle="toggleNode"
-            @open="openSubnet"
-            @reparent="onReparent"
-          />
-        </ul>
-      </template>
+      <ul v-else class="divide-y divide-border/50">
+        <SubnetTreeRow
+          v-for="(node, idx) in tree"
+          :key="node.id"
+          :node="node"
+          :collapsed="collapsed"
+          :depth="0"
+          :is-last="idx === tree.length - 1"
+          :vlans-by-id="vlansById"
+          @toggle="toggleNode"
+          @open="openSubnet"
+        />
+      </ul>
     </div>
 
     <DataTable

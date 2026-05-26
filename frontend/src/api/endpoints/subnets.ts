@@ -82,12 +82,21 @@ export const subnetsApi = {
   list(filters: SubnetFilters = {}): Promise<Page<Subnet>> {
     return request<Page<Subnet>>({ method: 'GET', url: '/subnets', params: filters })
   },
-  /** Hierarchical view. `vrf_id` omitted or 0 = global scope. */
-  tree(vrf_id?: number): Promise<SubnetTreeNode[]> {
+  /** Hierarchical view. `vrf_id` omitted or 0 = global scope. The
+   *  optional `site_id` / `vlan_id` narrow the result without changing
+   *  the hierarchy semantics — matching descendants whose parent was
+   *  filtered out are surfaced as roots by the backend. */
+  tree(
+    opts: { vrf_id?: number; site_id?: number; vlan_id?: number } = {},
+  ): Promise<SubnetTreeNode[]> {
+    const params: Record<string, number> = {}
+    if (opts.vrf_id !== undefined) params.vrf_id = opts.vrf_id
+    if (opts.site_id !== undefined) params.site_id = opts.site_id
+    if (opts.vlan_id !== undefined) params.vlan_id = opts.vlan_id
     return request<SubnetTreeNode[]>({
       method: 'GET',
       url: '/subnets/tree',
-      params: vrf_id !== undefined ? { vrf_id } : undefined,
+      params: Object.keys(params).length ? params : undefined,
     })
   },
   get(id: number): Promise<Subnet> {
