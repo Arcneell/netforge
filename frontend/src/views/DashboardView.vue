@@ -10,12 +10,17 @@ import {
   History,
   ArrowUpRight,
   ChevronRight,
+  AlertTriangle,
+  TrendingUp,
+  Inbox,
 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import Badge from '@/components/ui/Badge.vue'
+import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import { auditApi, devicesApi, subnetsApi, switchesApi, vlansApi } from '@/api'
 import type { AuditLog } from '@/api'
+import type { SubnetCapacityOverview } from '@/api/endpoints/subnets'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatRelativeTime } from '@/utils/formatters'
 
@@ -25,11 +30,16 @@ const { isAdmin } = useAuth()
 const loading = ref(true)
 const counts = ref({ subnets: 0, vlans: 0, switches: 0, devices: 0 })
 const recent = ref<AuditLog[]>([])
+// Capacity overview drives the "where should I look next?" section.
+// Falls back to an empty payload on any error so a flaky `/api/subnets/
+// capacity-overview` (e.g. very early deployment with no DB rows yet)
+// can't take the whole dashboard down.
+const capacity = ref<SubnetCapacityOverview | null>(null)
 
 async function load() {
   loading.value = true
   try {
-    const [subnets, vlans, switches, devices, audit] = await Promise.all([
+    const [subnets, vlans, switches, devices, audit, cap] = await Promise.all([
       subnetsApi.list({ page_size: 1 }),
       vlansApi.list({ page_size: 1 }),
       switchesApi.list({ page_size: 1 }),
@@ -39,6 +49,17 @@ async function load() {
             .list({ page_size: 10 })
             .catch(() => ({ items: [] as AuditLog[], total: 0, page: 1, page_size: 10 }))
         : Promise.resolve({ items: [] as AuditLog[], total: 0, page: 1, page_size: 10 }),
+      subnetsApi
+        .capacityOverview(5)
+        .catch(
+          () =>
+            ({
+              fullest: [],
+              full: [],
+              unused: [],
+              total_subnets: 0,
+            }) as SubnetCapacityOverview,
+        ),
     ])
     counts.value = {
       subnets: subnets.total,
@@ -47,10 +68,49 @@ async function load() {
       devices: devices.total,
     }
     recent.value = audit.items
+    capacity.value = cap
   } finally {
     loading.value = false
   }
 }
+
+// Show the panel whenever there's any subnet on file. Gating on
+// "at least one bucket has rows" hid the section for healthy
+// mid-fill deployments where every subnet sits in the 1–79 % range,
+// which is the exact state most operators run in (Codex P2 on #79).
+// The empty-bucket placeholders are already the right message there
+// ("Nothing to watch", "No saturated subnets", …).
+const hasCapacity = computed(() => (capacity.value?.total_subnets ?? 0) > 0)
+
+const capacityBuckets = computed(() => [
+  {
+    key: 'full',
+    titleKey: 'dashboard.capacity.full.title',
+    helpKey: 'dashboard.capacity.full.help',
+    emptyKey: 'dashboard.capacity.full.empty',
+    icon: AlertTriangle,
+    tone: 'danger' as const,
+    items: capacity.value?.full ?? [],
+  },
+  {
+    key: 'fullest',
+    titleKey: 'dashboard.capacity.fullest.title',
+    helpKey: 'dashboard.capacity.fullest.help',
+    emptyKey: 'dashboard.capacity.fullest.empty',
+    icon: TrendingUp,
+    tone: 'warning' as const,
+    items: capacity.value?.fullest ?? [],
+  },
+  {
+    key: 'unused',
+    titleKey: 'dashboard.capacity.unused.title',
+    helpKey: 'dashboard.capacity.unused.help',
+    emptyKey: 'dashboard.capacity.unused.empty',
+    icon: Inbox,
+    tone: 'muted' as const,
+    items: capacity.value?.unused ?? [],
+  },
+])
 
 onMounted(load)
 
@@ -150,6 +210,99 @@ const actionTone = {
         </p>
         <p class="text-sm text-fg-muted mt-1 font-medium">{{ t(c.labelKey) }}</p>
       </RouterLink>
+    </section>
+
+    <!-- Capacity hot-spots. Three columns of "things worth looking at":
+         at-capacity / nearly-full / unused. Each row is a clickable
+         RouterLink to the subnet detail. The whole section hides on
+         empty deployments so a fresh install doesn't show three empty
+         placeholders. -->
+    <section v-if="loading || hasCapacity" class="mb-10">
+      <div class="flex items-center justify-between mb-4 px-1">
+        <h2 class="text-xl font-semibold tracking-tight flex items-center gap-2">
+          <TrendingUp
+            class="w-5 h-5 text-fg-muted"
+            :stroke-width="2.25"
+            aria-hidden="true"
+          />
+          {{ t('dashboard.capacity.title') }}
+        </h2>
+        <span v-if="capacity" class="text-xs text-fg-muted tabular-nums">
+          {{ t('dashboard.capacity.subtitle', { n: capacity.total_subnets }) }}
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div
+          v-for="bucket in capacityBuckets"
+          :key="bucket.key"
+          class="nf-card overflow-hidden flex flex-col"
+        >
+          <header class="px-4 py-3 border-b border-border/60 flex items-start gap-2">
+            <component
+              :is="bucket.icon"
+              :class="[
+                'w-4 h-4 mt-0.5 flex-shrink-0',
+                bucket.tone === 'danger'
+                  ? 'text-danger'
+                  : bucket.tone === 'warning'
+                    ? 'text-warning'
+                    : 'text-fg-muted',
+              ]"
+              aria-hidden="true"
+            />
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-fg">{{ t(bucket.titleKey) }}</p>
+              <p class="text-xs text-fg-muted mt-0.5">{{ t(bucket.helpKey) }}</p>
+            </div>
+          </header>
+
+          <ul v-if="loading" class="divide-y divide-border/40" aria-busy="true">
+            <li v-for="i in 3" :key="`sk-cap-${bucket.key}-${i}`" class="px-4 py-2.5">
+              <Skeleton width="70%" height="0.75rem" />
+              <div class="mt-1.5">
+                <Skeleton width="40%" height="0.625rem" />
+              </div>
+            </li>
+          </ul>
+          <p
+            v-else-if="bucket.items.length === 0"
+            class="px-4 py-6 text-xs text-fg-muted text-center"
+          >
+            {{ t(bucket.emptyKey) }}
+          </p>
+          <ul v-else class="divide-y divide-border/40">
+            <li v-for="entry in bucket.items" :key="entry.id">
+              <RouterLink
+                :to="`/subnets/${entry.id}`"
+                class="block px-4 py-2.5 hover:bg-surface-hover transition-colors"
+              >
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="font-mono text-sm font-medium text-fg truncate">
+                    {{ entry.cidr }}
+                  </span>
+                  <span class="text-xs text-fg-muted tabular-nums ml-auto flex-shrink-0">
+                    {{ entry.used_pct }}%
+                  </span>
+                </div>
+                <div class="mt-1.5 flex items-center gap-2">
+                  <SubnetFillBar
+                    :used="entry.used"
+                    :usable="entry.usable"
+                    bar-class="flex-1"
+                  />
+                </div>
+                <p
+                  v-if="entry.description"
+                  class="mt-1 text-xs text-fg-muted truncate"
+                >
+                  {{ entry.description }}
+                </p>
+              </RouterLink>
+            </li>
+          </ul>
+        </div>
+      </div>
     </section>
 
     <section v-if="isAdmin">

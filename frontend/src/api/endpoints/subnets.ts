@@ -19,6 +19,26 @@ export interface SubnetFilters extends PageParams {
   q?: string
 }
 
+/** One row in the dashboard capacity ranking. Cheap to render — no
+ * per-address scan, just a few aggregates per subnet. */
+export interface SubnetCapacityEntry {
+  id: number
+  cidr: string
+  site_id: number
+  vrf_id: number | null
+  description: string | null
+  usable: number
+  used: number
+  used_pct: number
+}
+
+export interface SubnetCapacityOverview {
+  fullest: SubnetCapacityEntry[]
+  full: SubnetCapacityEntry[]
+  unused: SubnetCapacityEntry[]
+  total_subnets: number
+}
+
 export interface SubnetTreeNode {
   id: number
   cidr: string
@@ -69,6 +89,14 @@ export const subnetsApi = {
   /** Pure read — does not reserve, just suggests. */
   nextFree(id: number): Promise<NextFreeIp> {
     return request<NextFreeIp>({ method: 'POST', url: `/subnets/${id}/next-free` })
+  },
+  /** Top-N capacity rankings for the dashboard heatmap. */
+  capacityOverview(limit = 5): Promise<SubnetCapacityOverview> {
+    return request<SubnetCapacityOverview>({
+      method: 'GET',
+      url: '/subnets/capacity-overview',
+      params: { limit },
+    })
   },
   /** Fill-rate snapshot — cheap (two SELECTs), works on any prefix length. */
   utilization(id: number): Promise<SubnetUtilization> {

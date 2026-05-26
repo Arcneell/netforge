@@ -11,6 +11,7 @@ from app.models.user import UserRole
 from app.schemas.common import Page, PageParams
 from app.schemas.subnet import (
     NextFreeIpResponse,
+    SubnetCapacityOverview,
     SubnetCreate,
     SubnetIpsResponse,
     SubnetRead,
@@ -92,6 +93,30 @@ async def subnet_tree(
         db, scope, auto_group_prefix=auto_group_prefix or None
     )
     return [SubnetTreeNode.model_validate(n) for n in raw]
+
+
+@router.get(
+    "/capacity-overview",
+    response_model=SubnetCapacityOverview,
+    dependencies=[Depends(get_current_user)],
+)
+async def capacity_overview(
+    limit: int = Query(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum entries per ranked bucket. Default 5.",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> SubnetCapacityOverview:
+    """Top-N subnet rankings for the dashboard: fullest, at-capacity, unused.
+
+    Declared BEFORE `/{subnet_id}` so the literal path wins the route match
+    — otherwise FastAPI would try to coerce `"capacity-overview"` to int and
+    surface a 422.
+    """
+    data = await service.capacity_overview(db, limit=limit)
+    return SubnetCapacityOverview.model_validate(data)
 
 
 @router.get(
