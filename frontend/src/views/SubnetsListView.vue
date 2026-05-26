@@ -141,11 +141,18 @@ function onVrfFilterChange(value: number | undefined) {
 
 function onSiteFilterChange(value: number | undefined) {
   siteFilter.value = value
+  // Site and VLAN filters only flow into the *list* endpoint — the
+  // `/subnets/tree` request shape doesn't accept them. If the user
+  // picks one while looking at the tree, the request would silently
+  // run unfiltered and they'd think it worked. Auto-switch to list so
+  // the filter actually does what the chip says (Codex P2 on #77).
+  if (viewMode.value !== 'list') viewMode.value = 'list'
   reloadCurrentView()
 }
 
 function onVlanFilterChange(value: number | undefined) {
   vlanFilter.value = value
+  if (viewMode.value !== 'list') viewMode.value = 'list'
   reloadCurrentView()
 }
 
