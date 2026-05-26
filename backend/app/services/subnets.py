@@ -625,3 +625,66 @@ async def list_subnet_ips(
                 )
             )
     return subnet, entries
+
+
+# --- Dashboard capacity overview -------------------------------------------
+
+
+async def capacity_overview(db: AsyncSession, limit: int = 5) -> dict[str, object]:
+    """Rank every subnet by fill rate and return three top-N lists.
+
+    One SELECT to fetch the subnet rows + one grouped COUNT via
+    `_per_subnet_used_counts` (boundary-aware, same accounting as the
+    list endpoint). Both are O(N_subnets), and N_subnets stays small
+    even on large deployments — pulling the whole table once per
+    dashboard render is acceptable until inventory grows past a few
+    thousand subnets, at which point we'd move the ranking into SQL.
+
+    The three buckets cover daily-ops triage:
+      - `fullest`: 80 ≤ used_pct < 100, sorted descending by pct then by
+        absolute `used` count to break ties on a packed /16.
+      - `full`:    used_pct == 100. Surface even when there are many —
+        the dashboard truncates to `limit`.
+      - `unused`:  used == 0. Most useful for reclaim audits; sorted by
+        `usable` descending so the biggest dead blocks float to the top.
+    """
+    subnets = list((await db.execute(select(Subnet))).scalars().all())
+    used_counts = await _per_subnet_used_counts(db, subnets)
+
+    enriched: list[dict] = []
+    for s in subnets:
+        usable = usable_hosts(str(s.cidr))
+        used = int(used_counts.get(s.id, 0))
+        pct = (used * 100 // usable) if usable > 0 else 0
+        enriched.append(
+            {
+                "id": s.id,
+                "cidr": str(s.cidr),
+                "site_id": s.site_id,
+                "vrf_id": s.vrf_id,
+                "description": s.description,
+                "usable": usable,
+                "used": used,
+                "used_pct": pct,
+            }
+        )
+
+    fullest = sorted(
+        (e for e in enriched if 80 <= e["used_pct"] < 100),
+        key=lambda e: (-e["used_pct"], -e["used"]),
+    )[:limit]
+    full = sorted(
+        (e for e in enriched if e["used_pct"] >= 100),
+        key=lambda e: -e["used"],
+    )[:limit]
+    unused = sorted(
+        (e for e in enriched if e["used"] == 0),
+        key=lambda e: -e["usable"],
+    )[:limit]
+
+    return {
+        "fullest": fullest,
+        "full": full,
+        "unused": unused,
+        "total_subnets": len(subnets),
+    }

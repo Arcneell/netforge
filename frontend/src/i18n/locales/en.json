@@ -160,6 +160,25 @@
       "title": "Recent activity",
       "empty": "No recorded changes yet.",
       "viewAll": "View full audit log"
+    },
+    "capacity": {
+      "title": "Capacity hot-spots",
+      "subtitle": "{n} subnets tracked",
+      "full": {
+        "title": "At capacity",
+        "help": "Subnets at 100% fill.",
+        "empty": "No saturated subnets."
+      },
+      "fullest": {
+        "title": "Nearly full",
+        "help": "Between 80% and 99% fill.",
+        "empty": "Nothing to watch."
+      },
+      "unused": {
+        "title": "Unused",
+        "help": "No IPs recorded — reclaim opportunity or undocumented inventory.",
+        "empty": "Every subnet has at least one IP."
+      }
     }
   },
   "site": {
