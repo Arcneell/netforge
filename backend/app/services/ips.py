@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ipaddress import IPv4Address, IPv4Network
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
