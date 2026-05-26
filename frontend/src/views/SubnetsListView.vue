@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { List, Network, Plus, Pencil, Trash2 } from 'lucide-vue-next'
+import { List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -14,12 +14,13 @@ import SubnetEditor from '@/components/editors/SubnetEditor.vue'
 import SubnetTreeRow from '@/components/SubnetTreeRow.vue'
 import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { subnetsApi, vlansApi } from '@/api'
-import type { Subnet, Vlan } from '@/api'
+import { sitesApi, subnetsApi, vlansApi } from '@/api'
+import type { Site, Subnet, Vlan } from '@/api'
 import type { SubnetTreeNode } from '@/api/endpoints/subnets'
 import { vrfsApi } from '@/api/endpoints/vrfs'
 import type { Vrf } from '@/api/endpoints/vrfs'
 import { useAuth } from '@/composables/useAuth'
+import { useDebounce } from '@/composables/useDebounce'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 
@@ -35,7 +36,9 @@ const page = ref(1)
 const pageSize = 50
 const loading = ref(false)
 
+const vlans = ref<Vlan[]>([])
 const vlansById = ref<Map<number, Vlan>>(new Map())
+const sites = ref<Site[]>([])
 const vrfs = ref<Vrf[]>([])
 // Filter chip values:
 //   undefined → show every subnet across all VRFs (default list mode)
@@ -44,6 +47,15 @@ const vrfs = ref<Vrf[]>([])
 // The tree view re-uses the same filter; it always shows a single scope at
 // a time (global by default, or a specific VRF when picked).
 const vrfFilter = ref<number | undefined>(undefined)
+const siteFilter = ref<number | undefined>(undefined)
+const vlanFilter = ref<number | undefined>(undefined)
+// Free-text search — `searchInput` is what the user types, `searchQuery`
+// is debounced and the value that actually hits the API. Server-side
+// search is trigram-indexed (migration 0012), so even on large bases the
+// 200ms debounce is enough to keep keystrokes responsive without
+// hammering the backend on every key.
+const searchInput = ref('')
+const searchQuery = useDebounce(searchInput, 200)
 
 const viewMode = ref<'list' | 'tree'>('list')
 const tree = ref<SubnetTreeNode[]>([])
@@ -62,6 +74,9 @@ async function load() {
       page: page.value,
       page_size: pageSize,
       vrf_id: vrfFilter.value,
+      site_id: siteFilter.value,
+      vlan_id: vlanFilter.value,
+      q: searchQuery.value.trim() || undefined,
     })
     items.value = res.items
     total.value = res.total
@@ -82,8 +97,23 @@ async function loadTree() {
 }
 
 async function loadVlans() {
-  const res = await vlansApi.list({ page_size: 200 })
+  // VLANs feed two things: the badge lookup map for each subnet row AND
+  // the VLAN filter chip. Pull the same page once and share. Pagination
+  // is capped at 500 — anyone with more than that is multi-tenant and
+  // already paying for an enterprise filter UI (a future PR can switch
+  // the chip to an async-search combobox).
+  const res = await vlansApi.list({ page_size: 500 })
+  vlans.value = res.items
   vlansById.value = new Map(res.items.map((v) => [v.id, v]))
+}
+
+async function loadSites() {
+  try {
+    const res = await sitesApi.list({ page_size: 200 })
+    sites.value = res.items
+  } catch {
+    sites.value = []
+  }
 }
 
 async function loadVrfs() {
@@ -95,8 +125,7 @@ async function loadVrfs() {
   }
 }
 
-function onVrfFilterChange(value: number | undefined) {
-  vrfFilter.value = value
+function reloadCurrentView() {
   page.value = 1
   if (viewMode.value === 'tree') {
     loadTree()
@@ -104,6 +133,56 @@ function onVrfFilterChange(value: number | undefined) {
     load()
   }
 }
+
+function onVrfFilterChange(value: number | undefined) {
+  vrfFilter.value = value
+  reloadCurrentView()
+}
+
+function onSiteFilterChange(value: number | undefined) {
+  siteFilter.value = value
+  // Site and VLAN filters only flow into the *list* endpoint — the
+  // `/subnets/tree` request shape doesn't accept them. If the user
+  // picks one while looking at the tree, the request would silently
+  // run unfiltered and they'd think it worked. Auto-switch to list so
+  // the filter actually does what the chip says (Codex P2 on #77).
+  if (viewMode.value !== 'list') viewMode.value = 'list'
+  reloadCurrentView()
+}
+
+function onVlanFilterChange(value: number | undefined) {
+  vlanFilter.value = value
+  if (viewMode.value !== 'list') viewMode.value = 'list'
+  reloadCurrentView()
+}
+
+function clearFilters() {
+  searchInput.value = ''
+  siteFilter.value = undefined
+  vlanFilter.value = undefined
+  vrfFilter.value = undefined
+  reloadCurrentView()
+}
+
+const hasActiveFilters = computed(
+  () =>
+    searchInput.value.trim().length > 0 ||
+    siteFilter.value !== undefined ||
+    vlanFilter.value !== undefined ||
+    vrfFilter.value !== undefined,
+)
+
+// React to debounced search input. We re-fire on every change including
+// the empty string so clearing the field restores the full list — the
+// `q?: undefined` in `load()` strips it from the params.
+watch(searchQuery, () => {
+  // Search affects the list view only — the tree builder doesn't take
+  // `q` (would break the parent/child hierarchy). Switch the user back
+  // to list view automatically the moment they start typing.
+  if (viewMode.value !== 'list') viewMode.value = 'list'
+  page.value = 1
+  load()
+})
 
 function switchView(mode: 'list' | 'tree') {
   viewMode.value = mode
@@ -129,6 +208,7 @@ onMounted(() => {
   load()
   loadVlans()
   loadVrfs()
+  loadSites()
 })
 
 function onNew() {
@@ -184,65 +264,152 @@ const columns: DataTableColumn[] = [
       </template>
     </PageHeader>
 
-    <!-- View toggle + VRF filter -->
-    <div class="flex flex-wrap items-center gap-3 mb-4">
-      <div
-        class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
-        role="tablist"
-      >
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="viewMode === 'list'"
-          :class="[
-            'px-3 h-8 rounded text-sm font-medium transition inline-flex items-center gap-1.5',
-            viewMode === 'list'
-              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-              : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-          ]"
-          @click="switchView('list')"
+    <!-- View toggle + filters. Layout: top row mixes the view toggle, the
+         debounced search input (always visible), and a "clear filters" button
+         that only shows once at least one filter is active. Bottom row carries
+         the dropdown chips so they wrap nicely on narrow screens without
+         shoving the search field off to a second line. -->
+    <div class="flex flex-col gap-3 mb-4">
+      <div class="flex flex-wrap items-center gap-3">
+        <div
+          class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
+          role="tablist"
         >
-          <List class="w-3.5 h-3.5" aria-hidden="true" />
-          {{ t('subnet.viewList') }}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="viewMode === 'tree'"
-          :class="[
-            'px-3 h-8 rounded text-sm font-medium transition inline-flex items-center gap-1.5',
-            viewMode === 'tree'
-              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-              : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-          ]"
-          @click="switchView('tree')"
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="viewMode === 'list'"
+            :class="[
+              'px-3 h-8 rounded text-sm font-medium transition inline-flex items-center gap-1.5',
+              viewMode === 'list'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+            ]"
+            @click="switchView('list')"
+          >
+            <List class="w-3.5 h-3.5" aria-hidden="true" />
+            {{ t('subnet.viewList') }}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="viewMode === 'tree'"
+            :class="[
+              'px-3 h-8 rounded text-sm font-medium transition inline-flex items-center gap-1.5',
+              viewMode === 'tree'
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+            ]"
+            @click="switchView('tree')"
+          >
+            <Network class="w-3.5 h-3.5" aria-hidden="true" />
+            {{ t('subnet.viewTree') }}
+          </button>
+        </div>
+
+        <!-- Search input — debounced, takes the remaining row width so it's
+             the obvious primary affordance. The button on the right clears
+             every active filter at once (we don't reset the view toggle). -->
+        <div class="relative flex-1 min-w-[14rem] max-w-md">
+          <Search
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-muted pointer-events-none"
+            aria-hidden="true"
+          />
+          <input
+            v-model="searchInput"
+            type="search"
+            :placeholder="t('subnet.searchPlaceholder')"
+            :aria-label="t('subnet.searchPlaceholder')"
+            class="w-full h-8 pl-8 pr-8 rounded border border-border bg-surface text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button
+            v-if="searchInput"
+            type="button"
+            class="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-fg-muted hover:bg-surface-hover hover:text-fg"
+            :aria-label="t('common.reset')"
+            @click="searchInput = ''"
+          >
+            <X class="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <Button
+          v-if="hasActiveFilters"
+          variant="ghost"
+          size="sm"
+          @click="clearFilters"
         >
-          <Network class="w-3.5 h-3.5" aria-hidden="true" />
-          {{ t('subnet.viewTree') }}
-        </button>
+          {{ t('subnet.clearFilters') }}
+        </Button>
       </div>
 
-      <label class="text-sm inline-flex items-center gap-2">
-        <span class="text-xs uppercase tracking-wider text-fg-muted font-semibold">
-          {{ t('subnet.vrfFilter') }}
-        </span>
-        <select
-          :value="vrfFilter === undefined ? '' : String(vrfFilter)"
-          class="h-8 px-2 rounded border border-border bg-surface text-sm"
-          @change="
-            (e) => {
-              const v = (e.target as HTMLSelectElement).value
-              onVrfFilterChange(v === '' ? undefined : Number(v))
-            }
-          "
-        >
-          <option value="">
-            {{ viewMode === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal') }}
-          </option>
-          <option value="0">{{ t('subnet.vrfFilterGlobal') }}</option>
-          <option v-for="v in vrfs" :key="v.id" :value="v.id">{{ v.name }}</option>
-        </select>
-      </label>
+      <div class="flex flex-wrap items-center gap-3">
+        <label class="text-sm inline-flex items-center gap-2">
+          <span class="text-xs uppercase tracking-wider text-fg-muted font-semibold">
+            {{ t('subnet.vrfFilter') }}
+          </span>
+          <select
+            :value="vrfFilter === undefined ? '' : String(vrfFilter)"
+            class="h-8 px-2 rounded border border-border bg-surface text-sm"
+            @change="
+              (e) => {
+                const v = (e.target as HTMLSelectElement).value
+                onVrfFilterChange(v === '' ? undefined : Number(v))
+              }
+            "
+          >
+            <option value="">
+              {{ viewMode === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal') }}
+            </option>
+            <option value="0">{{ t('subnet.vrfFilterGlobal') }}</option>
+            <option v-for="v in vrfs" :key="v.id" :value="v.id">{{ v.name }}</option>
+          </select>
+        </label>
+
+        <label v-if="sites.length > 0" class="text-sm inline-flex items-center gap-2">
+          <span class="text-xs uppercase tracking-wider text-fg-muted font-semibold">
+            {{ t('subnet.fields.site') }}
+          </span>
+          <select
+            :value="siteFilter === undefined ? '' : String(siteFilter)"
+            class="h-8 px-2 rounded border border-border bg-surface text-sm"
+            @change="
+              (e) => {
+                const v = (e.target as HTMLSelectElement).value
+                onSiteFilterChange(v === '' ? undefined : Number(v))
+              }
+            "
+          >
+            <option value="">{{ t('subnet.allSites') }}</option>
+            <option v-for="s in sites" :key="s.id" :value="s.id">
+              {{ s.code }}
+            </option>
+          </select>
+        </label>
+
+        <label v-if="vlans.length > 0" class="text-sm inline-flex items-center gap-2">
+          <span class="text-xs uppercase tracking-wider text-fg-muted font-semibold">
+            {{ t('subnet.fields.vlan') }}
+          </span>
+          <select
+            :value="vlanFilter === undefined ? '' : String(vlanFilter)"
+            class="h-8 px-2 rounded border border-border bg-surface text-sm"
+            @change="
+              (e) => {
+                const v = (e.target as HTMLSelectElement).value
+                onVlanFilterChange(v === '' ? undefined : Number(v))
+              }
+            "
+          >
+            <option value="">{{ t('subnet.allVlans') }}</option>
+            <option v-for="v in vlans" :key="v.id" :value="v.id">
+              {{ v.vlan_id }} — {{ v.name }}
+            </option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <!-- Tree view -->

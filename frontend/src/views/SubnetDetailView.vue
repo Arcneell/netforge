@@ -168,7 +168,33 @@ const ipColumns: DataTableColumn[] = [
   { key: 'description', label: t('ip.fields.description'), hideOnSm: true },
 ]
 
-const tableRows = computed(() => ips.value.map((entry) => ({ ...entry, id: entry.address })))
+// Client-side filter on the table view — the data is already in memory
+// (the /ips endpoint capped at /20 = 4096 rows), so a substring scan over
+// `hostname/mac/description/address` is cheap and avoids a round-trip per
+// keystroke. The status pill works the same way: filter the loaded list,
+// don't re-fetch.
+const ipSearch = ref('')
+const ipStatusFilter = ref<'all' | 'assigned' | 'reserved' | 'dhcp' | 'free'>('all')
+
+const filteredIps = computed(() => {
+  const needle = ipSearch.value.trim().toLowerCase()
+  return ips.value.filter((entry) => {
+    if (ipStatusFilter.value !== 'all' && entry.status !== ipStatusFilter.value) {
+      return false
+    }
+    if (!needle) return true
+    // Match on every searchable text field. Address is checked too so an
+    // operator typing the last octet ("42") still lands on .42 rows.
+    return (
+      entry.address.toLowerCase().includes(needle) ||
+      (entry.hostname?.toLowerCase().includes(needle) ?? false) ||
+      (entry.mac?.toLowerCase().includes(needle) ?? false) ||
+      (entry.description?.toLowerCase().includes(needle) ?? false)
+    )
+  })
+})
+
+const tableRows = computed(() => filteredIps.value.map((entry) => ({ ...entry, id: entry.address })))
 
 type StatusKey = 'reserved' | 'assigned' | 'dhcp' | 'free'
 const statusBadgeTone: Record<StatusKey, 'primary' | 'success' | 'warning' | 'muted'> = {
@@ -287,41 +313,67 @@ function statusKey(status: string): StatusKey {
         </div>
       </section>
 
-      <!-- View toggle -->
-      <div class="flex items-center justify-between mb-3">
+      <!-- View toggle + table filters. Filters only matter in table view;
+           the grid view stays a visual heatmap and re-rendering 4096 buttons
+           on every keystroke isn't what an operator wants. -->
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h2 class="text-lg font-semibold">{{ t('ip.labelPlural') }}</h2>
-        <div
-          class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
-          role="group"
-        >
-          <button
-            type="button"
-            :aria-pressed="view === 'grid'"
-            :class="[
-              'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
-              view === 'grid'
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-            ]"
-            @click="view = 'grid'"
+        <div class="flex flex-wrap items-center gap-2">
+          <template v-if="view === 'table'">
+            <select
+              v-model="ipStatusFilter"
+              class="h-7 px-2 rounded border border-border bg-surface text-xs"
+              :aria-label="t('ip.fields.status')"
+            >
+              <option value="all">{{ t('ip.statusFilter.all') }}</option>
+              <option value="assigned">{{ t('ip.status.assigned') }}</option>
+              <option value="reserved">{{ t('ip.status.reserved') }}</option>
+              <option value="dhcp">{{ t('ip.status.dhcp') }}</option>
+              <option value="free">{{ t('ip.status.free') }}</option>
+            </select>
+            <input
+              v-model="ipSearch"
+              type="search"
+              :placeholder="t('ip.searchPlaceholder')"
+              :aria-label="t('ip.searchPlaceholder')"
+              class="h-7 px-2 rounded border border-border bg-surface text-xs w-44"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </template>
+          <div
+            class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
+            role="group"
           >
-            <Grid3x3 class="w-3.5 h-3.5" aria-hidden="true" />
-            {{ t('subnet.viewGrid') }}
-          </button>
-          <button
-            type="button"
-            :aria-pressed="view === 'table'"
-            :class="[
-              'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
-              view === 'table'
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-            ]"
-            @click="view = 'table'"
-          >
-            <TableIcon class="w-3.5 h-3.5" aria-hidden="true" />
-            {{ t('subnet.viewTable') }}
-          </button>
+            <button
+              type="button"
+              :aria-pressed="view === 'grid'"
+              :class="[
+                'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
+                view === 'grid'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                  : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+              ]"
+              @click="view = 'grid'"
+            >
+              <Grid3x3 class="w-3.5 h-3.5" aria-hidden="true" />
+              {{ t('subnet.viewGrid') }}
+            </button>
+            <button
+              type="button"
+              :aria-pressed="view === 'table'"
+              :class="[
+                'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
+                view === 'table'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                  : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+              ]"
+              @click="view = 'table'"
+            >
+              <TableIcon class="w-3.5 h-3.5" aria-hidden="true" />
+              {{ t('subnet.viewTable') }}
+            </button>
+          </div>
         </div>
       </div>
 
