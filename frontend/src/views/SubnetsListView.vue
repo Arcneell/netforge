@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowUpFromLine, List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
+import { List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -205,151 +205,11 @@ function openSubnet(id: number) {
   router.push(`/subnets/${id}`)
 }
 
-// Drag-and-drop reparenting. The DnD MIME mirrors the constant declared
-// inside `SubnetTreeRow.vue` — kept in sync by inspection. If we ever
-// add a second drop source we should move it to a shared module.
-const DRAG_MIME = 'application/x-netforge-subnet-id'
-const rootDropActive = ref(false)
-// Element the page actually scrolls inside. AppShell wraps the routed
-// view in `<main class="flex-1 overflow-y-auto">`, so that's the node
-// whose scrollTop we need to nudge during a drag near the top/bottom
-// edge of the viewport.
-let scrollContainer: HTMLElement | null = null
-
-/**
- * Native HTML5 drag-and-drop has no built-in autoscroll. When the user
- * picks up a row at the bottom of a long tree, dragging upward toward
- * the root drop zone above the fold simply pegs the cursor at the
- * viewport top and never reveals the target. Run a small RAF loop
- * while a drag is in progress: read the cursor's Y position from the
- * dragover events, and scroll the `main` container whenever the
- * cursor lands inside an EDGE_PX band at either end of the viewport.
- *
- * Speed is proportional to how deep the cursor is in the band, so a
- * cursor pressed against the very edge scrolls fastest. Stops the
- * moment the drag ends or the cursor leaves the band.
- */
-const EDGE_PX = 80
-const MAX_SCROLL_PER_FRAME = 18
-let pointerY = 0
-let dragRafId: number | null = null
-
-function startDragAutoScroll() {
-  if (dragRafId !== null) return
-  if (!scrollContainer) {
-    scrollContainer = document.querySelector('main')
-  }
-  const tick = () => {
-    if (!scrollContainer) {
-      dragRafId = null
-      return
-    }
-    const rect = scrollContainer.getBoundingClientRect()
-    const topGap = pointerY - rect.top
-    const bottomGap = rect.bottom - pointerY
-    let dy = 0
-    if (topGap < EDGE_PX && topGap >= 0) {
-      // Closer to the edge = stronger pull. 0..EDGE_PX → MAX..0 scroll up.
-      dy = -Math.round(MAX_SCROLL_PER_FRAME * (1 - topGap / EDGE_PX))
-    } else if (bottomGap < EDGE_PX && bottomGap >= 0) {
-      dy = Math.round(MAX_SCROLL_PER_FRAME * (1 - bottomGap / EDGE_PX))
-    }
-    if (dy !== 0) scrollContainer.scrollBy(0, dy)
-    dragRafId = requestAnimationFrame(tick)
-  }
-  dragRafId = requestAnimationFrame(tick)
-}
-
-function stopDragAutoScroll() {
-  if (dragRafId !== null) {
-    cancelAnimationFrame(dragRafId)
-    dragRafId = null
-  }
-}
-
-function onTreeDragOver(ev: DragEvent) {
-  // Only react to our own drags — `types` is available during dragover
-  // even though `getData` isn't. Guards against random text/file drops
-  // accidentally triggering the autoscroll RAF.
-  if (!ev.dataTransfer?.types.includes(DRAG_MIME)) return
-  pointerY = ev.clientY
-  startDragAutoScroll()
-}
-
-async function onReparent(payload: { childId: number; parentId: number | null }) {
-  // No client-side "is this a no-op" guard. A subnet may visually sit
-  // under a synthetic auto-group while being a real root in DB (the
-  // auto-group is a frontend grouping for flat trees, not a real
-  // parent). Skipping when `parent_subnet_id` already matches would
-  // make it impossible to "detach" such a row — the previous attempt
-  // at this caused exactly that regression. The backend treats setting
-  // an unchanged parent as a harmless idempotent update, so we just
-  // always call it and let the success/error path decide.
-  try {
-    await subnetsApi.update(payload.childId, { parent_subnet_id: payload.parentId })
-    // Toast wording follows the user's intent (the drop target), not
-    // the diff against the previous DB state — that way dropping on
-    // the root zone always reads as "detached" even if the row was
-    // already a root, which matches what the operator just did with
-    // their cursor.
-    success(
-      payload.parentId === null
-        ? t('subnet.tree.detached')
-        : t('subnet.tree.attached'),
-    )
-    // Reload both the tree and the flat list so a follow-up view switch
-    // shows fresh data — the parent column on the flat list is not yet
-    // rendered, but the cache underneath stays correct.
-    loadTree()
-    if (viewMode.value === 'list') load()
-  } catch (err) {
-    void describe(err)
-  }
-}
-
-function onRootDragOver(ev: DragEvent) {
-  if (!ev.dataTransfer || !ev.dataTransfer.types.includes(DRAG_MIME)) return
-  ev.preventDefault()
-  ev.dataTransfer.dropEffect = 'move'
-  rootDropActive.value = true
-}
-
-function onRootDrop(ev: DragEvent) {
-  rootDropActive.value = false
-  if (!ev.dataTransfer) return
-  const raw = ev.dataTransfer.getData(DRAG_MIME)
-  if (!raw) return
-  const childId = Number(raw)
-  if (!Number.isFinite(childId)) return
-  ev.preventDefault()
-  onReparent({ childId, parentId: null })
-}
-
-// Global cleanup hooks for the autoscroll RAF AND the root-drop-zone
-// highlight: whichever end-of-drag event fires first (drop on a
-// target, dragend on the source, even an Escape that aborts the drag)
-// cancels the loop and clears the highlight. Listeners are installed
-// at the window level because the user may release outside the tree
-// (e.g. on the sidebar) and we still want to stop scrolling and stop
-// pretending the drop zone is active.
-function onAnyDragEnd() {
-  stopDragAutoScroll()
-  rootDropActive.value = false
-}
-
 onMounted(() => {
   load()
   loadVlans()
   loadVrfs()
   loadSites()
-  window.addEventListener('dragend', onAnyDragEnd)
-  window.addEventListener('drop', onAnyDragEnd)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('dragend', onAnyDragEnd)
-  window.removeEventListener('drop', onAnyDragEnd)
-  stopDragAutoScroll()
 })
 
 function onNew() {
@@ -535,58 +395,28 @@ const columns: DataTableColumn[] = [
       </Button>
     </div>
 
-    <!-- Tree view. The container listens for `dragover` so we can
-         autoscroll the `main` element when the cursor approaches the
-         viewport edges — native HTML5 DnD has no built-in autoscroll. -->
-    <div
-      v-if="viewMode === 'tree'"
-      class="nf-card overflow-hidden"
-      @dragover="onTreeDragOver"
-    >
+    <!-- Tree view. Read-only hierarchical view — `parent_subnet_id` is
+         editable from the subnet form, not by dragging rows. -->
+    <div v-if="viewMode === 'tree'" class="nf-card overflow-hidden">
       <div v-if="treeLoading" class="p-6 text-center text-fg-muted text-sm">
         {{ t('common.loading') }}
       </div>
       <div v-else-if="tree.length === 0" class="p-6 text-center text-fg-muted text-sm">
         {{ t('subnet.treeEmpty') }}
       </div>
-      <template v-else>
-        <!-- Top-level drop zone: drag any node here to detach it from
-             its current parent (the move sets `parent_subnet_id = null`).
-             Visible only to admins so viewers don't see a drop affordance
-             that does nothing. The dashed outline pattern is the
-             internet's universal "this is a drop target" cue — operators
-             recognise it on first hover. -->
-        <div
-          v-if="isAdmin"
-          :class="[
-            'mx-3 mt-3 mb-2 px-4 py-3 rounded-md border border-dashed flex items-center justify-center gap-2 text-xs font-medium transition-colors',
-            rootDropActive
-              ? 'border-primary-500 bg-primary-500/10 text-primary-700 dark:text-primary-300'
-              : 'border-border bg-muted/30 text-fg-muted',
-          ]"
-          @dragover="onRootDragOver"
-          @dragleave="rootDropActive = false"
-          @drop="onRootDrop"
-        >
-          <ArrowUpFromLine class="w-3.5 h-3.5" aria-hidden="true" />
-          {{ t('subnet.tree.rootDropHint') }}
-        </div>
-        <ul class="divide-y divide-border/50">
-          <SubnetTreeRow
-            v-for="(node, idx) in tree"
-            :key="node.id"
-            :node="node"
-            :collapsed="collapsed"
-            :depth="0"
-            :is-last="idx === tree.length - 1"
-            :vlans-by-id="vlansById"
-            :can-reparent="isAdmin"
-            @toggle="toggleNode"
-            @open="openSubnet"
-            @reparent="onReparent"
-          />
-        </ul>
-      </template>
+      <ul v-else class="divide-y divide-border/50">
+        <SubnetTreeRow
+          v-for="(node, idx) in tree"
+          :key="node.id"
+          :node="node"
+          :collapsed="collapsed"
+          :depth="0"
+          :is-last="idx === tree.length - 1"
+          :vlans-by-id="vlansById"
+          @toggle="toggleNode"
+          @open="openSubnet"
+        />
+      </ul>
     </div>
 
     <DataTable

@@ -266,10 +266,7 @@
     "treeEmpty": "Aucun subnet dans ce scope — créez-en un pour commencer.",
     "tree": {
       "autoGroup": "Auto",
-      "containedCount": "{n} subnet(s) dans cette plage",
-      "rootDropHint": "Déposez ici pour détacher un subnet de son parent.",
-      "attached": "Subnet rattaché à son nouveau parent.",
-      "detached": "Subnet détaché — il est maintenant à la racine."
+      "containedCount": "{n} subnet(s) dans cette plage"
     },
     "exportCsv": "Exporter CSV",
     "nextFree": "Prochaine IP libre",
