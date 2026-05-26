@@ -93,6 +93,12 @@ const chunks = computed<Chunk[]>(() => {
 const visibleChunks = ref<Set<string>>(new Set())
 const chunkRefs = ref<Map<string, HTMLDivElement>>(new Map())
 let observer: IntersectionObserver | null = null
+// Set to `true` once we discover the runtime doesn't have
+// IntersectionObserver (SSR, jsdom, very old browsers). In that mode we
+// render every chunk eagerly and the watcher MUST repopulate the set
+// when `props.ips` changes — otherwise the grid stays blank after the
+// first reload (Codex P1 on #81).
+const fallbackEager = ref(false)
 
 function setChunkRef(id: string) {
   // Vue's :ref callback is typed `(ref: Element | ComponentPublicInstance
@@ -115,6 +121,7 @@ onMounted(() => {
   // fall back to rendering every chunk eagerly. Same behaviour as the
   // pre-virtualisation code path, no regression.
   if (typeof IntersectionObserver === 'undefined') {
+    fallbackEager.value = true
     visibleChunks.value = new Set(chunks.value.map((c) => c.id))
     return
   }
@@ -155,12 +162,20 @@ onBeforeUnmount(() => {
 })
 
 // When the IPs list changes (e.g. parent reload after a bulk action),
-// reset the visibility set so the new chunk ids re-register on mount.
-// Otherwise stale ids from the previous subnet would linger.
+// the chunk ids change too. In observer mode we clear the visibility
+// set and let the IntersectionObserver repopulate it on the next
+// mount tick. In fallback (eager) mode there's no observer to do that —
+// we have to repopulate the set ourselves with every new chunk id, or
+// the grid stays blank forever after the first reload (Codex P1 on
+// #81).
 watch(
   () => props.ips,
   () => {
-    visibleChunks.value = new Set()
+    if (fallbackEager.value) {
+      visibleChunks.value = new Set(chunks.value.map((c) => c.id))
+    } else {
+      visibleChunks.value = new Set()
+    }
   },
 )
 
