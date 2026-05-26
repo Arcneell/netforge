@@ -12,6 +12,19 @@ from ipaddress import IPv4Address, IPv4Network
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
+def _ip_text(value: object) -> str:
+    """Canonicalise whatever asyncpg returns for an INET column to a bare
+    dotted-quad. asyncpg defaults to `ipaddress.IPv4Interface`, whose
+    `str()` includes the `/32` mask — strip it so the in-memory lookups
+    in `bulk_ip_range` match the keys we built from `IPv4Address` (Codex
+    P1 on #80, mirrors the `_ip_text` helper in `services.subnets`).
+    """
+    text = str(value)
+    if "/" in text:
+        text = text.split("/", 1)[0]
+    return str(IPv4Address(text))
+
 from app.models.ip import Ip
 from app.models.subnet import Subnet
 from app.schemas.common import PageParams
@@ -187,16 +200,24 @@ async def bulk_ip_range(
     ]
 
     # One round-trip to find existing rows in the range so the inner loop
-    # is a pure dispatch — no per-address SELECT.
+    # is a pure dispatch — no per-address SELECT. Compare directly against
+    # the INET column: Postgres coerces our text targets to inet host
+    # addresses (no mask) and the equality works. The previous
+    # `cast(Ip.address, String).in_(targets)` matched against the inet
+    # text form, which includes `/32`, so existing rows were never found —
+    # bulk reserve then tried to INSERT them again and tripped the UNIQUE
+    # constraint (Codex P1 on #80).
     existing_rows = (
         await db.execute(
             select(Ip).where(
                 Ip.subnet_id == subnet_id,
-                cast(Ip.address, String).in_(targets),
+                Ip.address.in_(targets),
             )
         )
     ).scalars().all()
-    existing_by_addr: dict[str, Ip] = {str(r.address): r for r in existing_rows}
+    # Canonicalise the key so `existing_by_addr["10.0.0.11"]` works
+    # whether asyncpg returned `"10.0.0.11"` or `IPv4Interface('10.0.0.11/32')`.
+    existing_by_addr: dict[str, Ip] = {_ip_text(r.address): r for r in existing_rows}
 
     created = updated = deleted = skipped = 0
     if payload.action is BulkIpAction.release:

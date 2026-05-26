@@ -193,3 +193,29 @@ async def test_bulk_rejects_missing_subnet() -> None:
     with pytest.raises(HTTPException) as exc:
         await service.bulk_ip_range(db, 99, payload)
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_bulk_existing_lookup_handles_inet_mask() -> None:
+    """asyncpg can return INET values with a `/32` mask. The
+    `existing_by_addr` map must be keyed on the bare dotted-quad so the
+    inner-loop `dict.get(addr)` lookup matches. Without the
+    `_ip_text` canonicaliser the row appears missing, bulk reserve
+    tries to re-insert it and trips the UNIQUE constraint at commit
+    time (Codex P1 on #80)."""
+    # Simulate asyncpg surfacing the inet with its mask suffix.
+    existing = [Ip(id=1, subnet_id=1, address="10.0.0.11/32", status=IpStatus.assigned)]
+    db = _mock_db(_subnet(), existing=existing)
+    payload = BulkIpRange(
+        action=BulkIpAction.reserve,
+        start="10.0.0.10",
+        end="10.0.0.13",
+        overwrite=True,
+    )
+    out = await service.bulk_ip_range(db, 1, payload)
+    # `.11` is recognised as existing → updated (overwrite=True), not
+    # double-inserted. The other three addresses (.10, .12, .13) are
+    # created fresh.
+    assert out["created"] == 3
+    assert out["updated"] == 1
+    assert out["skipped"] == 0
