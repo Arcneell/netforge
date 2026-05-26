@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, ChevronRight, FolderTree, Network } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, FolderTree, GripVertical, Network } from 'lucide-vue-next'
 import VlanBadge from '@/components/VlanBadge.vue'
 import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import type { SubnetTreeNode } from '@/api/endpoints/subnets'
 import type { Vlan } from '@/api'
 
 const { t } = useI18n()
+
+// DataTransfer MIME we put the dragged subnet id under. Custom string so
+// dropping a random text snippet doesn't accidentally trigger a move.
+const DRAG_MIME = 'application/x-netforge-subnet-id'
 
 /**
  * One row in the subnet hierarchy tree, drawn with explorer-style
@@ -35,14 +39,65 @@ const props = withDefaults(
     isLast?: boolean
     ancestorOpen?: boolean[]
     vlansById: Map<number, Vlan>
+    /** Admins can drag rows to reparent. Non-admins see a static tree.
+     *  Default false so passing the prop is opt-in at the call site. */
+    canReparent?: boolean
   }>(),
-  { isLast: true, ancestorOpen: () => [] },
+  { isLast: true, ancestorOpen: () => [], canReparent: false },
 )
 
 const emit = defineEmits<{
   (e: 'toggle', id: number): void
   (e: 'open', id: number): void
+  /** `parentId = null` means "promote to root in the current VRF". */
+  (e: 'reparent', payload: { childId: number; parentId: number | null }): void
 }>()
+
+// Currently being dragged over (used to highlight the row as a drop
+// target). Local state per-row so neighbouring rows don't all light up
+// when the cursor hovers over one of them.
+const dropActive = ref(false)
+
+function onDragStart(ev: DragEvent) {
+  // Synthetic auto-group rows have no DB row to move — refuse the drag.
+  if (!props.canReparent || isSynthetic.value || !ev.dataTransfer) {
+    ev.preventDefault()
+    return
+  }
+  ev.dataTransfer.effectAllowed = 'move'
+  ev.dataTransfer.setData(DRAG_MIME, String(props.node.id))
+  // Plain-text fallback so OS-level drop targets (e.g. external IDE) get
+  // a readable label rather than an empty payload.
+  ev.dataTransfer.setData('text/plain', props.node.cidr)
+}
+
+function onDragOver(ev: DragEvent) {
+  if (!props.canReparent || isSynthetic.value || !ev.dataTransfer) return
+  if (!ev.dataTransfer.types.includes(DRAG_MIME)) return
+  // Same-row guard — dropping a node onto itself is a no-op the backend
+  // would reject with INVALID_PARENT, but we'd rather not even paint the
+  // target highlight. Reading the id from dataTransfer isn't allowed
+  // during `dragover` (browsers expose only `types`), so we skip the
+  // strict self-check here and rely on the drop handler to bail out.
+  ev.preventDefault() // required to enable the drop
+  ev.dataTransfer.dropEffect = 'move'
+  dropActive.value = true
+}
+
+function onDragLeave() {
+  dropActive.value = false
+}
+
+function onDrop(ev: DragEvent) {
+  dropActive.value = false
+  if (!props.canReparent || isSynthetic.value || !ev.dataTransfer) return
+  const raw = ev.dataTransfer.getData(DRAG_MIME)
+  if (!raw) return
+  const childId = Number(raw)
+  if (!Number.isFinite(childId) || childId === props.node.id) return
+  ev.preventDefault()
+  emit('reparent', { childId, parentId: props.node.id })
+}
 
 const hasChildren = computed(() => props.node.children.length > 0)
 const isCollapsed = computed(() => props.collapsed.has(props.node.id))
@@ -74,9 +129,15 @@ const childAncestorOpen = computed<boolean[]>(() =>
         isSynthetic
           ? 'cursor-default bg-muted/30 hover:bg-muted/40'
           : 'cursor-pointer hover:bg-surface-hover',
+        dropActive ? 'outline outline-2 outline-primary-500 -outline-offset-1 bg-primary-500/5' : '',
       ]"
       :style="{ paddingLeft: `${depth * INDENT_REM + 0.75}rem` }"
+      :draggable="canReparent && !isSynthetic"
       @click="isSynthetic ? null : emit('open', node.id)"
+      @dragstart="onDragStart"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
     >
       <!-- Vertical guide lines for ancestor columns that still have more
            siblings below this row. Centered horizontally in each indent
@@ -135,6 +196,14 @@ const childAncestorOpen = computed<boolean[]>(() =>
       </span>
 
       <div class="flex items-center gap-2 px-2 py-1.5 min-w-0 flex-1">
+        <!-- Drag handle — only visible to admins on hover. Plain cursor
+             hint; the whole row is the drag source so dragging from the
+             grip or anywhere else works equally. -->
+        <GripVertical
+          v-if="canReparent && !isSynthetic"
+          class="w-3.5 h-3.5 text-fg-muted opacity-0 group-hover:opacity-60 transition-opacity flex-shrink-0 cursor-grab active:cursor-grabbing"
+          aria-hidden="true"
+        />
         <span
           :class="[
             'font-mono text-sm truncate',
@@ -198,8 +267,10 @@ const childAncestorOpen = computed<boolean[]>(() =>
         :is-last="idx === node.children.length - 1"
         :ancestor-open="childAncestorOpen"
         :vlans-by-id="vlansById"
+        :can-reparent="canReparent"
         @toggle="(id) => emit('toggle', id)"
         @open="(id) => emit('open', id)"
+        @reparent="(payload) => emit('reparent', payload)"
       />
     </ul>
   </li>
