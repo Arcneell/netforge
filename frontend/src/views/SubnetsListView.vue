@@ -276,43 +276,27 @@ function onTreeDragOver(ev: DragEvent) {
   startDragAutoScroll()
 }
 
-/**
- * Look up the current `parent_subnet_id` of a node in the loaded tree.
- * Used to (1) short-circuit no-op drops (dropping a root onto the root
- * zone again, or onto its current parent), and (2) pick the right
- * toast wording (attach vs detach vs move).
- */
-function findCurrentParent(nodes: SubnetTreeNode[], id: number): number | null | undefined {
-  for (const n of nodes) {
-    if (n.id === id) return n.parent_subnet_id
-    const inside = findCurrentParent(n.children, id)
-    if (inside !== undefined) return inside
-  }
-  return undefined
-}
-
 async function onReparent(payload: { childId: number; parentId: number | null }) {
-  // Short-circuit no-ops so the user doesn't see an "attached" toast
-  // for dropping a row exactly where it already lives. Returns
-  // `undefined` for nodes we can't find (e.g. drag from a stale tree
-  // snapshot) — fall through to the API in that case so the backend
-  // decides.
-  const currentParent = findCurrentParent(tree.value, payload.childId)
-  if (currentParent !== undefined && currentParent === payload.parentId) {
-    return
-  }
+  // No client-side "is this a no-op" guard. A subnet may visually sit
+  // under a synthetic auto-group while being a real root in DB (the
+  // auto-group is a frontend grouping for flat trees, not a real
+  // parent). Skipping when `parent_subnet_id` already matches would
+  // make it impossible to "detach" such a row — the previous attempt
+  // at this caused exactly that regression. The backend treats setting
+  // an unchanged parent as a harmless idempotent update, so we just
+  // always call it and let the success/error path decide.
   try {
     await subnetsApi.update(payload.childId, { parent_subnet_id: payload.parentId })
-    // Pick the toast wording based on the OUTGOING side of the move so
-    // the operator gets accurate feedback. Detach = becoming a root,
-    // attach = gaining a parent, move = changing parents.
-    if (payload.parentId === null) {
-      success(t('subnet.tree.detached'))
-    } else if (currentParent === null || currentParent === undefined) {
-      success(t('subnet.tree.attached'))
-    } else {
-      success(t('subnet.tree.moved'))
-    }
+    // Toast wording follows the user's intent (the drop target), not
+    // the diff against the previous DB state — that way dropping on
+    // the root zone always reads as "detached" even if the row was
+    // already a root, which matches what the operator just did with
+    // their cursor.
+    success(
+      payload.parentId === null
+        ? t('subnet.tree.detached')
+        : t('subnet.tree.attached'),
+    )
     // Reload both the tree and the flat list so a follow-up view switch
     // shows fresh data — the parent column on the flat list is not yet
     // rendered, but the cache underneath stays correct.

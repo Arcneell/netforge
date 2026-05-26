@@ -269,8 +269,7 @@
       "containedCount": "{n} subnet(s) in this range",
       "rootDropHint": "Drop here to detach a subnet from its parent.",
       "attached": "Subnet attached to its new parent.",
-      "detached": "Subnet detached — now at the root.",
-      "moved": "Subnet moved under its new parent."
+      "detached": "Subnet detached — now at the root."
     },
     "exportCsv": "Export CSV",
     "nextFree": "Next free IP",
