@@ -279,6 +279,27 @@
       "useExport": "Export the full list to CSV for one-off audits.",
       "useImport": "Bulk-register IPs via the CSV importer — it writes rows directly without enumerating the address space."
     },
+    "bulk": {
+      "open": "Bulk range",
+      "title": "Reserve or release an IP range",
+      "help": "Pick a contiguous range inside {cidr}. Network and broadcast addresses are skipped automatically. Capped at 512 addresses per call.",
+      "actionLabel": "Action",
+      "reserve": "Reserve",
+      "release": "Release",
+      "applyReserve": "Apply reservation",
+      "start": "Start address",
+      "end": "End address",
+      "statusHelp": "Status applied to every newly-created or overwritten row.",
+      "descriptionPlaceholder": "Optional — copied onto every created IP.",
+      "overwrite": "Overwrite existing IPs",
+      "overwriteHelp": "Without this, addresses that already have a row are skipped. Turn on to mass-flip their status in place.",
+      "resultTitle": "Operation complete",
+      "requested": "Requested",
+      "created": "Created",
+      "updated": "Updated",
+      "deleted": "Deleted",
+      "skipped": "Skipped"
+    },
     "stats": {
       "used": "{count} used",
       "free": "{count} free",
