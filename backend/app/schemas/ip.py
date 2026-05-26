@@ -56,3 +56,45 @@ class IpRead(IpBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+class BulkIpAction(str, Enum):
+    reserve = "reserve"
+    release = "release"
+
+
+class BulkIpRange(BaseModel):
+    """Bulk-operate on a contiguous range of host addresses inside a subnet.
+
+    - `reserve` creates an IP row per address with the given status, skipping
+      any address that already has a row (unless `overwrite=True`, in which
+      case the existing row is updated in place).
+    - `release` deletes every IP row whose address falls in the range.
+    Capped server-side so a malformed range can't trigger a runaway
+    transaction.
+    """
+
+    action: BulkIpAction
+    start: str
+    end: str
+    # Defaults to `reserved` — the most common bulk use case is parking a
+    # range for a vendor / DHCP exclusion / planned hardware. `assigned`
+    # is the second most common (label imports).
+    status: IpStatus = IpStatus.reserved
+    overwrite: bool = False
+    description: str | None = Field(default=None, max_length=500)
+
+    @field_validator("start", "end", mode="before")
+    @classmethod
+    def _validate_addr(cls, v: object) -> str:
+        return str(IPv4Address(v))  # type: ignore[arg-type]
+
+
+class BulkIpResult(BaseModel):
+    """Summary returned by `POST /api/subnets/{id}/bulk-ip`."""
+
+    requested: int
+    created: int
+    updated: int
+    deleted: int
+    skipped: int

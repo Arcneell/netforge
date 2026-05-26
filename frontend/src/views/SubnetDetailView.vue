@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Pencil, Sparkles, Download, Grid3x3, Table as TableIcon } from 'lucide-vue-next'
+import { Pencil, Sparkles, Download, Grid3x3, Layers, Table as TableIcon } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import Button from '@/components/ui/Button.vue'
@@ -12,6 +12,7 @@ import VlanBadge from '@/components/VlanBadge.vue'
 import IpGrid from '@/components/IpGrid.vue'
 import IpEditor from '@/components/editors/IpEditor.vue'
 import SubnetEditor from '@/components/editors/SubnetEditor.vue'
+import BulkIpDialog from '@/components/editors/BulkIpDialog.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import { useStoredRef } from '@/composables/useStoredRef'
 import { ApiError, ipsApi, subnetsApi, vlansApi } from '@/api'
@@ -44,6 +45,7 @@ const view = useStoredRef<'grid' | 'table'>('netforge.subnet.view', 'grid')
 
 const editingSubnet = ref(false)
 const editingIpFor = ref<{ ip: Ip | null; address: string | null } | null>(null)
+const bulkOpen = ref(false)
 // True when `/ips` refused to enumerate the address space because the
 // subnet is bigger than the server-side cap (`SUBNET_TOO_LARGE`). The
 // utilisation card still renders — we just hide the grid and surface
@@ -277,6 +279,10 @@ function statusKey(status: string): StatusKey {
             <Sparkles class="w-4 h-4" aria-hidden="true" />
             {{ t('subnet.nextFree') }}
           </Button>
+          <Button v-if="isAdmin" variant="secondary" @click="bulkOpen = true">
+            <Layers class="w-4 h-4" aria-hidden="true" />
+            {{ t('subnet.bulk.open') }}
+          </Button>
           <Button v-if="isAdmin" variant="primary" @click="editingSubnet = true">
             <Pencil class="w-4 h-4" aria-hidden="true" />
             {{ t('common.edit') }}
@@ -470,6 +476,12 @@ function statusKey(status: string): StatusKey {
         @close="editingIpFor = null"
         @saved="load"
         @deleted="load"
+      />
+      <BulkIpDialog
+        :open="bulkOpen"
+        :subnet="subnet"
+        @close="bulkOpen = false"
+        @applied="load"
       />
     </template>
   </div>
