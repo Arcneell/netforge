@@ -142,10 +142,20 @@ async function onIpClick(entry: SubnetIpEntry) {
     try {
       const hit = await ipsApi.get(entry.ip_id)
       editingIpFor.value = { ip: hit, address: null }
+      return
     } catch (err) {
+      // Stale grid: another admin deleted the row between the page load
+      // and this click. Don't strand the user on the error toast — fall
+      // through to a create-at-address flow so the click still does
+      // something useful. Same behaviour as the pre-`ip_id` code path
+      // (Codex P2 on #76).
+      if (err instanceof ApiError && err.status === 404) {
+        editingIpFor.value = { ip: null, address: entry.address }
+        return
+      }
       void describe(err)
+      return
     }
-    return
   }
   editingIpFor.value = { ip: null, address: entry.address }
 }

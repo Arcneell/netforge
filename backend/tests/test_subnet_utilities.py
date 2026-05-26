@@ -264,3 +264,20 @@ async def test_per_subnet_used_counts_keeps_slash_31_rows() -> None:
     )
     counts = await service._per_subnet_used_counts(db, [sub])
     assert counts == {7: 2}
+
+
+@pytest.mark.asyncio
+async def test_per_subnet_used_counts_strips_inet_mask() -> None:
+    """asyncpg decodes INET to IPv4Interface, whose `str()` returns
+    `'10.0.0.0/32'`. The boundary check must canonicalise back to the
+    bare dotted-quad before matching against the in-memory boundary set
+    — otherwise the subtract silently misses every row (Codex P1 on #76).
+    """
+    sub = Subnet(id=1, cidr="10.0.0.0/24", site_id=1, dhcp_enabled=False)
+    db = _mock_db_for_per_subnet_counts(
+        raw_counts=[(1, 5)],
+        # Simulate asyncpg returning the inet value with its /32 mask.
+        boundary_rows=[(1, "10.0.0.255/32")],
+    )
+    counts = await service._per_subnet_used_counts(db, [sub])
+    assert counts == {1: 4}

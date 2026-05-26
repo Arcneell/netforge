@@ -23,6 +23,23 @@ from app.schemas.common import PageParams
 from app.schemas.subnet import SubnetCreate, SubnetIpEntry, SubnetUpdate
 from app.services.errors import business_rule, catch_integrity_errors, not_found
 
+
+def _ip_text(value: object) -> str:
+    """Canonicalise whatever asyncpg returns for an INET column to a bare
+    dotted-quad.
+
+    asyncpg decodes `inet` to `ipaddress.IPv4Interface` by default, and
+    `str(IPv4Interface('10.0.0.1/32'))` returns `'10.0.0.1/32'` — the
+    trailing `/32` is what made the previous boundary subtract miss every
+    row (Codex P1 on #76). Strip the mask and re-parse with
+    `IPv4Address` so we always end up with the bare dotted-quad we use
+    everywhere else (next_free_ip, list_subnet_ips, …).
+    """
+    text = str(value)
+    if "/" in text:
+        text = text.split("/", 1)[0]
+    return str(IPv4Address(text))
+
 # Hard cap on /N scans: 4096 host addresses (i.e. /20). Anything larger is a
 # planning error in a documentation tool — surface a 400 rather than try to
 # materialise 65k entries.
@@ -141,17 +158,23 @@ async def _per_subnet_used_counts(
         return counts
 
     boundary_addrs = sorted({addr for _, addr in boundary_pairs})
+    # Compare against the INET column directly — Postgres coerces the
+    # text literals to inet host addresses (no /32 mask). The previous
+    # `cast(Ip.address, String).in_(...)` version compared against text
+    # output of inet, which includes the mask, so no rows ever matched
+    # and boundary IPs silently inflated `used` past `usable`
+    # (Codex P1 on #76).
     boundary_rows = (
         await db.execute(
             select(Ip.subnet_id, Ip.address)
             .where(
                 Ip.subnet_id.in_(ids),
-                cast(Ip.address, String).in_(boundary_addrs),
+                Ip.address.in_(boundary_addrs),
             )
         )
     ).all()
     for sid, addr in boundary_rows:
-        if (int(sid), str(addr)) in boundary_pairs:
+        if (int(sid), _ip_text(addr)) in boundary_pairs:
             counts[int(sid)] = counts.get(int(sid), 0) - 1
     # Defensive clamp — if somehow more boundary rows than usable rows
     # were recorded, surface 0 rather than a negative `used`.
