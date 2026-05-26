@@ -33,10 +33,16 @@ async def list_subnets(
         ge=0,
         description="Filter by VRF. Use `0` to fetch only global-scope subnets.",
     ),
+    q: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=120,
+        description="Free-text search over CIDR + description (trigram-indexed).",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> Page[SubnetRead]:
     items, total, ip_counts = await service.list_subnets(
-        db, page, site_id=site_id, vlan_id=vlan_id, vrf_id=vrf_id
+        db, page, site_id=site_id, vlan_id=vlan_id, vrf_id=vrf_id, q=q
     )
     return Page[SubnetRead](
         items=[

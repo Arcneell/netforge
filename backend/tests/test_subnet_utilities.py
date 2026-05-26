@@ -108,7 +108,7 @@ async def test_list_subnet_ips_returns_every_host_with_status() -> None:
 @pytest.mark.asyncio
 async def test_list_subnet_ips_carries_hostname_and_description() -> None:
     ip = Ip(
-        id=1, subnet_id=1, address="10.0.0.2",
+        id=42, subnet_id=1, address="10.0.0.2",
         status=IpStatus.assigned, hostname="srv-01", description="DC primary",
     )
     db = _mock_db(_subnet(), ips=[ip])
@@ -116,6 +116,14 @@ async def test_list_subnet_ips_carries_hostname_and_description() -> None:
     target = next(e for e in entries if e.address == "10.0.0.2")
     assert target.hostname == "srv-01"
     assert target.description == "DC primary"
+    # PR perf/ipam-indexes-and-group-by: every entry backed by a real Ip
+    # row carries its `id` so the editor opens with one fetch instead of
+    # round-tripping through `/ips?q=...`. Synthetic free/dhcp rows keep
+    # `ip_id = None`.
+    assert target.ip_id == 42
+    free_entry = next(e for e in entries if e.address == "10.0.0.1")
+    assert free_entry.status == "free"
+    assert free_entry.ip_id is None
 
 
 @pytest.mark.asyncio
@@ -185,3 +193,91 @@ async def test_compute_utilization_works_on_large_subnet() -> None:
     assert util["usable"] == 65_534  # 2**16 - 2
     assert util["status_assigned"] == 50_000
     assert util["used_pct"] == 76  # 50000 * 100 // 65534
+
+
+# --- _per_subnet_used_counts (PR perf/ipam-indexes-and-group-by) ------------
+
+
+def _mock_db_for_per_subnet_counts(
+    raw_counts: list[tuple[int, int]],
+    boundary_rows: list[tuple[int, str]],
+) -> AsyncMock:
+    """Mock the two grouped SELECTs that `_per_subnet_used_counts` issues:
+    a raw `(subnet_id, COUNT(*))` then a per-row boundary subtract."""
+    raw_result = MagicMock()
+    raw_result.all = MagicMock(return_value=raw_counts)
+    boundary_result = MagicMock()
+    boundary_result.all = MagicMock(return_value=boundary_rows)
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[raw_result, boundary_result])
+    return db
+
+
+@pytest.mark.asyncio
+async def test_per_subnet_used_counts_empty_input_skips_queries() -> None:
+    """Empty input must not fire any SQL — IN ()-clauses are an asyncpg error
+    and the cheapest correct answer is `{}`."""
+    db = AsyncMock()
+    db.execute = AsyncMock()
+    out = await service._per_subnet_used_counts(db, [])
+    assert out == {}
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_per_subnet_used_counts_subtracts_boundary_addresses() -> None:
+    """A /24 with 5 IP rows of which one lives on the broadcast (.255)
+    should report used = 4. Without the subtract we'd return 5 and the
+    fill bar would disagree with `compute_utilization`."""
+    sub = Subnet(id=1, cidr="10.0.0.0/24", site_id=1, dhcp_enabled=False)
+    db = _mock_db_for_per_subnet_counts(
+        raw_counts=[(1, 5)],
+        boundary_rows=[(1, "10.0.0.255")],
+    )
+    counts = await service._per_subnet_used_counts(db, [sub])
+    assert counts == {1: 4}
+
+
+@pytest.mark.asyncio
+async def test_per_subnet_used_counts_clamps_below_zero() -> None:
+    """Defensive clamp: if the boundary subtract somehow overshoots the
+    raw count (unexpected DB state), we surface 0 rather than -N so the
+    UI never displays a negative fill."""
+    sub = Subnet(id=1, cidr="10.0.0.0/24", site_id=1, dhcp_enabled=False)
+    db = _mock_db_for_per_subnet_counts(
+        raw_counts=[(1, 1)],
+        boundary_rows=[(1, "10.0.0.0"), (1, "10.0.0.255")],
+    )
+    counts = await service._per_subnet_used_counts(db, [sub])
+    assert counts == {1: 0}
+
+
+@pytest.mark.asyncio
+async def test_per_subnet_used_counts_keeps_slash_31_rows() -> None:
+    """RFC 3021 /31s have no network/broadcast — both addresses are
+    host-usable. The helper must NOT add them to the boundary set, so a
+    /31 with 2 IP rows keeps used = 2."""
+    sub = Subnet(id=7, cidr="10.0.0.0/31", site_id=1, dhcp_enabled=False)
+    db = _mock_db_for_per_subnet_counts(
+        raw_counts=[(7, 2)],
+        boundary_rows=[],
+    )
+    counts = await service._per_subnet_used_counts(db, [sub])
+    assert counts == {7: 2}
+
+
+@pytest.mark.asyncio
+async def test_per_subnet_used_counts_strips_inet_mask() -> None:
+    """asyncpg decodes INET to IPv4Interface, whose `str()` returns
+    `'10.0.0.0/32'`. The boundary check must canonicalise back to the
+    bare dotted-quad before matching against the in-memory boundary set
+    — otherwise the subtract silently misses every row (Codex P1 on #76).
+    """
+    sub = Subnet(id=1, cidr="10.0.0.0/24", site_id=1, dhcp_enabled=False)
+    db = _mock_db_for_per_subnet_counts(
+        raw_counts=[(1, 5)],
+        # Simulate asyncpg returning the inet value with its /32 mask.
+        boundary_rows=[(1, "10.0.0.255/32")],
+    )
+    counts = await service._per_subnet_used_counts(db, [sub])
+    assert counts == {1: 4}
