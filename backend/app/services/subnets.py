@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from ipaddress import IPv4Address, IPv4Network
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ip import Ip
@@ -47,6 +47,7 @@ async def list_subnets(
     site_id: int | None = None,
     vlan_id: int | None = None,
     vrf_id: int | None = None,
+    q: str | None = None,
 ) -> tuple[list[Subnet], int, dict[int, int]]:
     base = select(Subnet)
     count_q = select(func.count()).select_from(Subnet)
@@ -66,6 +67,15 @@ async def list_subnets(
         else:
             base = base.where(Subnet.vrf_id == vrf_id)
             count_q = count_q.where(Subnet.vrf_id == vrf_id)
+    if q:
+        # Free-text search across CIDR + description. The CIDR cast picks
+        # up partial matches like "10.20." or "/24"; description picks up
+        # everything operators jot in there. Trigram GIN indexes on both
+        # columns (migration 0012) keep this O(log N) instead of seq scan.
+        pattern = f"%{q.strip()}%"
+        text_filter = cast(Subnet.cidr, String).ilike(pattern) | Subnet.description.ilike(pattern)
+        base = base.where(text_filter)
+        count_q = count_q.where(text_filter)
 
     total = (await db.execute(count_q)).scalar() or 0
     result = await db.execute(
@@ -73,38 +83,79 @@ async def list_subnets(
     )
     items = list(result.scalars().all())
 
-    # Per-page IP counts in one grouped SELECT — the list endpoint now
+    # Per-page IP counts in TWO grouped SELECTs — the list endpoint now
     # carries `used` so the UI can render a fill bar without hitting the
     # utilisation endpoint N times. Skipped when the page is empty so the
     # IN-clause never receives an empty tuple.
     #
     # Counts use the SAME accounting as `compute_utilization`: boundary
-    # IPs (network / broadcast) on /≤30 are excluded. Without this, an
-    # operator who recorded e.g. .0 or .255 would see `used > usable` on
-    # the list bar — disagreeing with the per-subnet utilisation page
-    # and making capacity triage misleading. Codex P2 on #74.
-    ip_counts: dict[int, int] = {}
-    if items:
-        ids = [s.id for s in items]
-        boundary_pairs: set[tuple[int, str]] = set()
-        for s in items:
-            net = IPv4Network(str(s.cidr), strict=False)
-            if net.prefixlen < 31:
-                boundary_pairs.add((s.id, str(net.network_address)))
-                boundary_pairs.add((s.id, str(net.broadcast_address)))
-
-        rows = (
-            await db.execute(
-                select(Ip.subnet_id, Ip.address)
-                .where(Ip.subnet_id.in_(ids))
-            )
-        ).all()
-        for sid, addr in rows:
-            if (int(sid), str(addr)) in boundary_pairs:
-                continue
-            ip_counts[int(sid)] = ip_counts.get(int(sid), 0) + 1
-
+    # IPs (network / broadcast) on /≤30 are excluded. Previously we
+    # streamed one row per IP and filtered in Python — on a page of 50
+    # subnets with 200 IPs each that's 10 000 rows over the wire. Now:
+    #
+    #   1. SELECT subnet_id, COUNT(*) GROUP BY subnet_id   ← page rows
+    #   2. SELECT subnet_id, COUNT(*) ... WHERE address IN (boundaries)
+    #      GROUP BY subnet_id                              ← subtract
+    #
+    # Both queries return at most one row per subnet on the current page,
+    # so the payload is bounded by `page_size` regardless of inventory.
+    ip_counts = await _per_subnet_used_counts(db, items)
     return items, int(total), ip_counts
+
+
+async def _per_subnet_used_counts(
+    db: AsyncSession, subnets: list[Subnet]
+) -> dict[int, int]:
+    """Boundary-aware `{subnet_id: used_count}` for a small batch of subnets.
+
+    Used by the list endpoint and the tree builder so both views agree on
+    the fill bar. Splits the work into a grouped raw count and a grouped
+    boundary count so neither query has to ship one row per IP — the
+    payload stays O(len(subnets)) regardless of how full each subnet is.
+    """
+    if not subnets:
+        return {}
+
+    ids = [s.id for s in subnets]
+    raw_counts_rows = (
+        await db.execute(
+            select(Ip.subnet_id, func.count(Ip.id))
+            .where(Ip.subnet_id.in_(ids))
+            .group_by(Ip.subnet_id)
+        )
+    ).all()
+    counts: dict[int, int] = {int(sid): int(c) for sid, c in raw_counts_rows}
+
+    # Subtract any IP rows that happen to land on the network / broadcast
+    # address of their parent subnet (/≤30). The GiST overlap exclusion
+    # only checks overlap, not bounds, so nothing in the DB prevents an
+    # operator from creating an Ip at .0 or .255 — we just don't want
+    # those to count toward `used`.
+    boundary_pairs: set[tuple[int, str]] = set()
+    for s in subnets:
+        net = IPv4Network(str(s.cidr), strict=False)
+        if net.prefixlen < 31:
+            boundary_pairs.add((s.id, str(net.network_address)))
+            boundary_pairs.add((s.id, str(net.broadcast_address)))
+    if not boundary_pairs:
+        return counts
+
+    boundary_addrs = sorted({addr for _, addr in boundary_pairs})
+    boundary_rows = (
+        await db.execute(
+            select(Ip.subnet_id, Ip.address)
+            .where(
+                Ip.subnet_id.in_(ids),
+                cast(Ip.address, String).in_(boundary_addrs),
+            )
+        )
+    ).all()
+    for sid, addr in boundary_rows:
+        if (int(sid), str(addr)) in boundary_pairs:
+            counts[int(sid)] = counts.get(int(sid), 0) - 1
+    # Defensive clamp — if somehow more boundary rows than usable rows
+    # were recorded, surface 0 rather than a negative `used`.
+    return {sid: max(0, c) for sid, c in counts.items()}
 
 
 async def get_subnet(db: AsyncSession, subnet_id: int) -> Subnet:
@@ -483,27 +534,11 @@ async def build_subnet_tree(
 
     # Per-subnet IP counts so each tree row can show a fill bar without
     # extra round-trips. Same boundary-aware accounting as the list view
-    # and `compute_utilization`: network/broadcast addresses on /≤30
+    # (`_per_subnet_used_counts`): network/broadcast addresses on /≤30
     # don't count toward `used`, so the bar can't read > 100%. DHCP-range
     # slots without a DB row stay invisible (consistent with how
     # `compute_utilization` aggregates).
-    ip_counts: dict[int, int] = {}
-    if by_id:
-        boundary_pairs: set[tuple[int, str]] = set()
-        for sid, s in by_id.items():
-            net = IPv4Network(str(s.cidr), strict=False)
-            if net.prefixlen < 31:
-                boundary_pairs.add((sid, str(net.network_address)))
-                boundary_pairs.add((sid, str(net.broadcast_address)))
-        rows = (
-            await db.execute(
-                select(Ip.subnet_id, Ip.address).where(Ip.subnet_id.in_(by_id.keys()))
-            )
-        ).all()
-        for sid, addr in rows:
-            if (int(sid), str(addr)) in boundary_pairs:
-                continue
-            ip_counts[int(sid)] = ip_counts.get(int(sid), 0) + 1
+    ip_counts = await _per_subnet_used_counts(db, rows)
 
     def node_for(s: Subnet) -> dict:
         return {
@@ -559,6 +594,7 @@ async def list_subnet_ips(
                     status=ip.status.value
                     if hasattr(ip.status, "value")
                     else str(ip.status),
+                    ip_id=ip.id,
                     hostname=ip.hostname,
                     mac=None if ip.mac is None else str(ip.mac),
                     device_id=ip.device_id,

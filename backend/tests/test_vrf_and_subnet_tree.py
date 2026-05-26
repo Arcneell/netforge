@@ -127,12 +127,21 @@ async def test_validate_parent_accepts_strictly_contained_child() -> None:
 
 
 def _mock_db_with_subnets(
-    subnets: list[Subnet], ip_counts: dict[int, int] | None = None
+    subnets: list[Subnet],
+    ip_counts: dict[int, int] | None = None,
+    boundary_rows: list[tuple[int, str]] | None = None,
 ) -> AsyncMock:
-    """Mock the two SELECTs `build_subnet_tree` issues: one for the Subnet
-    rows, one aggregated COUNT for the per-subnet IP totals shown in the
-    tree's fill-rate column. Tests that don't care about counts can omit
-    `ip_counts` and the second call just resolves to an empty mapping."""
+    """Mock the SELECTs `build_subnet_tree` issues:
+      1. Subnet rows in scope.
+      2. Aggregated COUNT(*) GROUP BY subnet_id from `_per_subnet_used_counts`.
+      3. Optional boundary-row subtract query — only fires when at least one
+         subnet in the batch has prefixlen < 31 (i.e. has a network /
+         broadcast address worth excluding).
+
+    Tests that don't care about counts can omit `ip_counts` and the second
+    call resolves to an empty mapping; the boundary call resolves to an
+    empty list too. Mirrors the production query sequence so test
+    coverage matches the real wire shape."""
     scalars = MagicMock()
     scalars.all = MagicMock(return_value=subnets)
     subnet_result = MagicMock()
@@ -141,11 +150,14 @@ def _mock_db_with_subnets(
     counts_result = MagicMock()
     counts_result.all = MagicMock(return_value=list((ip_counts or {}).items()))
 
+    boundary_result = MagicMock()
+    boundary_result.all = MagicMock(return_value=list(boundary_rows or []))
+
     db = AsyncMock()
-    # Subnet query fires first, count query second. The service only runs
-    # the count query when there's at least one subnet in scope, so an
-    # empty tree case never reaches `counts_result`.
-    db.execute = AsyncMock(side_effect=[subnet_result, counts_result])
+    # Order matches `build_subnet_tree` → `_per_subnet_used_counts`:
+    #   subnets → raw counts → boundary rows. Empty subnet scope skips
+    #   the helper entirely (early return on no items).
+    db.execute = AsyncMock(side_effect=[subnet_result, counts_result, boundary_result])
     return db
 
 

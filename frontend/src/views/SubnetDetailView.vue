@@ -16,6 +16,11 @@ import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import { useStoredRef } from '@/composables/useStoredRef'
 import { ApiError, ipsApi, subnetsApi, vlansApi } from '@/api'
 import type { Ip, Subnet, SubnetIpEntry, SubnetUtilization, Vlan } from '@/api'
+
+// `ip_id` was added to SubnetIpEntry in PR perf/ipam-indexes-and-group-by
+// so the editor can be opened with one fetch instead of two. The optional
+// chain keeps the code working against older API responses (the field is
+// nullable for synthetic free/dhcp rows anyway).
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -129,20 +134,20 @@ async function onIpClick(entry: SubnetIpEntry) {
     editingIpFor.value = { ip: null, address: entry.address }
     return
   }
-  // SubnetIpEntry does not include the IP record id (synthetic-free rows have
-  // no DB row at all), so resolve it on demand for occupied addresses.
-  try {
-    const res = await ipsApi.list({ subnet_id: id.value, q: entry.address, page_size: 1 })
-    const hit = res.items.find((i) => i.address === entry.address)
-    if (hit) {
+  // The entry carries `ip_id` when the row exists in the DB — open the
+  // editor directly without a second round-trip. Synthetic "dhcp" rows
+  // for addresses inside a DHCP pool that aren't recorded yet have
+  // ip_id == null, so we fall through to a create-at-address flow.
+  if (entry.ip_id != null) {
+    try {
+      const hit = await ipsApi.get(entry.ip_id)
       editingIpFor.value = { ip: hit, address: null }
-    } else {
-      // Stale grid — fall back to create at this address.
-      editingIpFor.value = { ip: null, address: entry.address }
+    } catch (err) {
+      void describe(err)
     }
-  } catch (err) {
-    void describe(err)
+    return
   }
+  editingIpFor.value = { ip: null, address: entry.address }
 }
 
 const ipColumns: DataTableColumn[] = [

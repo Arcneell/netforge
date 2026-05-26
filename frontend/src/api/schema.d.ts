@@ -2689,6 +2689,8 @@ export interface components {
             address: string;
             /** Status */
             status: string;
+            /** Ip Id */
+            ip_id?: number | null;
             /** Hostname */
             hostname?: string | null;
             /** Mac */
