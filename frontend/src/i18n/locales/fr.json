@@ -279,6 +279,27 @@
       "useExport": "Exportez la liste complète au format CSV pour un audit ponctuel.",
       "useImport": "Enregistrez plusieurs IP via l'import CSV — il écrit les lignes directement sans parcourir tout l'espace d'adressage."
     },
+    "bulk": {
+      "open": "Plage groupée",
+      "title": "Réserver ou libérer une plage d'IP",
+      "help": "Choisissez une plage contiguë à l'intérieur de {cidr}. Les adresses réseau et broadcast sont automatiquement exclues. Limité à 512 adresses par opération.",
+      "actionLabel": "Action",
+      "reserve": "Réserver",
+      "release": "Libérer",
+      "applyReserve": "Appliquer la réservation",
+      "start": "Adresse de début",
+      "end": "Adresse de fin",
+      "statusHelp": "Statut à appliquer aux IP créées ou écrasées.",
+      "descriptionPlaceholder": "Optionnel — sera copié sur chaque IP créée.",
+      "overwrite": "Écraser les IP existantes",
+      "overwriteHelp": "Sans cette option, les adresses déjà enregistrées sont sautées. Activez pour repositionner massivement leur statut.",
+      "resultTitle": "Opération terminée",
+      "requested": "Adresses demandées",
+      "created": "Créées",
+      "updated": "Mises à jour",
+      "deleted": "Supprimées",
+      "skipped": "Ignorées"
+    },
     "stats": {
       "used": "{count} utilisées",
       "free": "{count} libres",

@@ -39,6 +39,26 @@ export interface SubnetCapacityOverview {
   total_subnets: number
 }
 
+export type BulkIpAction = 'reserve' | 'release'
+export type BulkIpStatus = 'reserved' | 'assigned' | 'dhcp'
+
+export interface BulkIpRangePayload {
+  action: BulkIpAction
+  start: string
+  end: string
+  status?: BulkIpStatus
+  overwrite?: boolean
+  description?: string | null
+}
+
+export interface BulkIpResult {
+  requested: number
+  created: number
+  updated: number
+  deleted: number
+  skipped: number
+}
+
 export interface SubnetTreeNode {
   id: number
   cidr: string
@@ -96,6 +116,14 @@ export const subnetsApi = {
       method: 'GET',
       url: '/subnets/capacity-overview',
       params: { limit },
+    })
+  },
+  /** Reserve or release every host in [start, end] in one call (admin). */
+  bulkIpRange(id: number, payload: BulkIpRangePayload): Promise<BulkIpResult> {
+    return request<BulkIpResult>({
+      method: 'POST',
+      url: `/subnets/${id}/bulk-ip`,
+      data: payload,
     })
   },
   /** Fill-rate snapshot — cheap (two SELECTs), works on any prefix length. */

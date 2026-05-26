@@ -9,6 +9,7 @@ from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
 from app.models.user import UserRole
 from app.schemas.common import Page, PageParams
+from app.schemas.ip import BulkIpRange, BulkIpResult
 from app.schemas.subnet import (
     NextFreeIpResponse,
     SubnetCapacityOverview,
@@ -19,6 +20,7 @@ from app.schemas.subnet import (
     SubnetUpdate,
     SubnetUtilization,
 )
+from app.services import ips as ips_service
 from app.services import subnets as service
 
 router = APIRouter(prefix="/subnets", tags=["subnets"])
@@ -186,6 +188,27 @@ async def next_free_ip(
 ) -> NextFreeIpResponse:
     address = await service.next_free_ip(db, subnet_id)
     return NextFreeIpResponse(address=address)
+
+
+@router.post(
+    "/{subnet_id}/bulk-ip",
+    response_model=BulkIpResult,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def bulk_ip_range(
+    subnet_id: int,
+    payload: BulkIpRange,
+    db: AsyncSession = Depends(get_db),
+) -> BulkIpResult:
+    """Reserve or release every host address in `[start, end]` in one call.
+
+    Admin-only — same gate as single-IP CRUD. Capped at 512 addresses per
+    call; larger sweeps must be split client-side. Skips network /
+    broadcast slots automatically so the result stays consistent with
+    `_per_subnet_used_counts` accounting.
+    """
+    summary = await ips_service.bulk_ip_range(db, subnet_id, payload)
+    return BulkIpResult.model_validate(summary)
 
 
 @router.get(
