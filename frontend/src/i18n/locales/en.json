@@ -268,7 +268,9 @@
       "autoGroup": "Auto",
       "containedCount": "{n} subnet(s) in this range",
       "rootDropHint": "Drop here to detach a subnet from its parent.",
-      "reparented": "Subnet reparented."
+      "attached": "Subnet attached to its new parent.",
+      "detached": "Subnet detached — now at the root.",
+      "moved": "Subnet moved under its new parent."
     },
     "exportCsv": "Export CSV",
     "nextFree": "Next free IP",

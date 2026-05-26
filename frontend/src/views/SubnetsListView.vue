@@ -276,10 +276,43 @@ function onTreeDragOver(ev: DragEvent) {
   startDragAutoScroll()
 }
 
+/**
+ * Look up the current `parent_subnet_id` of a node in the loaded tree.
+ * Used to (1) short-circuit no-op drops (dropping a root onto the root
+ * zone again, or onto its current parent), and (2) pick the right
+ * toast wording (attach vs detach vs move).
+ */
+function findCurrentParent(nodes: SubnetTreeNode[], id: number): number | null | undefined {
+  for (const n of nodes) {
+    if (n.id === id) return n.parent_subnet_id
+    const inside = findCurrentParent(n.children, id)
+    if (inside !== undefined) return inside
+  }
+  return undefined
+}
+
 async function onReparent(payload: { childId: number; parentId: number | null }) {
+  // Short-circuit no-ops so the user doesn't see an "attached" toast
+  // for dropping a row exactly where it already lives. Returns
+  // `undefined` for nodes we can't find (e.g. drag from a stale tree
+  // snapshot) — fall through to the API in that case so the backend
+  // decides.
+  const currentParent = findCurrentParent(tree.value, payload.childId)
+  if (currentParent !== undefined && currentParent === payload.parentId) {
+    return
+  }
   try {
     await subnetsApi.update(payload.childId, { parent_subnet_id: payload.parentId })
-    success(t('subnet.tree.reparented'))
+    // Pick the toast wording based on the OUTGOING side of the move so
+    // the operator gets accurate feedback. Detach = becoming a root,
+    // attach = gaining a parent, move = changing parents.
+    if (payload.parentId === null) {
+      success(t('subnet.tree.detached'))
+    } else if (currentParent === null || currentParent === undefined) {
+      success(t('subnet.tree.attached'))
+    } else {
+      success(t('subnet.tree.moved'))
+    }
     // Reload both the tree and the flat list so a follow-up view switch
     // shows fresh data — the parent column on the flat list is not yet
     // rendered, but the cache underneath stays correct.
@@ -308,13 +341,16 @@ function onRootDrop(ev: DragEvent) {
   onReparent({ childId, parentId: null })
 }
 
-// Global cleanup hooks for the autoscroll RAF: whichever end-of-drag
-// event fires first (drop on a target, dragend on the source, even an
-// Escape that aborts the drag) cancels the loop. Listeners are
-// installed at the window level because the user may release outside
-// the tree (e.g. on the sidebar) and we still want to stop scrolling.
+// Global cleanup hooks for the autoscroll RAF AND the root-drop-zone
+// highlight: whichever end-of-drag event fires first (drop on a
+// target, dragend on the source, even an Escape that aborts the drag)
+// cancels the loop and clears the highlight. Listeners are installed
+// at the window level because the user may release outside the tree
+// (e.g. on the sidebar) and we still want to stop scrolling and stop
+// pretending the drop zone is active.
 function onAnyDragEnd() {
   stopDragAutoScroll()
+  rootDropActive.value = false
 }
 
 onMounted(() => {
