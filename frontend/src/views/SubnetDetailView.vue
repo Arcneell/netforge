@@ -421,7 +421,7 @@ function statusKey(status: string): StatusKey {
         <ul class="mt-3 text-sm text-fg-muted list-disc pl-5 space-y-1">
           <li>{{ t('subnet.tooLargeHint.splitChildren') }}</li>
           <li>{{ t('subnet.tooLargeHint.useExport') }}</li>
-          <li>{{ t('subnet.tooLargeHint.useNextFree') }}</li>
+          <li>{{ t('subnet.tooLargeHint.useImport') }}</li>
         </ul>
       </div>
 

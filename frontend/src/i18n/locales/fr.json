@@ -258,7 +258,7 @@
     "tooLargeHint": {
       "splitChildren": "Découpez ce bloc en sous-réseaux plus petits (/22 et plus précis) — chacun aura sa vue grille complète.",
       "useExport": "Exportez la liste complète au format CSV pour un audit ponctuel.",
-      "useNextFree": "Utilisez « Prochaine IP libre » pour assigner sans parcourir la liste."
+      "useImport": "Enregistrez plusieurs IP via l'import CSV — il écrit les lignes directement sans parcourir tout l'espace d'adressage."
     },
     "stats": {
       "used": "{count} utilisées",

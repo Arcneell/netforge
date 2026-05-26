@@ -258,7 +258,7 @@
     "tooLargeHint": {
       "splitChildren": "Split this block into smaller subnets (/22 or tighter) — each gets its full grid view.",
       "useExport": "Export the full list to CSV for one-off audits.",
-      "useNextFree": "Use \"Next free IP\" to assign without scrolling the list."
+      "useImport": "Bulk-register IPs via the CSV importer — it writes rows directly without enumerating the address space."
     },
     "stats": {
       "used": "{count} used",
