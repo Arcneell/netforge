@@ -512,6 +512,8 @@ async def build_subnet_tree(
     db: AsyncSession,
     vrf_id: int | None,
     auto_group_prefix: int | None = 16,
+    site_id: int | None = None,
+    vlan_id: int | None = None,
 ) -> list[dict]:
     """Return the subnet hierarchy as a list of root nodes.
 
@@ -519,6 +521,13 @@ async def build_subnet_tree(
     a specific id returns that VRF's tree. We always fetch every subnet
     in scope in one query and assemble in Python — Postgres recursive
     CTEs are overkill for a tree that's at most a few hundred nodes.
+
+    `site_id` / `vlan_id` further narrow the result without changing the
+    hierarchy semantics. Subnets that don't match are dropped from the
+    fetch; any of their *matching* descendants are promoted to roots by
+    the existing orphan-handling (parent not in scope → treat as root),
+    so a filter on a leaf VLAN still shows the matching subnets even
+    when their parents were filtered out.
 
     `auto_group_prefix` (default 16) wraps groups of root subnets that
     share a common /N supernet under a synthetic virtual parent, so the
@@ -536,6 +545,10 @@ async def build_subnet_tree(
         if vrf_id is None
         else base.where(Subnet.vrf_id == vrf_id)
     )
+    if site_id is not None:
+        base = base.where(Subnet.site_id == site_id)
+    if vlan_id is not None:
+        base = base.where(Subnet.vlan_id == vlan_id)
     result = await db.execute(base)
     rows: list[Subnet] = list(result.scalars().all())
 

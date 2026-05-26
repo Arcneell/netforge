@@ -74,6 +74,16 @@ async def subnet_tree(
         ge=0,
         description="VRF scope. Omit or pass `0` for the global VRF.",
     ),
+    site_id: int | None = Query(
+        default=None,
+        gt=0,
+        description="Filter the tree to a single site.",
+    ),
+    vlan_id: int | None = Query(
+        default=None,
+        gt=0,
+        description="Filter the tree to a single VLAN.",
+    ),
     auto_group_prefix: int = Query(
         default=16,
         ge=0,
@@ -87,12 +97,21 @@ async def subnet_tree(
     db: AsyncSession = Depends(get_db),
 ) -> list[SubnetTreeNode]:
     """Hierarchical view of the subnets in one VRF. Roots first, depth-first
-    children. Operators with no VRFs configured just see the global tree."""
+    children. Operators with no VRFs configured just see the global tree.
+
+    `site_id` / `vlan_id` narrow the result client-side without changing
+    the hierarchy — orphaned matches float up to root level so a filter
+    on a leaf VLAN still surfaces the matching subnets even when their
+    parents were dropped."""
     # The service treats None as "global" but the OpenAPI `Query(ge=0)`
     # accepts a literal 0 too — normalise here.
     scope = None if vrf_id in (None, 0) else vrf_id
     raw = await service.build_subnet_tree(
-        db, scope, auto_group_prefix=auto_group_prefix or None
+        db,
+        scope,
+        auto_group_prefix=auto_group_prefix or None,
+        site_id=site_id,
+        vlan_id=vlan_id,
     )
     return [SubnetTreeNode.model_validate(n) for n in raw]
 
