@@ -204,6 +204,44 @@ function openSubnet(id: number) {
   router.push(`/subnets/${id}`)
 }
 
+// Drag-and-drop reparenting. The DnD MIME mirrors the constant declared
+// inside `SubnetTreeRow.vue` — kept in sync by inspection. If we ever
+// add a second drop source we should move it to a shared module.
+const DRAG_MIME = 'application/x-netforge-subnet-id'
+const rootDropActive = ref(false)
+
+async function onReparent(payload: { childId: number; parentId: number | null }) {
+  try {
+    await subnetsApi.update(payload.childId, { parent_subnet_id: payload.parentId })
+    success(t('subnet.tree.reparented'))
+    // Reload both the tree and the flat list so a follow-up view switch
+    // shows fresh data — the parent column on the flat list is not yet
+    // rendered, but the cache underneath stays correct.
+    loadTree()
+    if (viewMode.value === 'list') load()
+  } catch (err) {
+    void describe(err)
+  }
+}
+
+function onRootDragOver(ev: DragEvent) {
+  if (!ev.dataTransfer || !ev.dataTransfer.types.includes(DRAG_MIME)) return
+  ev.preventDefault()
+  ev.dataTransfer.dropEffect = 'move'
+  rootDropActive.value = true
+}
+
+function onRootDrop(ev: DragEvent) {
+  rootDropActive.value = false
+  if (!ev.dataTransfer) return
+  const raw = ev.dataTransfer.getData(DRAG_MIME)
+  if (!raw) return
+  const childId = Number(raw)
+  if (!Number.isFinite(childId)) return
+  ev.preventDefault()
+  onReparent({ childId, parentId: null })
+}
+
 onMounted(() => {
   load()
   loadVlans()
@@ -420,19 +458,41 @@ const columns: DataTableColumn[] = [
       <div v-else-if="tree.length === 0" class="p-6 text-center text-fg-muted text-sm">
         {{ t('subnet.treeEmpty') }}
       </div>
-      <ul v-else class="divide-y divide-border/50">
-        <SubnetTreeRow
-          v-for="(node, idx) in tree"
-          :key="node.id"
-          :node="node"
-          :collapsed="collapsed"
-          :depth="0"
-          :is-last="idx === tree.length - 1"
-          :vlans-by-id="vlansById"
-          @toggle="toggleNode"
-          @open="openSubnet"
-        />
-      </ul>
+      <template v-else>
+        <!-- Top-level drop zone: drag any node here to detach it from
+             its current parent (the move sets `parent_subnet_id = null`).
+             Visible only to admins so viewers don't see a drop affordance
+             that does nothing. -->
+        <div
+          v-if="isAdmin"
+          :class="[
+            'px-4 py-2 text-xs text-fg-muted border-b border-border/50 transition-colors',
+            rootDropActive
+              ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300'
+              : 'bg-muted/30',
+          ]"
+          @dragover="onRootDragOver"
+          @dragleave="rootDropActive = false"
+          @drop="onRootDrop"
+        >
+          {{ t('subnet.tree.rootDropHint') }}
+        </div>
+        <ul class="divide-y divide-border/50">
+          <SubnetTreeRow
+            v-for="(node, idx) in tree"
+            :key="node.id"
+            :node="node"
+            :collapsed="collapsed"
+            :depth="0"
+            :is-last="idx === tree.length - 1"
+            :vlans-by-id="vlansById"
+            :can-reparent="isAdmin"
+            @toggle="toggleNode"
+            @open="openSubnet"
+            @reparent="onReparent"
+          />
+        </ul>
+      </template>
     </div>
 
     <DataTable
