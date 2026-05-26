@@ -129,7 +129,9 @@ const childAncestorOpen = computed<boolean[]>(() =>
         isSynthetic
           ? 'cursor-default bg-muted/30 hover:bg-muted/40'
           : 'cursor-pointer hover:bg-surface-hover',
-        dropActive ? 'outline outline-2 outline-primary-500 -outline-offset-1 bg-primary-500/5' : '',
+        dropActive
+          ? 'outline outline-2 outline-primary-500 -outline-offset-1 bg-primary-500/5'
+          : '',
       ]"
       :style="{ paddingLeft: `${depth * INDENT_REM + 0.75}rem` }"
       :draggable="canReparent && !isSynthetic"

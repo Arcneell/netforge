@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
+import { ArrowUpFromLine, List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -302,152 +302,134 @@ const columns: DataTableColumn[] = [
       </template>
     </PageHeader>
 
-    <!-- View toggle + filters. Layout: top row mixes the view toggle, the
-         debounced search input (always visible), and a "clear filters" button
-         that only shows once at least one filter is active. Bottom row carries
-         the dropdown chips so they wrap nicely on narrow screens without
-         shoving the search field off to a second line. -->
-    <div class="flex flex-col gap-3 mb-4">
-      <div class="flex flex-wrap items-center gap-3">
-        <div
-          class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
-          role="tablist"
+    <!-- Toolbar — one row on desktop, wraps gracefully on mobile. Order
+         left-to-right is the daily-use frequency: view toggle (rare
+         flip), then search (primary affordance), then the scope chips
+         that drill down further. The "Clear filters" link only shows
+         once any filter is active so the bar stays calm by default. -->
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <div
+        class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface h-9"
+        role="tablist"
+      >
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="viewMode === 'list'"
+          :class="[
+            'px-3 h-full rounded text-sm font-medium transition inline-flex items-center gap-1.5',
+            viewMode === 'list'
+              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+              : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+          ]"
+          @click="switchView('list')"
         >
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="viewMode === 'list'"
-            :class="[
-              'px-3 h-8 rounded text-sm font-medium transition inline-flex items-center gap-1.5',
-              viewMode === 'list'
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-            ]"
-            @click="switchView('list')"
-          >
-            <List class="w-3.5 h-3.5" aria-hidden="true" />
-            {{ t('subnet.viewList') }}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="viewMode === 'tree'"
-            :class="[
-              'px-3 h-8 rounded text-sm font-medium transition inline-flex items-center gap-1.5',
-              viewMode === 'tree'
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-            ]"
-            @click="switchView('tree')"
-          >
-            <Network class="w-3.5 h-3.5" aria-hidden="true" />
-            {{ t('subnet.viewTree') }}
-          </button>
-        </div>
-
-        <!-- Search input — debounced, takes the remaining row width so it's
-             the obvious primary affordance. The button on the right clears
-             every active filter at once (we don't reset the view toggle). -->
-        <div class="relative flex-1 min-w-[14rem] max-w-md">
-          <Search
-            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-muted pointer-events-none"
-            aria-hidden="true"
-          />
-          <input
-            v-model="searchInput"
-            type="search"
-            :placeholder="t('subnet.searchPlaceholder')"
-            :aria-label="t('subnet.searchPlaceholder')"
-            class="w-full h-8 pl-8 pr-8 rounded border border-border bg-surface text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <button
-            v-if="searchInput"
-            type="button"
-            class="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-fg-muted hover:bg-surface-hover hover:text-fg"
-            :aria-label="t('common.reset')"
-            @click="searchInput = ''"
-          >
-            <X class="w-3.5 h-3.5" aria-hidden="true" />
-          </button>
-        </div>
-
-        <Button
-          v-if="hasActiveFilters"
-          variant="ghost"
-          size="sm"
-          @click="clearFilters"
+          <List class="w-3.5 h-3.5" aria-hidden="true" />
+          {{ t('subnet.viewList') }}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="viewMode === 'tree'"
+          :class="[
+            'px-3 h-full rounded text-sm font-medium transition inline-flex items-center gap-1.5',
+            viewMode === 'tree'
+              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+              : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+          ]"
+          @click="switchView('tree')"
         >
-          {{ t('subnet.clearFilters') }}
-        </Button>
+          <Network class="w-3.5 h-3.5" aria-hidden="true" />
+          {{ t('subnet.viewTree') }}
+        </button>
       </div>
 
-      <div class="flex flex-wrap items-center gap-3">
-        <label class="text-sm inline-flex items-center gap-2">
-          <span class="text-xs uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('subnet.vrfFilter') }}
-          </span>
-          <select
-            :value="vrfFilter === undefined ? '' : String(vrfFilter)"
-            class="h-8 px-2 rounded border border-border bg-surface text-sm"
-            @change="
-              (e) => {
-                const v = (e.target as HTMLSelectElement).value
-                onVrfFilterChange(v === '' ? undefined : Number(v))
-              }
-            "
-          >
-            <option value="">
-              {{ viewMode === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal') }}
-            </option>
-            <option value="0">{{ t('subnet.vrfFilterGlobal') }}</option>
-            <option v-for="v in vrfs" :key="v.id" :value="v.id">{{ v.name }}</option>
-          </select>
-        </label>
-
-        <label v-if="sites.length > 0" class="text-sm inline-flex items-center gap-2">
-          <span class="text-xs uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('subnet.fields.site') }}
-          </span>
-          <select
-            :value="siteFilter === undefined ? '' : String(siteFilter)"
-            class="h-8 px-2 rounded border border-border bg-surface text-sm"
-            @change="
-              (e) => {
-                const v = (e.target as HTMLSelectElement).value
-                onSiteFilterChange(v === '' ? undefined : Number(v))
-              }
-            "
-          >
-            <option value="">{{ t('subnet.allSites') }}</option>
-            <option v-for="s in sites" :key="s.id" :value="s.id">
-              {{ s.code }}
-            </option>
-          </select>
-        </label>
-
-        <label v-if="vlans.length > 0" class="text-sm inline-flex items-center gap-2">
-          <span class="text-xs uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('subnet.fields.vlan') }}
-          </span>
-          <select
-            :value="vlanFilter === undefined ? '' : String(vlanFilter)"
-            class="h-8 px-2 rounded border border-border bg-surface text-sm"
-            @change="
-              (e) => {
-                const v = (e.target as HTMLSelectElement).value
-                onVlanFilterChange(v === '' ? undefined : Number(v))
-              }
-            "
-          >
-            <option value="">{{ t('subnet.allVlans') }}</option>
-            <option v-for="v in vlans" :key="v.id" :value="v.id">
-              {{ v.vlan_id }} — {{ v.name }}
-            </option>
-          </select>
-        </label>
+      <!-- Search input — debounced, takes the remaining row width so it's
+           the obvious primary affordance. Uses the shared `nf-input`
+           styling for visual consistency with the rest of the editors. -->
+      <div class="relative flex-1 min-w-[14rem] max-w-sm">
+        <Search
+          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-muted pointer-events-none z-10"
+          aria-hidden="true"
+        />
+        <input
+          v-model="searchInput"
+          type="search"
+          :placeholder="t('subnet.searchPlaceholder')"
+          :aria-label="t('subnet.searchPlaceholder')"
+          class="nf-input nf-input-control pl-9 pr-9"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button
+          v-if="searchInput"
+          type="button"
+          class="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-fg-muted hover:bg-surface-hover hover:text-fg"
+          :aria-label="t('common.reset')"
+          @click="searchInput = ''"
+        >
+          <X class="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
       </div>
+
+      <!-- Scope chips. Native <select> with the shared input styling so
+           the visual weight matches the search bar. Each chip is hidden
+           when there's nothing to pick from (single-site / no-VLAN
+           deployments) instead of rendering an empty dropdown. -->
+      <select
+        :value="vrfFilter === undefined ? '' : String(vrfFilter)"
+        class="nf-input nf-input-control w-auto min-w-[8rem] cursor-pointer"
+        :aria-label="t('subnet.vrfFilter')"
+        @change="
+          (e) => {
+            const v = (e.target as HTMLSelectElement).value
+            onVrfFilterChange(v === '' ? undefined : Number(v))
+          }
+        "
+      >
+        <option value="">
+          {{ viewMode === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal') }}
+        </option>
+        <option value="0">{{ t('subnet.vrfFilterGlobal') }}</option>
+        <option v-for="v in vrfs" :key="v.id" :value="v.id">{{ v.name }}</option>
+      </select>
+
+      <select
+        v-if="sites.length > 0"
+        :value="siteFilter === undefined ? '' : String(siteFilter)"
+        class="nf-input nf-input-control w-auto min-w-[8rem] cursor-pointer"
+        :aria-label="t('subnet.fields.site')"
+        @change="
+          (e) => {
+            const v = (e.target as HTMLSelectElement).value
+            onSiteFilterChange(v === '' ? undefined : Number(v))
+          }
+        "
+      >
+        <option value="">{{ t('subnet.allSites') }}</option>
+        <option v-for="s in sites" :key="s.id" :value="s.id">{{ s.code }}</option>
+      </select>
+
+      <select
+        v-if="vlans.length > 0"
+        :value="vlanFilter === undefined ? '' : String(vlanFilter)"
+        class="nf-input nf-input-control w-auto min-w-[8rem] cursor-pointer"
+        :aria-label="t('subnet.fields.vlan')"
+        @change="
+          (e) => {
+            const v = (e.target as HTMLSelectElement).value
+            onVlanFilterChange(v === '' ? undefined : Number(v))
+          }
+        "
+      >
+        <option value="">{{ t('subnet.allVlans') }}</option>
+        <option v-for="v in vlans" :key="v.id" :value="v.id">{{ v.vlan_id }} — {{ v.name }}</option>
+      </select>
+
+      <Button v-if="hasActiveFilters" variant="ghost" size="sm" @click="clearFilters">
+        <X class="w-3.5 h-3.5" aria-hidden="true" />
+        {{ t('subnet.clearFilters') }}
+      </Button>
     </div>
 
     <!-- Tree view -->
@@ -462,19 +444,22 @@ const columns: DataTableColumn[] = [
         <!-- Top-level drop zone: drag any node here to detach it from
              its current parent (the move sets `parent_subnet_id = null`).
              Visible only to admins so viewers don't see a drop affordance
-             that does nothing. -->
+             that does nothing. The dashed outline pattern is the
+             internet's universal "this is a drop target" cue — operators
+             recognise it on first hover. -->
         <div
           v-if="isAdmin"
           :class="[
-            'px-4 py-2 text-xs text-fg-muted border-b border-border/50 transition-colors',
+            'mx-3 mt-3 mb-2 px-4 py-3 rounded-md border border-dashed flex items-center justify-center gap-2 text-xs font-medium transition-colors',
             rootDropActive
-              ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300'
-              : 'bg-muted/30',
+              ? 'border-primary-500 bg-primary-500/10 text-primary-700 dark:text-primary-300'
+              : 'border-border bg-muted/30 text-fg-muted',
           ]"
           @dragover="onRootDragOver"
           @dragleave="rootDropActive = false"
           @drop="onRootDrop"
         >
+          <ArrowUpFromLine class="w-3.5 h-3.5" aria-hidden="true" />
           {{ t('subnet.tree.rootDropHint') }}
         </div>
         <ul class="divide-y divide-border/50">

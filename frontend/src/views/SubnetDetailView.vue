@@ -2,7 +2,15 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Pencil, Sparkles, Download, Grid3x3, Layers, Table as TableIcon } from 'lucide-vue-next'
+import {
+  AlertTriangle,
+  Download,
+  Grid3x3,
+  Layers,
+  Pencil,
+  Sparkles,
+  Table as TableIcon,
+} from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import Button from '@/components/ui/Button.vue'
@@ -214,7 +222,9 @@ const filteredIps = computed(() => {
   })
 })
 
-const tableRows = computed(() => filteredIps.value.map((entry) => ({ ...entry, id: entry.address })))
+const tableRows = computed(() =>
+  filteredIps.value.map((entry) => ({ ...entry, id: entry.address })),
+)
 
 type StatusKey = 'reserved' | 'assigned' | 'dhcp' | 'free'
 const statusBadgeTone: Record<StatusKey, 'primary' | 'success' | 'warning' | 'muted'> = {
@@ -340,18 +350,17 @@ function statusKey(status: string): StatusKey {
         </div>
       </section>
 
-      <!-- View toggle + table filters. Filters only matter in table view;
-           the grid view stays a visual heatmap and re-rendering 4096 buttons
-           on every keystroke isn't what an operator wants. Hidden when the
-           subnet is too large to enumerate — the banner below explains why
-           and what to do instead. -->
+      <!-- IPs toolbar. Heading on the left, controls on the right. Status
+           pill + free-text filter only show in table view — they don't
+           apply to the grid heatmap, and rendering them when the user
+           toggles back to grid would just clutter the row. -->
       <div v-if="!tooLarge" class="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h2 class="text-lg font-semibold">{{ t('ip.labelPlural') }}</h2>
         <div class="flex flex-wrap items-center gap-2">
           <template v-if="view === 'table'">
             <select
               v-model="ipStatusFilter"
-              class="h-7 px-2 rounded border border-border bg-surface text-xs"
+              class="nf-input nf-input-control w-auto min-w-[8rem] cursor-pointer"
               :aria-label="t('ip.fields.status')"
             >
               <option value="all">{{ t('ip.statusFilter.all') }}</option>
@@ -365,7 +374,7 @@ function statusKey(status: string): StatusKey {
               type="search"
               :placeholder="t('ip.searchPlaceholder')"
               :aria-label="t('ip.searchPlaceholder')"
-              class="h-7 px-2 rounded border border-border bg-surface text-xs w-44"
+              class="nf-input nf-input-control w-48"
               autocomplete="off"
               spellcheck="false"
             />
@@ -378,7 +387,7 @@ function statusKey(status: string): StatusKey {
               type="button"
               :aria-pressed="view === 'grid'"
               :class="[
-                'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
+                'flex items-center gap-1.5 px-2.5 h-8 rounded text-xs font-medium transition',
                 view === 'grid'
                   ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
                   : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
@@ -392,7 +401,7 @@ function statusKey(status: string): StatusKey {
               type="button"
               :aria-pressed="view === 'table'"
               :class="[
-                'flex items-center gap-1.5 px-2 h-7 rounded text-xs font-medium transition',
+                'flex items-center gap-1.5 px-2.5 h-8 rounded text-xs font-medium transition',
                 view === 'table'
                   ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
                   : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
@@ -412,23 +421,27 @@ function statusKey(status: string): StatusKey {
            per-address table can't render the full address space. Better
            than the previous behaviour where the grid silently rendered
            empty, looking like the subnet had no IPs at all. -->
-      <div
-        v-if="tooLarge"
-        class="nf-card p-5 border-l-4 border-warning"
-        role="status"
-      >
-        <p class="text-sm font-semibold text-fg flex items-center gap-2">
-          <span class="inline-block w-2 h-2 rounded-full bg-warning" aria-hidden="true" />
-          {{ t('subnet.tooLargeTitle') }}
-        </p>
-        <p class="mt-2 text-sm text-fg-muted">
-          {{ t('subnet.tooLargeBody', { cidr: subnet.cidr }) }}
-        </p>
-        <ul class="mt-3 text-sm text-fg-muted list-disc pl-5 space-y-1">
-          <li>{{ t('subnet.tooLargeHint.splitChildren') }}</li>
-          <li>{{ t('subnet.tooLargeHint.useExport') }}</li>
-          <li>{{ t('subnet.tooLargeHint.useImport') }}</li>
-        </ul>
+      <!-- Warning card with the same gradient-icon language as the
+           dashboard tiles, kept gentle (warning tone, not danger) since
+           this is an informational state, not a failure. -->
+      <div v-if="tooLarge" class="nf-card p-5 flex items-start gap-4" role="status">
+        <span
+          class="inline-flex items-center justify-center w-10 h-10 rounded-xl shadow-sm flex-shrink-0 bg-gradient-to-br from-amber-500 to-orange-500"
+          aria-hidden="true"
+        >
+          <AlertTriangle class="w-5 h-5 text-white" :stroke-width="2.25" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-semibold text-fg">{{ t('subnet.tooLargeTitle') }}</p>
+          <p class="mt-1 text-sm text-fg-muted">
+            {{ t('subnet.tooLargeBody', { cidr: subnet.cidr }) }}
+          </p>
+          <ul class="mt-3 text-sm text-fg-muted list-disc pl-5 space-y-1">
+            <li>{{ t('subnet.tooLargeHint.splitChildren') }}</li>
+            <li>{{ t('subnet.tooLargeHint.useExport') }}</li>
+            <li>{{ t('subnet.tooLargeHint.useImport') }}</li>
+          </ul>
+        </div>
       </div>
 
       <!-- Grid view -->
@@ -477,12 +490,7 @@ function statusKey(status: string): StatusKey {
         @saved="load"
         @deleted="load"
       />
-      <BulkIpDialog
-        :open="bulkOpen"
-        :subnet="subnet"
-        @close="bulkOpen = false"
-        @applied="load"
-      />
+      <BulkIpDialog :open="bulkOpen" :subnet="subnet" @close="bulkOpen = false" @applied="load" />
     </template>
   </div>
 </template>

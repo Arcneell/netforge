@@ -179,11 +179,14 @@ watch(
   },
 )
 
-// Placeholder height: 4 rows × 40 px (cell height 36 + 4 gap). Slightly
-// generous so collapsing it on a narrow viewport doesn't pull the
-// scrollbar above its current position. Same column rules as the live
-// grid so the placeholder takes the same width.
-const PLACEHOLDER_MIN_HEIGHT = '10rem'
+// Placeholder height: needs to stay close to the actual chunk height
+// so the scrollbar doesn't jump when a chunk renders in. With the
+// `auto-fill, minmax(2.25rem, 1fr)` rule, 128 cells render as
+// roughly 5–10 rows depending on viewport width. 22 rem (≈ 352 px,
+// or 8 rows of 36 + 4 px) covers the common 1024–1440 px desktop
+// width comfortably. On very narrow viewports (~5 columns) the
+// chunk may still be slightly taller, but the worst-case downward
+// scroll jump is one or two rows instead of the previous 200 px.
 </script>
 
 <template>
@@ -202,19 +205,20 @@ const PLACEHOLDER_MIN_HEIGHT = '10rem'
       </span>
     </div>
 
-    <div
-      role="grid"
-      :aria-label="t('subnet.viewGrid')"
-      :aria-rowcount="chunks.length"
-    >
+    <div role="grid" :aria-label="t('subnet.viewGrid')" :aria-rowcount="chunks.length">
       <div
-        v-for="chunk in chunks"
+        v-for="(chunk, idx) in chunks"
         :key="chunk.id"
         :ref="setChunkRef(chunk.id)"
         :data-chunk-id="chunk.id"
-        class="grid gap-1 mb-1"
-        style="grid-template-columns: repeat(auto-fill, minmax(2.25rem, 1fr))"
-        :style="{ minHeight: visibleChunks.has(chunk.id) ? undefined : PLACEHOLDER_MIN_HEIGHT }"
+        :class="['grid gap-1', idx < chunks.length - 1 ? 'mb-1' : '']"
+        :style="{
+          gridTemplateColumns: 'repeat(auto-fill, minmax(2.25rem, 1fr))',
+          // Reserve space for the placeholder so the scrollbar stays
+          // honest as chunks render in. Once populated we let the
+          // grid auto-size to its real content.
+          minHeight: visibleChunks.has(chunk.id) ? undefined : '22rem',
+        }"
       >
         <template v-if="visibleChunks.has(chunk.id)">
           <button
