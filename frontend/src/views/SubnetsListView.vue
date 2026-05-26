@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowUpFromLine, List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
@@ -210,6 +210,71 @@ function openSubnet(id: number) {
 // add a second drop source we should move it to a shared module.
 const DRAG_MIME = 'application/x-netforge-subnet-id'
 const rootDropActive = ref(false)
+// Element the page actually scrolls inside. AppShell wraps the routed
+// view in `<main class="flex-1 overflow-y-auto">`, so that's the node
+// whose scrollTop we need to nudge during a drag near the top/bottom
+// edge of the viewport.
+let scrollContainer: HTMLElement | null = null
+
+/**
+ * Native HTML5 drag-and-drop has no built-in autoscroll. When the user
+ * picks up a row at the bottom of a long tree, dragging upward toward
+ * the root drop zone above the fold simply pegs the cursor at the
+ * viewport top and never reveals the target. Run a small RAF loop
+ * while a drag is in progress: read the cursor's Y position from the
+ * dragover events, and scroll the `main` container whenever the
+ * cursor lands inside an EDGE_PX band at either end of the viewport.
+ *
+ * Speed is proportional to how deep the cursor is in the band, so a
+ * cursor pressed against the very edge scrolls fastest. Stops the
+ * moment the drag ends or the cursor leaves the band.
+ */
+const EDGE_PX = 80
+const MAX_SCROLL_PER_FRAME = 18
+let pointerY = 0
+let dragRafId: number | null = null
+
+function startDragAutoScroll() {
+  if (dragRafId !== null) return
+  if (!scrollContainer) {
+    scrollContainer = document.querySelector('main')
+  }
+  const tick = () => {
+    if (!scrollContainer) {
+      dragRafId = null
+      return
+    }
+    const rect = scrollContainer.getBoundingClientRect()
+    const topGap = pointerY - rect.top
+    const bottomGap = rect.bottom - pointerY
+    let dy = 0
+    if (topGap < EDGE_PX && topGap >= 0) {
+      // Closer to the edge = stronger pull. 0..EDGE_PX → MAX..0 scroll up.
+      dy = -Math.round(MAX_SCROLL_PER_FRAME * (1 - topGap / EDGE_PX))
+    } else if (bottomGap < EDGE_PX && bottomGap >= 0) {
+      dy = Math.round(MAX_SCROLL_PER_FRAME * (1 - bottomGap / EDGE_PX))
+    }
+    if (dy !== 0) scrollContainer.scrollBy(0, dy)
+    dragRafId = requestAnimationFrame(tick)
+  }
+  dragRafId = requestAnimationFrame(tick)
+}
+
+function stopDragAutoScroll() {
+  if (dragRafId !== null) {
+    cancelAnimationFrame(dragRafId)
+    dragRafId = null
+  }
+}
+
+function onTreeDragOver(ev: DragEvent) {
+  // Only react to our own drags — `types` is available during dragover
+  // even though `getData` isn't. Guards against random text/file drops
+  // accidentally triggering the autoscroll RAF.
+  if (!ev.dataTransfer?.types.includes(DRAG_MIME)) return
+  pointerY = ev.clientY
+  startDragAutoScroll()
+}
 
 async function onReparent(payload: { childId: number; parentId: number | null }) {
   try {
@@ -243,11 +308,28 @@ function onRootDrop(ev: DragEvent) {
   onReparent({ childId, parentId: null })
 }
 
+// Global cleanup hooks for the autoscroll RAF: whichever end-of-drag
+// event fires first (drop on a target, dragend on the source, even an
+// Escape that aborts the drag) cancels the loop. Listeners are
+// installed at the window level because the user may release outside
+// the tree (e.g. on the sidebar) and we still want to stop scrolling.
+function onAnyDragEnd() {
+  stopDragAutoScroll()
+}
+
 onMounted(() => {
   load()
   loadVlans()
   loadVrfs()
   loadSites()
+  window.addEventListener('dragend', onAnyDragEnd)
+  window.addEventListener('drop', onAnyDragEnd)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('dragend', onAnyDragEnd)
+  window.removeEventListener('drop', onAnyDragEnd)
+  stopDragAutoScroll()
 })
 
 function onNew() {
@@ -433,8 +515,14 @@ const columns: DataTableColumn[] = [
       </Button>
     </div>
 
-    <!-- Tree view -->
-    <div v-if="viewMode === 'tree'" class="nf-card overflow-hidden">
+    <!-- Tree view. The container listens for `dragover` so we can
+         autoscroll the `main` element when the cursor approaches the
+         viewport edges — native HTML5 DnD has no built-in autoscroll. -->
+    <div
+      v-if="viewMode === 'tree'"
+      class="nf-card overflow-hidden"
+      @dragover="onTreeDragOver"
+    >
       <div v-if="treeLoading" class="p-6 text-center text-fg-muted text-sm">
         {{ t('common.loading') }}
       </div>

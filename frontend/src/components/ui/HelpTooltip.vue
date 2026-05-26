@@ -50,39 +50,79 @@ const open = ref(false)
 const tooltipId = useId()
 const triggerRef = ref<HTMLButtonElement | null>(null)
 
-// Absolute viewport coordinates for the portalled bubble. Computed from
-// the trigger's getBoundingClientRect() the moment the tooltip opens,
-// and updated again if the window resizes or the user scrolls while the
-// bubble is open. We use `position: fixed`, so these are viewport
-// coords directly — no document offset math needed.
+// Viewport coordinates for the portalled bubble + the effective
+// placement (which may differ from the requested `placement` prop when
+// auto-flipping near a viewport edge). Computed from the trigger's
+// getBoundingClientRect() on open, refreshed on scroll / resize while
+// the bubble is visible.
 const bubblePos = ref({ top: 0, left: 0 })
+const effectivePlacement = ref<'top' | 'bottom' | 'left' | 'right'>('top')
 
-// Gap between trigger and bubble — matches the previous `mb-2 / mt-2`
-// spacing so the visual feel doesn't change after the teleport.
+// Bubble dimensions — width matches the `w-64 max-w-[16rem]` Tailwind
+// classes (256 px). Height is unknown until the content renders, but
+// 220 px is a safe upper bound for the longest tooltip we have today
+// and is only used to decide whether to flip top↔bottom.
+const BUBBLE_W = 256
+const APPROX_BUBBLE_H = 220
 const GAP_PX = 8
+const VIEWPORT_PAD = 8
+
+function clampHorizontal(idealLeft: number, vw: number): number {
+  // Keep the bubble's left edge inside the viewport. Errs on the
+  // right-shift side when both clamps would fight (narrow viewport),
+  // which matches what the user expects: tooltip stays visible.
+  const minLeft = VIEWPORT_PAD
+  const maxLeft = Math.max(minLeft, vw - BUBBLE_W - VIEWPORT_PAD)
+  return Math.max(minLeft, Math.min(maxLeft, idealLeft))
+}
 
 function updatePosition() {
   const trigger = triggerRef.value
   if (!trigger) return
   const r = trigger.getBoundingClientRect()
-  switch (props.placement) {
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const centerX = r.left + r.width / 2
+
+  let place = props.placement
+  // Auto-flip top→bottom (and vice versa) when there isn't enough room
+  // on the requested side. Left/right placement keeps the request — the
+  // bubble would extend horizontally far enough that flipping rarely
+  // helps in practice for our use cases.
+  if (place === 'top' && r.top < APPROX_BUBBLE_H + GAP_PX + VIEWPORT_PAD) {
+    place = 'bottom'
+  } else if (
+    place === 'bottom' &&
+    vh - r.bottom < APPROX_BUBBLE_H + GAP_PX + VIEWPORT_PAD
+  ) {
+    place = 'top'
+  }
+  effectivePlacement.value = place
+
+  switch (place) {
     case 'bottom':
       bubblePos.value = {
         top: r.bottom + GAP_PX,
-        left: r.left + r.width / 2,
+        left: clampHorizontal(centerX - BUBBLE_W / 2, vw),
       }
       return
     case 'left':
-      bubblePos.value = { top: r.top + r.height / 2, left: r.left - GAP_PX }
+      bubblePos.value = {
+        top: r.top + r.height / 2,
+        left: Math.max(VIEWPORT_PAD, r.left - GAP_PX - BUBBLE_W),
+      }
       return
     case 'right':
-      bubblePos.value = { top: r.top + r.height / 2, left: r.right + GAP_PX }
+      bubblePos.value = {
+        top: r.top + r.height / 2,
+        left: Math.min(vw - BUBBLE_W - VIEWPORT_PAD, r.right + GAP_PX),
+      }
       return
     case 'top':
     default:
       bubblePos.value = {
         top: r.top - GAP_PX,
-        left: r.left + r.width / 2,
+        left: clampHorizontal(centerX - BUBBLE_W / 2, vw),
       }
   }
 }
@@ -144,21 +184,21 @@ onBeforeUnmount(() => {
   }
 })
 
-// Transform offset that recenters the bubble relative to its anchor
-// point. The `top` placement uses `translate(-50%, -100%)` so the
-// computed `left = trigger center`, `top = trigger top - gap` lands the
-// bubble's bottom-centre on the gap; `bottom` mirrors that.
+// Transform offset that finishes positioning the bubble. `updatePosition`
+// has already done the heavy lifting horizontally — `left` is the
+// clamped left-edge coordinate, no transform needed on the X axis.
+// Vertical: top placement raises the bubble by 100 % of its own
+// height; left/right centre vertically on the trigger.
 const bubbleTransform = computed(() => {
-  switch (props.placement) {
+  switch (effectivePlacement.value) {
     case 'bottom':
-      return 'translate(-50%, 0)'
+      return 'translate(0, 0)'
     case 'left':
-      return 'translate(-100%, -50%)'
     case 'right':
       return 'translate(0, -50%)'
     case 'top':
     default:
-      return 'translate(-50%, -100%)'
+      return 'translate(0, -100%)'
   }
 })
 </script>
