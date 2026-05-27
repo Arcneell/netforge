@@ -118,12 +118,22 @@ export function useGlobalShortcuts(handlers: Handlers): void {
     // Resolve the second key of a g-leader sequence by lowercased character —
     // Caps Lock yields 'T' which `'t'.toLowerCase()` covers.
     if (waitingForSecond) {
-      const dest = NAV[e.key.toLowerCase()]
-      if (dest) {
-        e.preventDefault()
-        router.push(dest)
-      }
+      // Always clear the leader BEFORE we navigate. The previous order
+      // (push → clearLeader) left the 1.5s reset timer alive while the
+      // new view was mounting; a 'd' typed on the new page during that
+      // window resolved to '/' and navigated back. Clear the leader +
+      // its timer first, then dispatch.
       clearLeader()
+      const dest = NAV[e.key.toLowerCase()]
+      if (dest && router.currentRoute.value.path !== dest) {
+        e.preventDefault()
+        void router.push(dest)
+      } else if (dest) {
+        // Already on the destination — swallow the key so it doesn't
+        // also act as a default in any focused widget, but don't fire
+        // a redundant navigation.
+        e.preventDefault()
+      }
       return
     }
 
