@@ -12,15 +12,29 @@ from app.services.users import upsert_user_from_provider
 
 def _mock_db(existing_user: User | None, user_count: int = 0) -> AsyncMock:
     """Build an AsyncSession mock that returns the desired user-or-None
-    on the first select and `user_count` on the second."""
+    on the first select and `user_count` on every subsequent count
+    SELECT (the upsert path may call `_user_count` once or twice
+    depending on which branch it lands in — bootstrap-match returns
+    early; cold-start counts then re-counts after the advisory lock)."""
     user_result = MagicMock()
     user_result.scalar_one_or_none = MagicMock(return_value=existing_user)
 
-    count_result = MagicMock()
-    count_result.scalar = MagicMock(return_value=user_count)
+    def _new_count_result() -> MagicMock:
+        r = MagicMock()
+        r.scalar = MagicMock(return_value=user_count)
+        return r
 
     db = AsyncMock()
-    db.execute = AsyncMock(side_effect=[user_result, count_result])
+    call_idx = {"n": 0}
+
+    async def _execute(*_a, **_kw) -> MagicMock:
+        idx = call_idx["n"]
+        call_idx["n"] += 1
+        if idx == 0:
+            return user_result
+        return _new_count_result()
+
+    db.execute = AsyncMock(side_effect=_execute)
     db.add = MagicMock()
     db.commit = AsyncMock()
 

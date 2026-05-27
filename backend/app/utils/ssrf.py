@@ -24,6 +24,7 @@ isolated network can opt out via `WEBHOOK_ALLOW_PRIVATE_TARGETS=true`.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 from urllib.parse import urlparse
@@ -41,15 +42,49 @@ class UnsafeOutboundURL(ValueError):
 
 
 def check_outbound_url(url: str, *, allow_private: bool = False) -> None:
-    """Refuse SSRF-risky URLs by raising `UnsafeOutboundURL`.
-
-    `allow_private=True` opts out — useful for dev/test deployments that
-    legitimately need to hit `http://localhost:9000` (a local relay), but
-    the default is to refuse anything not globally routable.
+    """Synchronous wrapper — kept for callers that don't have an event
+    loop handy. Prefer `check_outbound_url_async` from any coroutine,
+    because the underlying `socket.getaddrinfo` blocks for the duration
+    of DNS resolution and would otherwise stall the whole loop.
     """
+    _validate_url_shape(url, allow_private=allow_private)
+    if allow_private:
+        return
+    host = (urlparse(url).hostname or "").strip().lower()
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise UnsafeOutboundURL(
+            f"DNS lookup failed for {host!r}: {exc}."
+        ) from exc
+    _refuse_private_addresses(host, infos)
+
+
+async def check_outbound_url_async(url: str, *, allow_private: bool = False) -> None:
+    """Async variant that resolves via the loop's thread-pool DNS so a
+    slow / SERVFAIL upstream nameserver can't stall the whole event loop
+    on every webhook dispatch.
+    """
+    _validate_url_shape(url, allow_private=allow_private)
+    if allow_private:
+        return
+    host = (urlparse(url).hostname or "").strip().lower()
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise UnsafeOutboundURL(
+            f"DNS lookup failed for {host!r}: {exc}."
+        ) from exc
+    _refuse_private_addresses(host, infos)
+
+
+def _validate_url_shape(url: str, *, allow_private: bool) -> None:
+    """Shape-only checks (scheme, host present, literal-host blocklist).
+    Caller is responsible for the DNS-side check, which differs between
+    the sync and async variants above."""
     if not url or not isinstance(url, str):
         raise UnsafeOutboundURL("URL is empty or not a string.")
-
     parsed = urlparse(url)
     if parsed.scheme.lower() not in _ALLOWED_SCHEMES:
         raise UnsafeOutboundURL(
@@ -65,25 +100,20 @@ def check_outbound_url(url: str, *, allow_private: bool = False) -> None:
             f"Refusing outbound request to {host!r}: loopback/metadata host."
         )
 
-    # Resolve via DNS to catch e.g. "metadata.local.example" → 169.254.x.
-    # Note: this RESOLVES the name from the backend's network view; in
-    # docker, "postgres" resolves to the docker-bridge IP for postgres,
-    # which we then catch as RFC1918. DNS rebinding is mitigated by the
-    # fact that `httpx` will re-resolve and re-validate on the actual
-    # connection — but for high-security deployments, prefer to pin
-    # the IP and bypass DNS at the proxy layer.
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror as exc:
-        # DNS failure isn't necessarily a security problem, but we
-        # don't want to fire requests at names we can't resolve here —
-        # if httpx fails too the operator gets a clearer error.
-        raise UnsafeOutboundURL(
-            f"DNS lookup failed for {host!r}: {exc}."
-        ) from exc
 
+def _refuse_private_addresses(host: str, infos: list) -> None:
+    """Raise `UnsafeOutboundURL` if any resolved address is private /
+    loopback / metadata / link-local / multicast / reserved.
+
+    Note on DNS rebinding: this resolves once at validation time but
+    httpx will resolve again at connection time, so an attacker who
+    controls the authoritative DNS for `host` can return a safe IP
+    here and a private one to httpx. The mitigation is to pre-resolve
+    via this helper AND connect to a pinned IP — see the
+    `safe_post` helper that wraps httpx for outbound webhooks.
+    """
     for info in infos:
-        sockaddr = info[4]
+        sockaddr = info[4] if len(info) > 4 else None
         if not sockaddr:
             continue
         addr_text = sockaddr[0]
@@ -118,4 +148,8 @@ def _is_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return isinstance(ip, ipaddress.IPv4Address) and str(ip) == "169.254.169.254"
 
 
-__all__ = ["UnsafeOutboundURL", "check_outbound_url"]
+__all__ = [
+    "UnsafeOutboundURL",
+    "check_outbound_url",
+    "check_outbound_url_async",
+]
