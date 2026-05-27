@@ -59,7 +59,7 @@ def test_rejects_literal_localhost(fake_dns) -> None:
 
 
 def test_rejects_metadata_literal_host(fake_dns) -> None:
-    with pytest.raises(UnsafeOutboundURL, match="loopback|metadata"):
+    with pytest.raises(UnsafeOutboundURL, match=r"loopback|metadata"):
         check_outbound_url("http://metadata.google.internal/x")
 
 
