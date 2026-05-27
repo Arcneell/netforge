@@ -134,17 +134,26 @@ function onReflow() {
   if (open.value) updatePosition()
 }
 
+// Idempotency flag for the reflow listeners. A fast hover-flicker can
+// toggle `open` faster than Vue batches the watcher; without a guard,
+// addEventListener can fire twice before removeEventListener catches
+// up, accumulating one stale handler per cycle. Every page renders
+// many HelpTooltips — at scale that adds measurable scroll work.
+let reflowAttached = false
+
 watch(open, async (isOpen) => {
   if (isOpen) {
     await nextTick()
     updatePosition()
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !reflowAttached) {
       window.addEventListener('scroll', onReflow, true)
       window.addEventListener('resize', onReflow)
+      reflowAttached = true
     }
-  } else if (typeof window !== 'undefined') {
+  } else if (typeof window !== 'undefined' && reflowAttached) {
     window.removeEventListener('scroll', onReflow, true)
     window.removeEventListener('resize', onReflow)
+    reflowAttached = false
   }
 })
 
@@ -188,8 +197,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('click', onDocClick)
-    window.removeEventListener('scroll', onReflow, true)
-    window.removeEventListener('resize', onReflow)
+    if (reflowAttached) {
+      window.removeEventListener('scroll', onReflow, true)
+      window.removeEventListener('resize', onReflow)
+      reflowAttached = false
+    }
   }
 })
 

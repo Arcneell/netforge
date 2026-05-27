@@ -38,14 +38,20 @@ const status = ref<AIStatus | null>(null)
 const turns = ref<Turn[]>([])
 const input = ref('')
 const pending = ref(false)
-// Holds the in-flight stream's reader so we can cancel it on unmount or
-// when the user spams Enter (a second submission while the first is still
-// streaming). Without this, navigating away from /ask mid-answer leaks
-// the HTTP connection and the closure keeps mutating an orphan
-// assistantTurn until the server finishes — a guaranteed
-// unhandled-rejection on the next view's mount.
+// Per-stream cancellation token. Each `send()` call captures a fresh
+// `{ v: false }` object in its closure and passes it into streamAnswer;
+// the read loop checks the LOCAL flag. The module-level `activeReader`
+// handle still satisfies the cancel-on-resubmit / cancel-on-unmount
+// contract — when send() runs again we cancel the current reader (which
+// also flips its own token to true so the OLD send's finally branch
+// knows the stream was cancelled by us, not by the server, and skips
+// the "empty answer" / "incomplete answer" fallback messages that
+// would otherwise drop spurious bubbles into the chat).
+interface CancelToken {
+  v: boolean
+}
 let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
-let streamCancelled = false
+let activeCancelToken: CancelToken | null = null
 // Lite-context toggle: ask the backend to send a stripped snapshot
 // (identifiers only — no vendor / model / serial / notes / descriptions /
 // MACs / addresses). Cuts tokens ~10× and keeps free-text out of the
@@ -79,7 +85,7 @@ function historyForBackend(): QueryHistoryTurn[] {
 }
 
 function cancelActiveStream(): void {
-  streamCancelled = true
+  if (activeCancelToken) activeCancelToken.v = true
   if (activeReader) {
     try {
       void activeReader.cancel()
@@ -88,6 +94,7 @@ function cancelActiveStream(): void {
     }
     activeReader = null
   }
+  activeCancelToken = null
 }
 
 onBeforeUnmount(cancelActiveStream)
@@ -98,8 +105,12 @@ async function send() {
   // Cancel any earlier inflight stream (e.g., the operator hit Enter
   // again while a slow answer was still streaming). Without this the
   // two streams race and tokens interleave in the same assistant bubble.
+  // The cancelled stream's own token is flipped to true so the old
+  // send()'s finally branch can distinguish user-cancellation from
+  // server-side stream-ended-prematurely.
   cancelActiveStream()
-  streamCancelled = false
+  const cancelToken: CancelToken = { v: false }
+  activeCancelToken = cancelToken
   input.value = ''
   // Snapshot history BEFORE we push the new user turn so the server sees
   // exactly the prior exchange, not a copy of the question it's about to
@@ -127,7 +138,7 @@ async function send() {
   // bug on Ask AI with fast providers (Gemini flash, Anthropic Haiku).
   let assistantTurn: Turn | null = null
   try {
-    const outcome = await streamAnswer(question, history, (delta, meta) => {
+    const outcome = await streamAnswer(question, history, cancelToken, (delta, meta) => {
       if (!assistantTurn) {
         assistantTurn = reactive<Turn>({ id: nextId++, role: 'assistant', text: '' })
         turns.value.push(assistantTurn)
@@ -147,7 +158,18 @@ async function send() {
     // initial `null` after the await — it can't see the closure mutation.
     // Re-widen explicitly so the post-stream branches type-check.
     const settled = assistantTurn as Turn | null
-    if (!settled) {
+    // Skip the empty/incomplete fallback bubbles when WE cancelled this
+    // stream (the user re-submitted or navigated away). Otherwise the
+    // user's brand-new question would be preceded by a spurious "no
+    // answer" / "incomplete answer" bubble from the cancelled run.
+    if (cancelToken.v) {
+      // Drop the partial assistant turn we created — it's a torso
+      // without a head, and the new stream is about to add a fresh one.
+      if (settled) {
+        const idx = turns.value.indexOf(settled)
+        if (idx >= 0) turns.value.splice(idx, 1)
+      }
+    } else if (!settled) {
       // Stream completed with zero deltas — surface as a one-liner so the
       // operator doesn't sit on an empty chat.
       turns.value.push(
@@ -161,8 +183,9 @@ async function send() {
       settled.text += `\n\n${t('ai.askView.incompleteAnswer')}`
     }
   } catch (err) {
-    toastError(describe(err))
+    if (!cancelToken.v) toastError(describe(err))
   } finally {
+    if (activeCancelToken === cancelToken) activeCancelToken = null
     pending.value = false
     await scrollToBottom()
   }
@@ -195,6 +218,7 @@ interface StreamOutcome {
 async function streamAnswer(
   question: string,
   history: QueryHistoryTurn[],
+  cancelToken: CancelToken,
   onDelta: DeltaCallback,
 ): Promise<StreamOutcome> {
   const resp = await aiApi.askStream(question, history, {
@@ -210,10 +234,10 @@ async function streamAnswer(
   let streamError: string | null = null
   const outcome: StreamOutcome = { deltas: 0, completed: false }
   while (true) {
-    if (streamCancelled) break
+    if (cancelToken.v) break
     const { value, done } = await reader.read()
     if (done) break
-    if (streamCancelled) break
+    if (cancelToken.v) break
     buffer += decoder.decode(value, { stream: true })
     // SSE frames are separated by blank lines (\n\n). Split, leaving any
     // trailing partial frame in `buffer` for the next iteration.
