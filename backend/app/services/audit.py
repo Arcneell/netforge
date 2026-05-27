@@ -153,6 +153,12 @@ def _write_audit_row(
 
 
 _listeners_registered = False
+# Track the (model, evt_name, fn) tuples we attached so the test helper
+# `reset_audit_listeners` can remove them precisely. SQLAlchemy wraps
+# the closures internally, so a blind `event.remove` with the original
+# function reference works when we use it directly — but only if we
+# have the reference. Hence this list.
+_attached: list[tuple[type, str, object]] = []
 
 
 def register_audit_listeners() -> None:
@@ -174,8 +180,31 @@ def register_audit_listeners() -> None:
     _listeners_registered = True
 
 
+def reset_audit_listeners() -> None:
+    """Remove every listener attached by `register_audit_listeners`.
+
+    Test-only helper. Production code never reaches this path: the
+    idempotency flag means even a second `register_audit_listeners()`
+    call is a no-op, so there is nothing legitimate to undo. Tests
+    that need to exercise the registration loop in isolation call
+    `reset_audit_listeners()` to get back to a clean slate exactly —
+    no orphaned wrapped closures left on any mapper.
+    """
+    global _listeners_registered
+    for model, evt_name, fn in _attached:
+        # event.remove accepts the original (pre-wrap) function we
+        # stored; SQLAlchemy resolves it back to the wrapper. Best-
+        # effort: a listener we attached can have been hand-removed
+        # by a previous test using `event.remove` directly.
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            event.remove(model, evt_name, fn)
+    _attached.clear()
+    _listeners_registered = False
+
+
 def _attach_listeners(model: type, entity: str) -> None:
-    @event.listens_for(model, "after_insert")
     def _on_insert(mapper, connection, target) -> None:
         _write_audit_row(
             connection,
@@ -185,7 +214,6 @@ def _attach_listeners(model: type, entity: str) -> None:
             {"after": _dump_columns(target)},
         )
 
-    @event.listens_for(model, "after_update")
     def _on_update(mapper, connection, target) -> None:
         before, after = _diff_changed_columns(target)
         # Skip no-op UPDATEs (e.g. server-side updated_at refresh only).
@@ -199,7 +227,6 @@ def _attach_listeners(model: type, entity: str) -> None:
             {"before": before, "after": after},
         )
 
-    @event.listens_for(model, "after_delete")
     def _on_delete(mapper, connection, target) -> None:
         _write_audit_row(
             connection,
@@ -208,3 +235,14 @@ def _attach_listeners(model: type, entity: str) -> None:
             _entity_id_of(target),
             {"before": _dump_columns(target)},
         )
+
+    # Wire each handler via the imperative API (instead of @event.listens_for)
+    # so we keep the exact callable in `_attached` for later precise removal
+    # in `reset_audit_listeners`. The decorator form discards that reference.
+    for evt_name, fn in (
+        ("after_insert", _on_insert),
+        ("after_update", _on_update),
+        ("after_delete", _on_delete),
+    ):
+        event.listen(model, evt_name, fn)
+        _attached.append((model, evt_name, fn))

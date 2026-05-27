@@ -73,12 +73,20 @@ def check_and_consume(user_id: int) -> None:
         raise AIRateLimitExceeded(retry_after_seconds=60)
     settings = get_settings()
     with _USERS_LOCK:
-        counter = _USERS.setdefault(user_id, _UserCounter())
+        # Sweep BEFORE setdefault so a just-created counter is never
+        # collected as "empty" before its first consume() runs. Codex
+        # P2 on #97 caught the inverted order: a 1024th call for a
+        # brand-new user would create the counter, then `_gc_idle_counters`
+        # would see it as empty (no entries yet) and drop it from
+        # `_USERS`. The current call still ran on the detached counter,
+        # but the NEXT call for that user got a fresh counter,
+        # undercounting the quota by 1 per sweep cycle.
         global _consumes_since_gc
         _consumes_since_gc += 1
         if _consumes_since_gc >= _GC_EVERY_N:
             _consumes_since_gc = 0
             _gc_idle_counters(window=settings.ai_rate_window_seconds)
+        counter = _USERS.setdefault(user_id, _UserCounter())
     counter.consume(limit=settings.ai_rate_limit_calls, window=settings.ai_rate_window_seconds)
 
 
