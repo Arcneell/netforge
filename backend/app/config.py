@@ -76,6 +76,17 @@ class Settings(BaseSettings):
     bootstrap_admin_email: str = ""
 
     # ------------------------------------------------------------------
+    # Outbound webhooks
+    # ------------------------------------------------------------------
+    # Webhook URLs are admin-supplied. By default the backend refuses to
+    # dispatch to private / loopback / cloud-metadata IPs — see
+    # `app/utils/ssrf.py`. Flip this to True ONLY when the backend
+    # genuinely needs to hit a private target (a relay on the same
+    # docker network, a dev box on localhost). Production deployments
+    # should leave it False.
+    webhook_allow_private_targets: bool = False
+
+    # ------------------------------------------------------------------
     # Rate limiting
     # ------------------------------------------------------------------
     # Cap write methods (POST/PUT/PATCH/DELETE) per IP per window. Defaults

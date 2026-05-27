@@ -223,12 +223,25 @@ def _format_for_chat_provider(url: str, generic: dict[str, Any]) -> dict[str, An
         f"`{generic.get('threshold', 'warning')}`"
     )
     body_md = summary + ("\n" + "\n".join(lines) if lines else "")
-    host = url.lower()
-    if "hooks.slack.com" in host or "mattermost" in host:
+    # Use the parsed hostname rather than `substring in url` — otherwise
+    # an attacker-controlled URL like `https://attacker.com/?hooks.slack.com`
+    # flips the formatting branch even though the receiver is not Slack.
+    # In isolation that's just a payload shape mismatch, but it weakens
+    # the assumption operators have about which host gets which shape.
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower()
+
+    def _host_in(suffixes: tuple[str, ...]) -> bool:
+        return any(host == s or host.endswith("." + s) for s in suffixes)
+
+    if _host_in(("hooks.slack.com",)) or "mattermost" in host:
         # Slack/Mattermost both accept the legacy `text` shape — Mattermost
-        # adopted it for compatibility with Slack integrations.
+        # adopted it for compatibility with Slack integrations. Mattermost
+        # has no canonical host suffix, so we keep the substring check
+        # there (typical self-hosted Mattermost URLs contain "mattermost").
         return {"text": body_md}
-    if "office.com" in host or "outlook.com" in host or "webhook.office" in host:
+    if _host_in(("office.com", "outlook.com")) or "webhook.office" in host:
         # Microsoft Teams "MessageCard" — minimal viable schema.
         return {
             "@type": "MessageCard",
@@ -238,7 +251,7 @@ def _format_for_chat_provider(url: str, generic: dict[str, Any]) -> dict[str, An
             "title": "NetForge AI advisor",
             "text": body_md,
         }
-    if "discord.com" in host or "discordapp.com" in host:
+    if _host_in(("discord.com", "discordapp.com")):
         return {"content": body_md[:1900]}  # Discord caps `content` at 2000.
     # Unknown URL — assume a generic relay that consumes our envelope.
     return generic
@@ -253,6 +266,20 @@ async def _send_webhook(url: str, payload: dict[str, Any]) -> None:
     pasting a Slack / Mattermost / Teams / Discord URL Just Works."""
     if not url:
         return
+    # SSRF guard — see app/utils/ssrf.py for the rationale. The scheduler
+    # path uses the same admin-supplied URL surface as the webhooks
+    # router so the same protection applies.
+    from app.config import get_settings
+    from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url
+
+    try:
+        check_outbound_url(
+            url, allow_private=get_settings().webhook_allow_private_targets
+        )
+    except UnsafeOutboundURL as exc:
+        logger.warning("AI webhook refused (SSRF guard): %s", exc)
+        return
+
     body = _format_for_chat_provider(url, payload)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
