@@ -80,6 +80,48 @@ def test_strips_maxitems_at_multiple_nesting_levels() -> None:
     assert "maxItems" not in inner_arr
 
 
+def test_rewrites_nullable_type_array_to_single_plus_nullable_flag() -> None:
+    """JSON-Schema 2020-12 lets you express "string or null" as
+    `type: ["string", "null"]`. OpenAI + Anthropic accept that shape but
+    Gemini's strict FunctionDeclaration validator wants a single-string
+    `type` plus an explicit `nullable: true`. The cleaner must rewrite
+    the list form so Gemini doesn't reject the request with the
+    "Input should be a valid string … input_value=['string', 'null']"
+    Pydantic error."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "intent": {
+                "type": ["string", "null"],
+                "enum": ["create_site", "create_vlan", None],
+            }
+        },
+    }
+    cleaned = _clean_schema_for_gemini(schema)
+    intent = cleaned["properties"]["intent"]
+    # Single type, not a list.
+    assert intent["type"] == "string"
+    # The "null" element produced `nullable: true`.
+    assert intent.get("nullable") is True
+    # `None` was stripped from the enum (Gemini rejects non-string enum
+    # values), the rest is preserved in original order.
+    assert intent["enum"] == ["create_site", "create_vlan"]
+
+
+def test_drops_null_enum_value_even_without_nullable_type() -> None:
+    """A schema that lists `null` in the enum without using the list
+    form of `type` still needs the `null` stripped — Gemini's validator
+    refuses non-string enum values regardless of how the nullability
+    was expressed at the type level."""
+    schema = {"type": "string", "enum": ["a", None, "b"]}
+    cleaned = _clean_schema_for_gemini(schema)
+    assert cleaned["enum"] == ["a", "b"]
+    # Type stays a plain "string" — no `nullable` added since the
+    # original type wasn't a list.
+    assert cleaned["type"] == "string"
+    assert "nullable" not in cleaned
+
+
 def test_recurses_through_items() -> None:
     schema = {
         "type": "array",

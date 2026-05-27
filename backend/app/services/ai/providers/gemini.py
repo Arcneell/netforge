@@ -111,6 +111,19 @@ def _clean_schema_for_gemini(schema: Any) -> Any:
 
     `items` is itself a schema (or list of schemas in 2020-12, but we don't
     use that here) so it gets the keyword-filter treatment too.
+
+    Two Gemini-specific shape rewrites are also applied:
+
+    - `type: ["string", "null"]` (JSON-Schema 2020-12 nullable form, accepted
+      by OpenAI + Anthropic but rejected by Gemini whose own enum values
+      are an upper-case single string). Gemini's SDK requires `type: "string"`
+      + `nullable: true`. Detected when `type` is a list and "null" is one
+      of the entries — the non-null type becomes `type` and `nullable: true`
+      is added alongside.
+    - `enum: [..., null]` — Gemini's strict validator refuses non-string
+      values in the enum array. The `null` element is dropped here; the
+      `nullable: true` flag (above) is what carries the "may be absent"
+      semantic instead.
     """
     if isinstance(schema, dict):
         cleaned: dict[str, Any] = {}
@@ -120,13 +133,59 @@ def _clean_schema_for_gemini(schema: Any) -> Any:
             if key == "properties" and isinstance(value, dict):
                 # Field names are arbitrary identifiers — keep them all,
                 # clean each value (which IS a schema).
-                cleaned[key] = {fname: _clean_schema_for_gemini(fval) for fname, fval in value.items()}
+                cleaned[key] = {
+                    fname: _clean_schema_for_gemini(fval)
+                    for fname, fval in value.items()
+                }
             else:
                 cleaned[key] = _clean_schema_for_gemini(value)
+        # Post-process this node now that everything is cleaned.
+        _rewrite_nullable_type(cleaned)
+        _drop_null_enum_values(cleaned)
         return cleaned
     if isinstance(schema, list):
         return [_clean_schema_for_gemini(v) for v in schema]
     return schema
+
+
+def _rewrite_nullable_type(node: dict[str, Any]) -> None:
+    """Collapse `type: ["X", "null"]` → `type: "X"` + `nullable: true`.
+
+    No-op when `type` is already a single string or when null isn't in
+    the list. If the list has > 2 entries (e.g. ["string", "number"]),
+    we keep the first non-null member; Gemini doesn't support union
+    types so that's the best we can do without rewriting the prompt.
+    """
+    t = node.get("type")
+    if not isinstance(t, list):
+        return
+    has_null = "null" in t
+    non_null = [x for x in t if x != "null"]
+    if not non_null:
+        # Pathological case — schema said `type: ["null"]` which means
+        # "always null". Map to "string" + nullable, which is the
+        # closest Gemini approximation.
+        node["type"] = "string"
+        node["nullable"] = True
+        return
+    node["type"] = non_null[0]
+    if has_null:
+        node["nullable"] = True
+
+
+def _drop_null_enum_values(node: dict[str, Any]) -> None:
+    """Remove `None` / `null` entries from an enum array.
+
+    Gemini rejects the request when an enum contains a non-string value;
+    the corresponding null semantic is carried by `nullable: true` (set
+    by `_rewrite_nullable_type` when the type list included null).
+    """
+    enum_values = node.get("enum")
+    if not isinstance(enum_values, list):
+        return
+    filtered = [v for v in enum_values if v is not None]
+    if len(filtered) != len(enum_values):
+        node["enum"] = filtered
 
 
 class GeminiProvider:
