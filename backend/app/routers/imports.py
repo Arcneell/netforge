@@ -17,15 +17,48 @@ from app.services.errors import business_rule
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 _MAX_BYTES = 10 * 1024 * 1024  # 10 MiB hard cap, per single CSV
+_READ_CHUNK = 64 * 1024  # 64 KiB chunks for the streaming read
 
 
 def _enforce_size(content: bytes) -> None:
+    """Belt-and-suspenders length check for callers that already have
+    bytes in memory (legacy code paths, tests). The route entry points
+    use `_read_capped` so the bytes never exceed `_MAX_BYTES` to begin
+    with — but if a caller hands us a literal `bytes` larger than the
+    cap, refuse here too.
+    """
     if len(content) > _MAX_BYTES:
         business_rule(
             "CSV_TOO_LARGE",
             f"Upload exceeds the {_MAX_BYTES} byte limit.",
             details={"size": len(content), "max": _MAX_BYTES},
         )
+
+
+async def _read_capped(file: UploadFile) -> bytes:
+    """Stream the upload into memory, enforcing `_MAX_BYTES` as we go.
+
+    The previous `await file.read()` materialised the whole body before
+    the size check — nginx's 16 MiB body cap meant an admin (or an
+    admin API token holder) could force ~16 MiB of resident memory per
+    concurrent request before the 10 MiB refusal fired. Stream-reading
+    in 64 KiB chunks bounds the peak at `_MAX_BYTES` and refuses early.
+    """
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        chunk = await file.read(_READ_CHUNK)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > _MAX_BYTES:
+            business_rule(
+                "CSV_TOO_LARGE",
+                f"Upload exceeds the {_MAX_BYTES} byte limit.",
+                details={"size": size, "max": _MAX_BYTES},
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 # Detect must be declared BEFORE the catch-all `/{entity}` route, otherwise
@@ -37,8 +70,7 @@ def _enforce_size(content: bytes) -> None:
 )
 async def detect_csv(file: UploadFile = File(...)) -> DetectReport:
     """Inspect a CSV's header row and guess which entity it belongs to."""
-    content = await file.read()
-    _enforce_size(content)
+    content = await _read_capped(file)
     return service.detect_entity(content)
 
 
@@ -60,7 +92,7 @@ async def import_bulk(
     """
     payloads: list[tuple[str, bytes]] = []
     for f in files:
-        content = await f.read()
+        content = await _read_capped(f)
         name = f.filename or "upload.csv"
         # A single .zip member explodes into its CSVs in-place; mixing a zip
         # with extra loose CSVs in the same request is supported too.
@@ -97,8 +129,7 @@ async def import_entity(
     rewritten in-memory before parsing. This is what backs the AI mapping
     assistant: the operator pastes their CSV, the LLM proposes the mapping,
     and the import is replayed with that mapping applied automatically."""
-    content = await file.read()
-    _enforce_size(content)
+    content = await _read_capped(file)
     parsed_map: dict[str, str | None] | None = None
     if column_map:
         try:
