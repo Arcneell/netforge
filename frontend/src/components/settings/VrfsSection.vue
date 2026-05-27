@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2 } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
@@ -30,12 +30,13 @@ const formError = ref<string | null>(null)
 const toDelete = ref<Vrf | null>(null)
 const deleting = ref(false)
 
-const columns: DataTableColumn[] = [
+// Wrap in computed so labels follow the i18n locale.
+const columns = computed<DataTableColumn[]>(() => [
   { key: 'name', label: t('vrf.fields.name'), cellClass: 'font-medium' },
   { key: 'rd', label: t('vrf.fields.rd'), cellClass: 'font-mono text-xs' },
   { key: 'description', label: t('vrf.fields.description'), hideOnSm: true },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-24' },
-]
+])
 
 async function load() {
   loading.value = true

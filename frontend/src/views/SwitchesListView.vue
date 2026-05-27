@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2 } from 'lucide-vue-next'
@@ -72,14 +72,15 @@ async function confirmDelete() {
   }
 }
 
-const columns: DataTableColumn[] = [
+// Wrap in computed so column labels follow the i18n locale.
+const columns = computed<DataTableColumn[]>(() => [
   { key: 'name', label: t('switch.fields.name'), cellClass: 'font-medium' },
   { key: 'vendor', label: t('switch.fields.vendor'), hideOnSm: true },
   { key: 'model', label: t('switch.fields.model'), hideOnSm: true },
   { key: 'management_ip', label: t('switch.fields.managementIp'), cellClass: 'font-mono' },
   { key: 'port_count', label: t('switch.fields.portCount'), align: 'right', cellClass: 'w-24' },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-32' },
-]
+])
 </script>
 
 <template>

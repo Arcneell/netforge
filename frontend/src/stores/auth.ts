@@ -48,10 +48,38 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const v = sessionStorage.getItem('netforge.postLoginPath')
       if (v) sessionStorage.removeItem('netforge.postLoginPath')
-      return v
+      return _sanitisePostLoginPath(v)
     } catch {
       return null
     }
+  }
+
+  /**
+   * Defence against an open-redirect via `?next=` on /login. We persist
+   * the unvalidated value (so the LoginView UX stays simple), but only
+   * accept it back as a target if it looks like an internal path:
+   *
+   *   - starts with a single `/`
+   *   - does NOT start with `//` (protocol-relative URL like //evil.com)
+   *   - does NOT contain a scheme (`https:`, `javascript:`, ...)
+   *   - does NOT contain control chars / newlines / backslashes
+   *
+   * Anything that fails is dropped, so the caller falls through to "/".
+   */
+  function _sanitisePostLoginPath(raw: string | null): string | null {
+    if (!raw) return null
+    if (raw.length > 2000) return null
+    // Must start with `/` and not `//` (protocol-relative form).
+    if (!raw.startsWith('/') || raw.startsWith('//')) return null
+    // Block backslash-paths and any non-printable / newline char that
+    // can cause CRLF injection or split the URL parser.
+    if (/[\\\x00-\x1f]/.test(raw)) return null
+    // Block embedded scheme (a single colon before the first `/?#`).
+    // `/foo?bar=baz:qux` is fine because the colon is past the `?`.
+    const stop = raw.search(/[?#]/)
+    const pathPart = stop < 0 ? raw : raw.slice(0, stop)
+    if (pathPart.includes(':')) return null
+    return raw
   }
 
   async function logout(): Promise<void> {

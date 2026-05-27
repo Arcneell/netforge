@@ -261,14 +261,18 @@ async function confirmDelete() {
   }
 }
 
-const columns: DataTableColumn[] = [
+// Wrap in computed so `t()` re-runs when the user switches the UI
+// locale via LocaleSwitcher — otherwise the column header labels stay
+// frozen at the language active when the component mounted. Matches
+// the pattern PortTable.vue already uses correctly.
+const columns = computed<DataTableColumn[]>(() => [
   { key: 'cidr', label: t('subnet.fields.cidr'), cellClass: 'font-mono' },
   { key: 'vlan_id', label: t('subnet.fields.vlan'), cellClass: 'w-40' },
   { key: 'gateway', label: t('subnet.fields.gateway'), hideOnSm: true, cellClass: 'font-mono' },
   { key: 'description', label: t('subnet.fields.description'), hideOnSm: true },
   { key: 'usage', label: t('subnet.fields.usage'), cellClass: 'w-40' },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-32' },
-]
+])
 </script>
 
 <template>

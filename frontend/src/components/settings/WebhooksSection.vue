@@ -39,22 +39,23 @@ const deliveriesFor = ref<Webhook | null>(null)
 const deliveries = ref<WebhookDelivery[]>([])
 const deliveriesLoading = ref(false)
 
-const columns: DataTableColumn[] = [
+// Wrap in computed so labels follow the i18n locale.
+const columns = computed<DataTableColumn[]>(() => [
   { key: 'name', label: t('webhooks.fields.name'), cellClass: 'font-medium' },
   { key: 'url', label: t('webhooks.fields.url'), cellClass: 'font-mono text-xs truncate max-w-md' },
   { key: 'events', label: t('webhooks.fields.events'), cellClass: 'text-xs' },
   { key: 'status', label: t('webhooks.fields.status'), cellClass: 'w-32' },
   { key: 'stats', label: t('webhooks.fields.stats'), cellClass: 'w-40 text-xs' },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-40' },
-]
+])
 
-const deliveryColumns: DataTableColumn[] = [
+const deliveryColumns = computed<DataTableColumn[]>(() => [
   { key: 'created_at', label: t('webhooks.delivery.when'), cellClass: 'w-44 whitespace-nowrap' },
   { key: 'event', label: t('webhooks.delivery.event'), cellClass: 'font-mono text-xs' },
   { key: 'status_code', label: t('webhooks.delivery.status'), cellClass: 'w-20' },
   { key: 'latency_ms', label: t('webhooks.delivery.latency'), cellClass: 'w-20' },
   { key: 'error', label: t('webhooks.delivery.error') },
-]
+])
 
 async function load() {
   loading.value = true
