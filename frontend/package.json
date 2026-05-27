@@ -19,7 +19,7 @@
     "@fontsource/geist-sans": "^5.2.5",
     "axios": "^1.16.1",
     "cytoscape": "^3.33.4",
-    "cytoscape-dagre": "^2.5.0",
+    "cytoscape-dagre": "^3.0.0",
     "lucide-vue-next": "^0.460.0",
     "pinia": "^2.2.6",
     "vue": "^3.5.13",
