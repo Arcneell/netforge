@@ -111,6 +111,15 @@ def _match_constraint(message: str) -> tuple[str, str] | None:
     return None
 
 
+# Public alias for callers that need to map an `IntegrityError` raised
+# OUTSIDE a `catch_integrity_errors()` context — e.g. the AI draft
+# applier rolls back + re-raises before the route layer gets it, so the
+# route layer has to translate the constraint name itself. Keep the
+# leading-underscore version too because `_match_constraint` is what
+# the existing private callers reference.
+match_constraint = _match_constraint
+
+
 @contextmanager
 def catch_integrity_errors():
     """Translate IntegrityError → HTTPException with a stable code.

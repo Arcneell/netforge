@@ -56,6 +56,17 @@ Rules:
 - Resolve references against the supplied snapshot — never invent a
   `site_code` or a `vlan_id` the snapshot doesn't show.
 - Be conservative: missing fields default to null/empty, never guessed.
+- DO NOT propose creating an entity whose natural key already exists in
+  the snapshot. For each intent the natural key is:
+    create_site   → `code`
+    create_room   → (`site_code`, `code`)
+    create_vlan   → `vlan_id`
+    create_subnet → `cidr` (also flag overlaps with existing subnets in
+                    the same vrf_id, not just exact-match CIDRs)
+  If the entity already exists, set `intent` = null and use `reasoning`
+  to say "the subnet 10.0.30.0/24 already exists" so the operator can
+  reformulate. The DB has hard exclusion constraints that will reject
+  the apply anyway — flagging it at draft time saves the round-trip.
 
 Return your output via the `submit_draft` tool. Do not write prose around it.
 """

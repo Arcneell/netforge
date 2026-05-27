@@ -719,27 +719,37 @@ async def apply_draft_route(
     """
     from sqlalchemy.exc import IntegrityError
 
+    from app.services.errors import http_error, match_constraint
+
     _require_drafts_enabled()
     try:
         draft = await apply_draft(db, draft_id=draft_id, user_id=user.id)
     except LookupError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc))
     except ValueError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        http_error(status.HTTP_409_CONFLICT, "DRAFT_INVALID", str(exc))
     except IntegrityError as exc:
-        # The applier already rolled back and marked the draft as failed —
-        # surface the constraint name + message so the UI can explain
-        # "subnet overlaps with 10.0.0.0/24" instead of a generic 502.
-        message = str(getattr(exc, "orig", exc)) or "database integrity violation"
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, detail=message
-        ) from exc
+        # The applier already rolled back and marked the draft as
+        # `failed`. Translate the constraint name into the same friendly
+        # code+message pair that the canonical `catch_integrity_errors`
+        # helper would have produced — operators see
+        # "This CIDR overlaps an existing subnet" instead of the raw
+        # asyncpg `ExclusionViolationError: ... subnets_no_overlap_global`
+        # dump.
+        raw = str(getattr(exc, "orig", exc)) or "database integrity violation"
+        match = match_constraint(raw)
+        if match:
+            code, friendly = match
+        else:
+            code, friendly = "INTEGRITY_VIOLATION", "Data integrity violation."
+        http_error(status.HTTP_409_CONFLICT, code, friendly, details={"raw": raw[:500]})
     except Exception as exc:
         logger.exception("draft apply crashed (draft_id=%s)", draft_id)
-        raise HTTPException(
+        http_error(
             status.HTTP_502_BAD_GATEWAY,
-            detail=f"{type(exc).__name__}: {exc}",
-        ) from exc
+            "AI_APPLY_FAILED",
+            f"{type(exc).__name__}: {exc}",
+        )
     return ActionDraftRead.model_validate(draft)
 
 
