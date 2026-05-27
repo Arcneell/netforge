@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Copy, Plus, Trash2, CheckCircle2 } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
@@ -40,7 +40,8 @@ const copied = ref(false)
 const tokenToRevoke = ref<ApiToken | null>(null)
 const revoking = ref(false)
 
-const columns: DataTableColumn[] = [
+// Wrap in computed so labels follow the i18n locale.
+const columns = computed<DataTableColumn[]>(() => [
   { key: 'name', label: t('apiTokens.fields.name'), cellClass: 'font-medium' },
   { key: 'prefix', label: t('apiTokens.fields.prefix'), cellClass: 'font-mono w-32' },
   { key: 'created_at', label: t('apiTokens.fields.created'), cellClass: 'w-44 whitespace-nowrap' },
@@ -51,7 +52,7 @@ const columns: DataTableColumn[] = [
   },
   { key: 'status', label: t('apiTokens.fields.status'), cellClass: 'w-32' },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-20' },
-]
+])
 
 async function load() {
   loading.value = true

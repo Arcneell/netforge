@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus, Pencil, Trash2 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
@@ -79,12 +79,13 @@ async function confirmDelete() {
   }
 }
 
-const columns: DataTableColumn[] = [
+// Wrap in computed so column labels follow the i18n locale.
+const columns = computed<DataTableColumn[]>(() => [
   { key: 'vlan_id', label: t('vlan.fields.vlanId'), cellClass: 'w-32 font-mono' },
   { key: 'name', label: t('vlan.fields.name') },
   { key: 'description', label: t('vlan.fields.description'), hideOnSm: true },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-32' },
-]
+])
 </script>
 
 <template>
