@@ -24,6 +24,7 @@ class OIDCProvider(AuthProvider):
         client_id: str,
         client_secret: str,
         scope: str = "openid email profile",
+        require_email_verified: bool = True,
     ) -> None:
         if not issuer_url or not client_id or not client_secret:
             raise RuntimeError(
@@ -37,6 +38,7 @@ class OIDCProvider(AuthProvider):
             client_kwargs={"scope": scope},
         )
         self._oauth = oauth
+        self._require_email_verified = require_email_verified
 
     async def authorize_redirect(self, request: Request, redirect_uri: str) -> Response:
         return await self._oauth.oidc.authorize_redirect(request, redirect_uri)
@@ -62,6 +64,34 @@ class OIDCProvider(AuthProvider):
                     }
                 },
             )
+
+        # Block accounts whose email the IdP did NOT verify. Without this
+        # guard, a permissive IdP (multi-tenant Entra, public Google,
+        # self-service Keycloak realm) lets an attacker register with
+        # an arbitrary email — including the BOOTSTRAP_ADMIN_EMAIL or
+        # the email of the first user on a cold install — and JIT-
+        # promote themselves to admin. OIDC encodes the verification
+        # state in the boolean `email_verified` claim; some IdPs emit
+        # it as the string "true" / "false", so we coerce.
+        if self._require_email_verified:
+            verified = userinfo.get("email_verified")
+            if isinstance(verified, str):
+                verified = verified.strip().lower() == "true"
+            if verified is not True:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "error": {
+                            "code": "AUTH_EMAIL_NOT_VERIFIED",
+                            "message": (
+                                "Your identity provider did not verify this email "
+                                "address. Verify it at the IdP and retry, or ask "
+                                "the operator to set OIDC_REQUIRE_EMAIL_VERIFIED=false "
+                                "if your IdP does not emit the claim."
+                            ),
+                        }
+                    },
+                )
 
         return UserInfo(
             subject=str(subject),
