@@ -30,6 +30,7 @@ const props = withDefaults(
     disabled: false,
     loading: false,
     block: false,
+    ariaLabel: undefined,
   },
 )
 

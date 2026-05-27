@@ -41,6 +41,8 @@ const props = withDefaults(
     inline?: boolean
   }>(),
   {
+    text: undefined,
+    label: undefined,
     placement: 'top',
     inline: true,
   },
@@ -91,10 +93,7 @@ function updatePosition() {
   // helps in practice for our use cases.
   if (place === 'top' && r.top < APPROX_BUBBLE_H + GAP_PX + VIEWPORT_PAD) {
     place = 'bottom'
-  } else if (
-    place === 'bottom' &&
-    vh - r.bottom < APPROX_BUBBLE_H + GAP_PX + VIEWPORT_PAD
-  ) {
+  } else if (place === 'bottom' && vh - r.bottom < APPROX_BUBBLE_H + GAP_PX + VIEWPORT_PAD) {
     place = 'top'
   }
   effectivePlacement.value = place

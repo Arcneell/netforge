@@ -41,7 +41,13 @@ const props = withDefaults(
     /** Skeleton rows rendered during the first load (no rows yet). */
     skeletonRows?: number
   }>(),
-  { loading: false, clickable: false, skeletonRows: 6 },
+  {
+    loading: false,
+    emptyTitle: undefined,
+    emptyDescription: undefined,
+    clickable: false,
+    skeletonRows: 6,
+  },
 )
 
 defineEmits<{

@@ -13,7 +13,13 @@ withDefaults(
     variant?: 'primary' | 'danger'
     loading?: boolean
   }>(),
-  { variant: 'primary', loading: false },
+  {
+    message: undefined,
+    confirmLabel: undefined,
+    cancelLabel: undefined,
+    variant: 'primary',
+    loading: false,
+  },
 )
 
 const emit = defineEmits<{

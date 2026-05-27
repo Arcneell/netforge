@@ -13,6 +13,7 @@ const props = withDefaults(
     size?: 'sm' | 'md' | 'lg' | 'xl'
   }>(),
   {
+    title: undefined,
     closable: true,
     size: 'md',
   },

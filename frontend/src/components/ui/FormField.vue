@@ -10,7 +10,13 @@ const props = withDefaults(
     /** Optional explicit id; otherwise we autogenerate via Vue's useId. */
     fieldId?: string
   }>(),
-  { required: false },
+  {
+    label: undefined,
+    hint: undefined,
+    error: null,
+    required: false,
+    fieldId: undefined,
+  },
 )
 
 const autoId = useId()

@@ -14,6 +14,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Lock GITHUB_TOKEN to read-only at the workflow scope. The repo grants
+# "Read and write permissions" by default (release.yml needs that for
+# GHCR push), but CI only needs to read source. Without this block, a
+# compromised third-party action — which CI calls by floating tag for
+# ergonomics — would run with a writable token and could mutate the
+# repo. Pinning the permissions here removes that blast radius, which
+# is what makes floating tags safe here (Codex P1 on PR #101).
+permissions:
+  contents: read
+
 jobs:
   backend:
     runs-on: ubuntu-latest
