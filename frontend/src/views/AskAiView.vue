@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   Bot,
@@ -25,6 +25,24 @@ import { useToast } from '@/composables/useToast'
 const { t } = useI18n()
 const { describe } = useApiErrorMessage()
 const { error: toastError } = useToast()
+const router = useRouter()
+
+/**
+ * Intercept clicks on inline citation links (`<a data-internal-link>`)
+ * inside a v-html'd assistant bubble. Without this, the browser would
+ * navigate via a full page reload — losing the conversation state.
+ *
+ * Modifier keys (Cmd/Ctrl/Shift/middle-click) fall through to the
+ * default behaviour so "open in new tab" still works.
+ */
+function onInlineClick(e: MouseEvent): void {
+  const anchor = (e.target as HTMLElement | null)?.closest?.('a[data-internal-link]')
+  if (!(anchor instanceof HTMLAnchorElement)) return
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+  e.preventDefault()
+  const href = anchor.getAttribute('href') || ''
+  if (href.startsWith('/')) void router.push(href)
+}
 
 interface Turn {
   id: number
@@ -338,9 +356,58 @@ function useSuggestion(key: string) {
  * features. HTML inside user-supplied text is escaped first; only the
  * recognised patterns are turned into markup.
  */
+// Entity-citation token: `[[type:id|label]]` (label optional). The LLM
+// emits these inline; we convert them to clickable <a> tags pointing
+// at the matching IPAM page. Type set must stay in sync with the
+// backend's QueryEntityRef enum (see services/ai/nl_query.py).
+const _CITATION_RE = /\[\[(site|room|switch|port|vlan|subnet|device):(\d+)(?:\|([^\]]+))?\]\]/g
+
+function _citationHref(type: string, id: string): string | null {
+  switch (type) {
+    case 'switch':
+      return `/switches/${id}`
+    case 'subnet':
+      return `/subnets/${id}`
+    case 'port':
+      // No per-port page; route to the parent switch's detail. The id we
+      // have is the port id, not the switch id — fall back to the
+      // switches list. The bottom-chips already do this.
+      return '/switches'
+    case 'vlan':
+      return '/vlans'
+    case 'device':
+      return '/devices'
+    case 'site':
+    case 'room':
+      // No per-site/room page in the SPA today; surface the label
+      // as plain text styled like a pill (no href).
+      return null
+    default:
+      return null
+  }
+}
+
+function _renderCitations(escaped: string): string {
+  return escaped.replace(_CITATION_RE, (_match, type: string, id: string, label?: string) => {
+    const text = (label || `${type} #${id}`).trim()
+    const href = _citationHref(type, id)
+    const base =
+      'inline-flex items-center gap-1 px-1.5 py-0.5 rounded ' +
+      'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 ' +
+      'border border-primary-200/60 dark:border-primary-800/60 font-medium text-[0.92em]'
+    if (href) {
+      return `<a href="${href}" data-internal-link="1" class="${base} hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors">${text}</a>`
+    }
+    return `<span class="${base}">${text}</span>`
+  })
+}
+
 function renderMarkdown(src: string): string {
+  // Escape first, then re-introduce only the markup we recognise. The
+  // citation pattern is applied AFTER escape so its angle brackets in
+  // the produced HTML survive the user-content sanitisation.
   const esc = src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return esc
+  return _renderCitations(esc)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(
       /`([^`]+)`/g,
@@ -455,9 +522,12 @@ onMounted(loadStatus)
           >
             <!-- renderMarkdown escapes HTML before applying the bold/code/br
                  transforms, so the input is safe even if the LLM returns
-                 raw markup. -->
+                 raw markup. Inline citation tokens [[type:id|label]]
+                 become <a data-internal-link>; we intercept clicks on
+                 those at this wrapping div to route through Vue Router
+                 instead of triggering a full page reload. -->
             <!-- eslint-disable-next-line vue/no-v-html -->
-            <div class="prose-sm" v-html="renderMarkdown(turn.text)" />
+            <div class="prose-sm" @click="onInlineClick" v-html="renderMarkdown(turn.text)" />
             <div
               v-if="turn.entities && turn.entities.length"
               class="mt-3 pt-3 border-t border-border/50 flex flex-wrap gap-1.5"
