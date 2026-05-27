@@ -423,13 +423,20 @@ async def _persist_subnet(db: AsyncSession, row: _SubnetRow) -> None:
     site = await _site_by_code(db, row.site_code)
     vlan = await _vlan_by_id(db, row.vlan_id)
 
+    # Keep dhcp_enabled tri-state on the upsert path (True / False / None)
+    # so a blank cell leaves the existing value untouched. The previous
+    # `... if not None else False` collapsed blank → False, then the loop
+    # below (`if v is not None …`) ran setattr unconditionally — silently
+    # disabling DHCP on every subnet when an operator re-imported a CSV
+    # that didn't carry the column. The new-row branch still defaults to
+    # False (matches the column server-side default + NOT NULL constraint).
     data: dict[str, Any] = {
         "cidr": row.cidr,
         "gateway": row.gateway,
         "vlan_id": vlan.id if vlan else None,
         "site_id": site.id,
         "description": row.description,
-        "dhcp_enabled": row.dhcp_enabled if row.dhcp_enabled is not None else False,
+        "dhcp_enabled": row.dhcp_enabled,
         "dhcp_range_start": row.dhcp_range_start,
         "dhcp_range_end": row.dhcp_range_end,
     }
@@ -438,11 +445,16 @@ async def _persist_subnet(db: AsyncSession, row: _SubnetRow) -> None:
         await db.execute(select(Subnet).where(Subnet.cidr == row.cidr))
     ).scalar_one_or_none()
     if existing is None:
-        db.add(Subnet(**data))
+        create_data = {**data, "dhcp_enabled": bool(data["dhcp_enabled"])}
+        db.add(Subnet(**create_data))
     else:
+        # Fields where blank CSV cells are an explicit "clear this value"
+        # signal — anything outside this set treats None as "leave alone".
+        clearable = ("vlan_id", "gateway", "dhcp_range_start", "dhcp_range_end")
         for k, v in data.items():
-            if v is not None or k in ("vlan_id", "gateway", "dhcp_range_start", "dhcp_range_end"):
-                setattr(existing, k, v)
+            if v is None and k not in clearable:
+                continue
+            setattr(existing, k, v)
 
 
 async def _find_subnet_for(db: AsyncSession, address: str) -> Subnet:
@@ -618,14 +630,26 @@ async def _persist_port(db: AsyncSession, row: _PortRow) -> None:
                     f"VLAN {vid} is the native VLAN of this port — cannot also tag it.",
                 )
             wanted_ids.append(vlan.id)
-        # Drop existing tagged VLANs, then insert the new set.
+        wanted_set: set[int] = set(wanted_ids)
         existing_pv = (
-            await db.execute(select(PortVlan).where(PortVlan.port_id == port.id))
-        ).scalars().all()
+            (await db.execute(select(PortVlan).where(PortVlan.port_id == port.id)))
+            .scalars()
+            .all()
+        )
+        existing_ids = {pv.vlan_id for pv in existing_pv}
+        # Symmetric diff: only delete rows that are leaving the set, only
+        # insert rows that are joining it. Avoids the case where a naive
+        # "delete all + insert all" queues both operations in the same
+        # flush and Postgres trips port_vlan_pk because the INSERT for an
+        # unchanged (port_id, vlan_id) pair fires before the matching
+        # DELETE materialises — perfectly valid CSV input would roll back
+        # the whole import with a confusing INTEGRITY_VIOLATION.
         for pv in existing_pv:
-            await db.delete(pv)
+            if pv.vlan_id not in wanted_set:
+                await db.delete(pv)
         for vid in wanted_ids:
-            db.add(PortVlan(port_id=port.id, vlan_id=vid))
+            if vid not in existing_ids:
+                db.add(PortVlan(port_id=port.id, vlan_id=vid))
 
 
 async def _persist_link(db: AsyncSession, row: _LinkRow) -> None:

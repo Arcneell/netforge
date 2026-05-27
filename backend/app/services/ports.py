@@ -67,7 +67,26 @@ async def list_tagged_vlans(db: AsyncSession, port_id: int) -> list[Vlan]:
 
 async def update_port(db: AsyncSession, port_id: int, payload: PortUpdate) -> Port:
     port = await get_port(db, port_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    patch = payload.model_dump(exclude_unset=True)
+    # Mirror the invariant `add_tagged_vlan` enforces: a port can't have
+    # the same VLAN as both native and tagged. Without this guard an
+    # admin can PUT a native_vlan_id that is already in the port's
+    # tagged set and end up with an inconsistent port that CSV exports,
+    # the topology graph, and the AI snapshot all carry downstream.
+    new_native = patch.get("native_vlan_id")
+    if new_native is not None and new_native != port.native_vlan_id:
+        clash = await db.execute(
+            select(PortVlan.vlan_id).where(
+                PortVlan.port_id == port_id, PortVlan.vlan_id == new_native
+            )
+        )
+        if clash.scalar_one_or_none() is not None:
+            business_rule(
+                "VLAN_IS_NATIVE",
+                "Cannot set the native VLAN to a VLAN already tagged on this port.",
+                details={"port_id": port_id, "vlan_id": new_native},
+            )
+    for field, value in patch.items():
         setattr(port, field, value)
     with catch_integrity_errors():
         await db.commit()
