@@ -44,7 +44,6 @@ from app.services.audit import (
 )
 from app.services.webhooks import (
     dispatch_committed_in_background,
-    take_committed,
     take_pending,
 )
 from app.utils.request import client_ip
@@ -120,10 +119,17 @@ class _RequestLogMiddleware:
         try:
             await self.app(scope, receive, send_with_request_id)
         except Exception:
-            # Crash path: drop everything still queued so subscribers never
-            # see events from a transaction the framework abandoned.
+            # Crash path: drop anything that was still PENDING (the session
+            # rolled back, so subscribers must not see those events).
+            # Committed events, however, correspond to rows already in the
+            # DB — the audit_log row exists, the entity is there. Dropping
+            # them on a post-commit failure (response-serialisation error,
+            # ResponseModel validation failure, anything that runs after
+            # `await db.commit()`) silently desyncs webhook subscribers
+            # from the actual DB state. Dispatch them as we would on the
+            # success path.
             take_pending()
-            take_committed()
+            dispatch_committed_in_background()
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.exception(
                 "request.error rid=%s %s %s duration_ms=%d",
