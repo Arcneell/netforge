@@ -304,12 +304,64 @@ async def update_subnet(
     # confusing INVALID_PARENT (Codex P1 on #64).
     if "vrf_id" in patch and new_vrf != subnet.vrf_id:
         await _reject_vrf_move_with_children(db, subnet, new_vrf)
+    # Block a CIDR shrink that would leave existing children outside the
+    # new parent network. Symmetric guard to the VRF case above: without
+    # it, an admin can edit a parent from 10.0.0.0/16 to 10.0.0.0/24 and
+    # silently strand every child whose CIDR sits outside the new range —
+    # subsequent edits on those children then 400 with INVALID_PARENT,
+    # leaving the hierarchy in a half-broken state nobody can fix
+    # without manual SQL.
+    if "cidr" in patch and str(cidr) != str(subnet.cidr):
+        await _reject_cidr_shrink_with_orphaned_children(db, subnet, str(cidr))
     for field, value in patch.items():
         setattr(subnet, field, value)
     with catch_integrity_errors():
         await db.commit()
     await db.refresh(subnet)
     return subnet
+
+
+async def _reject_cidr_shrink_with_orphaned_children(
+    db: AsyncSession, subnet: Subnet, new_cidr: str
+) -> None:
+    """Refuse to change a subnet's CIDR if doing so would strand children.
+
+    The "child ⊂ parent" invariant is enforced on create + on the child's
+    own edit, but not when the parent itself is edited. An admin shrinking
+    or relocating a parent's range (e.g. /16 → /24, or a different base
+    address) can leave children whose CIDR sits outside the new network;
+    those rows then 400 INVALID_PARENT on any later edit and there's no
+    in-product path to recover. Refuse the parent edit instead, with the
+    offending children listed so the operator can detach/move them first.
+    """
+    new_net = IPv4Network(new_cidr, strict=False)
+    result = await db.execute(
+        select(Subnet.id, Subnet.cidr).where(Subnet.parent_subnet_id == subnet.id)
+    )
+    orphaned: list[tuple[int, str]] = []
+    for row in result.all():
+        # `select(Subnet.id, Subnet.cidr)` yields Row objects with .id /
+        # .cidr attributes — same access pattern as the sibling
+        # `_reject_vrf_move_with_children`.
+        child_net = IPv4Network(str(row.cidr), strict=False)
+        if not (child_net.subnet_of(new_net) and child_net != new_net):
+            orphaned.append((int(row.id), str(row.cidr)))
+    if not orphaned:
+        return
+    business_rule(
+        "INVALID_PARENT",
+        f"Cannot change CIDR of subnet {subnet.cidr} to {new_cidr}: "
+        f"{len(orphaned)} child subnet(s) would no longer be contained in the "
+        "new range. Detach or move the children first.",
+        details={
+            "subnet_id": subnet.id,
+            "current_cidr": str(subnet.cidr),
+            "requested_cidr": new_cidr,
+            "orphaned_children": [
+                {"id": cid, "cidr": cidr} for cid, cidr in orphaned
+            ],
+        },
+    )
 
 
 async def _reject_vrf_move_with_children(
