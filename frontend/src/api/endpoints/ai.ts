@@ -127,6 +127,31 @@ export interface QueryHistoryTurn {
   text: string
 }
 
+// --- Conversation history -------------------------------------------------
+
+/** List-item shape — what the sidebar renders without dragging turns over. */
+export interface Conversation {
+  id: number
+  title: string
+  created_at: string
+  updated_at: string
+  turn_count: number
+  preview: string | null
+}
+
+export interface ConversationTurn {
+  id: number
+  role: 'user' | 'assistant'
+  text: string
+  entities: QueryEntityRef[]
+  latency_ms: number | null
+  created_at: string
+}
+
+export interface ConversationDetail extends Conversation {
+  turns: ConversationTurn[]
+}
+
 // --- AI Usage dashboard ----------------------------------------------------
 
 export interface UsageTotal {
@@ -291,11 +316,21 @@ export const aiApi = {
    * The server caps history at 10 turns — the client should already trim
    * before sending to keep tokens down.
    */
-  ask(question: string, history: QueryHistoryTurn[] = []): Promise<QueryAnswer> {
+  ask(
+    question: string,
+    history: QueryHistoryTurn[] = [],
+    options: { conversationId?: number | null } = {},
+  ): Promise<QueryAnswer> {
     return request<QueryAnswer>({
       method: 'POST',
       url: '/ai/query',
-      data: { question, history },
+      data: {
+        question,
+        history,
+        ...(options.conversationId !== undefined && options.conversationId !== null
+          ? { conversation_id: options.conversationId }
+          : {}),
+      },
       timeout: AI_TIMEOUT_MS,
     })
   },
@@ -311,7 +346,7 @@ export const aiApi = {
   askStream(
     question: string,
     history: QueryHistoryTurn[] = [],
-    options: { liteContext?: boolean } = {},
+    options: { liteContext?: boolean; conversationId?: number | null } = {},
   ): Promise<Response> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -333,8 +368,31 @@ export const aiApi = {
         question,
         history,
         lite_context: options.liteContext ?? false,
+        ...(options.conversationId !== undefined && options.conversationId !== null
+          ? { conversation_id: options.conversationId }
+          : {}),
       }),
     })
+  },
+  // --- Conversation history (persistent Ask-AI threads) -------------------
+  listConversations(): Promise<Conversation[]> {
+    return request<Conversation[]>({ method: 'GET', url: '/ai/conversations' })
+  },
+  createConversation(): Promise<Conversation> {
+    return request<Conversation>({ method: 'POST', url: '/ai/conversations' })
+  },
+  getConversation(id: number): Promise<ConversationDetail> {
+    return request<ConversationDetail>({ method: 'GET', url: `/ai/conversations/${id}` })
+  },
+  renameConversation(id: number, title: string): Promise<Conversation> {
+    return request<Conversation>({
+      method: 'PATCH',
+      url: `/ai/conversations/${id}`,
+      data: { title },
+    })
+  },
+  deleteConversation(id: number): Promise<void> {
+    return request<void>({ method: 'DELETE', url: `/ai/conversations/${id}` })
   },
   /** Aggregate AI usage over `days` days (1–365, default 30 server-side). */
   usage(days?: number): Promise<UsageReport> {

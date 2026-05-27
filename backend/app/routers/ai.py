@@ -34,6 +34,10 @@ from app.schemas.ai import (
     AIScheduleUpsert,
     AIStatusRead,
     AITestResult,
+    ConversationDetailRead,
+    ConversationRead,
+    ConversationTurnRead,
+    ConversationUpdate,
     CsvColumnMapping,
     CsvDataQualityIssue,
     CsvMappingRequest,
@@ -57,6 +61,15 @@ from app.services.ai.advisor import (
     compute_insight_streaks,
     list_latest_insights,
     run_advisor,
+)
+from app.services.ai.conversations import (
+    append_turn,
+    create_conversation,
+    delete_conversation,
+    get_conversation,
+    list_conversations,
+    list_turns,
+    rename_conversation,
 )
 from app.services.ai.csv_mapping import list_canonical_fields, run_mapping_suggestion
 from app.services.ai.integrity import run_all_checks
@@ -345,13 +358,36 @@ async def ask_ai(
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
 
+    # When a conversation_id is supplied, swap the client-supplied history
+    # for the server-persisted turns of that conversation (the persisted
+    # version is authoritative — the client may have been opened on a
+    # different machine or refreshed). Server-side also enforces the same
+    # 10-turn cap as the client.
+    history = [t.model_dump() for t in payload.history]
+    if payload.conversation_id is not None:
+        await get_conversation(
+            db, conversation_id=payload.conversation_id, user_id=user.id
+        )  # 404 if not the user's
+        persisted = await list_turns(
+            db, conversation_id=payload.conversation_id
+        )
+        history = [
+            {"role": t.role, "text": t.text} for t in persisted[-10:]
+        ]
+        await append_turn(
+            db,
+            conversation_id=payload.conversation_id,
+            role="user",
+            text=payload.question,
+        )
+
     try:
         result = await run_query(
             db,
             user_id=user.id,
             question=payload.question,
             language_instruction=_lang_for(accept_language),
-            history=[t.model_dump() for t in payload.history],
+            history=history,
             lite_context=payload.lite_context,
         )
     except AIUnsupportedFeatureError as exc:
@@ -364,6 +400,16 @@ async def ask_ai(
             status.HTTP_502_BAD_GATEWAY,
             detail=f"{type(exc).__name__}: {exc}",
         ) from exc
+
+    if payload.conversation_id is not None:
+        await append_turn(
+            db,
+            conversation_id=payload.conversation_id,
+            role="assistant",
+            text=result.answer,
+            entities=result.referenced_entities,
+            latency_ms=result.latency_ms,
+        )
 
     return QueryAnswerRead(**result.__dict__)
 
@@ -792,6 +838,28 @@ async def ask_ai_stream(
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
 
+    # If a conversation_id is supplied, swap the client-supplied history
+    # for the persisted turns and record the user prompt BEFORE the stream
+    # starts. The assistant text is accumulated below from the delta
+    # frames and persisted on the `done` event.
+    history = [t.model_dump() for t in payload.history]
+    if payload.conversation_id is not None:
+        await get_conversation(
+            db, conversation_id=payload.conversation_id, user_id=user.id
+        )
+        persisted = await list_turns(
+            db, conversation_id=payload.conversation_id
+        )
+        history = [
+            {"role": t.role, "text": t.text} for t in persisted[-10:]
+        ]
+        await append_turn(
+            db,
+            conversation_id=payload.conversation_id,
+            role="user",
+            text=payload.question,
+        )
+
     async def _stream():
         # SSE preamble — a no-op comment frame (`: ...\n\n`) sent before any
         # real event. Forces the HTTP layer to flush response headers and the
@@ -804,15 +872,29 @@ async def ask_ai_stream(
 
         import asyncio as _asyncio
 
+        # Accumulate the assistant's emitted text so we can persist a
+        # single AIConversationTurn on the `done` frame. The streaming
+        # provider sends one `delta` frame per token chunk; concatenating
+        # them reconstructs the full reply.
+        assistant_text_parts: list[str] = []
+        done_latency_ms: int | None = None
         try:
             async for event_name, data in run_query_streaming(
                 db,
                 user_id=user.id,
                 question=payload.question,
-                history=[t.model_dump() for t in payload.history],
+                history=history,
                 language_instruction=_lang_for(accept_language),
                 lite_context=payload.lite_context,
             ):
+                if event_name == "delta" and isinstance(data, dict):
+                    delta_text = data.get("text") or data.get("delta") or ""
+                    if isinstance(delta_text, str):
+                        assistant_text_parts.append(delta_text)
+                if event_name == "done" and isinstance(data, dict):
+                    latency = data.get("latency_ms")
+                    if isinstance(latency, int):
+                        done_latency_ms = latency
                 # SSE wire format: `event:` line is optional, `data:` line
                 # carries the JSON body, blank line terminates the frame.
                 yield f"event: {event_name}\ndata: {_json.dumps(data)}\n\n"
@@ -824,6 +906,34 @@ async def ask_ai_stream(
         except Exception as exc:
             logger.exception("nl-query stream crashed")
             yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
+        finally:
+            # Persist the assistant turn even on partial / interrupted
+            # streams — the operator sees what the model managed to
+            # produce when they reload the conversation, and the
+            # comparison with `expected length` lets them decide
+            # whether to retry. Empty completions are skipped.
+            if payload.conversation_id is not None:
+                full_text = "".join(assistant_text_parts).strip()
+                if full_text:
+                    try:
+                        await append_turn(
+                            db,
+                            conversation_id=payload.conversation_id,
+                            role="assistant",
+                            text=full_text,
+                            latency_ms=done_latency_ms,
+                        )
+                    except Exception:
+                        # The stream is already over from the client's
+                        # POV — losing the persisted assistant turn is a
+                        # bug but not a request-level error. Logged so
+                        # ops can investigate without breaking the user
+                        # response.
+                        logger.exception(
+                            "failed to persist assistant turn for "
+                            "conversation_id=%s",
+                            payload.conversation_id,
+                        )
 
     return StreamingResponse(
         _stream(),
@@ -836,3 +946,140 @@ async def ask_ai_stream(
             "Connection": "keep-alive",
         },
     )
+
+
+# --- Ask-AI conversation history -------------------------------------------
+#
+# Conversations are per-user persistent threads. They sit alongside the
+# existing one-shot /query and /query/stream endpoints — neither route
+# requires a conversation_id, but when one is supplied the user + assistant
+# turns are persisted into the matching `ai_conversations` row and the
+# server uses the persisted history instead of the client-supplied one.
+
+
+@router.get(
+    "/conversations",
+    response_model=list[ConversationRead],
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def list_user_conversations(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[ConversationRead]:
+    """Return the operator's most-recent conversations, newest first.
+
+    Each row carries `turn_count` + a short preview so the sidebar can
+    render without N+1 round-trips for the per-conversation details.
+    """
+    _require_ai_enabled()
+    rows = await list_conversations(db, user_id=user.id, limit=limit)
+    return [ConversationRead(**r) for r in rows]
+
+
+@router.post(
+    "/conversations",
+    response_model=ConversationRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def create_user_conversation(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ConversationRead:
+    """Open a fresh empty conversation. Title is filled lazily when the
+    first user turn lands via POST /api/ai/query{,/stream} with the new
+    `conversation_id` parameter."""
+    _require_ai_enabled()
+    conv = await create_conversation(db, user_id=user.id)
+    return ConversationRead(
+        id=conv.id,
+        title=conv.title or "",
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
+        turn_count=0,
+        preview=None,
+    )
+
+
+@router.get(
+    "/conversations/{conversation_id}",
+    response_model=ConversationDetailRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def get_user_conversation(
+    conversation_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ConversationDetailRead:
+    """Load one conversation with every turn embedded."""
+    _require_ai_enabled()
+    conv = await get_conversation(
+        db, conversation_id=conversation_id, user_id=user.id
+    )
+    turns = await list_turns(db, conversation_id=conversation_id)
+    return ConversationDetailRead(
+        id=conv.id,
+        title=conv.title or "",
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
+        turn_count=len(turns),
+        preview=None,
+        turns=[
+            ConversationTurnRead(
+                id=t.id,
+                role=t.role,
+                text=t.text,
+                entities=t.entities or [],
+                latency_ms=t.latency_ms,
+                created_at=t.created_at,
+            )
+            for t in turns
+        ],
+    )
+
+
+@router.patch(
+    "/conversations/{conversation_id}",
+    response_model=ConversationRead,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def rename_user_conversation(
+    conversation_id: int,
+    payload: ConversationUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ConversationRead:
+    """Rename a conversation. Only the title is editable today."""
+    _require_ai_enabled()
+    conv = await rename_conversation(
+        db,
+        conversation_id=conversation_id,
+        user_id=user.id,
+        title=payload.title,
+    )
+    return ConversationRead(
+        id=conv.id,
+        title=conv.title or "",
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
+        turn_count=0,
+        preview=None,
+    )
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
+async def delete_user_conversation(
+    conversation_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Erase a conversation + every turn under it (CASCADE)."""
+    _require_ai_enabled()
+    await delete_conversation(
+        db, conversation_id=conversation_id, user_id=user.id
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

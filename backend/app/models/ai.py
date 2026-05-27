@@ -247,6 +247,84 @@ class AIActionDraft(Base):
     )
 
 
+class AIConversation(Base):
+    """One persisted Ask-AI conversation thread for a single user.
+
+    The Ask AI feature used to keep history in browser memory only — a
+    refresh / new-tab lost the entire thread. Persist threads server-
+    side so operators can resume work later, search past answers, and
+    avoid retyping the same context.
+
+    Privacy note: the older nl_query.py docstring deliberately did NOT
+    store chat history because user-typed prompts + entity data are PII
+    of sorts. We persist now because the operator explicitly asked for
+    it, and CASCADE on user-delete ensures wipe-on-account-removal.
+    """
+
+    __tablename__ = "ai_conversations"
+    __table_args__ = (
+        Index("ai_conversations_user_idx", "user_id", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+    )
+    # Auto-derived from the first user turn (truncated), then editable
+    # by the operator via PATCH /api/ai/conversations/{id}.
+    title: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    # Bumped on every appended turn — drives the "most recent first"
+    # ordering in the conversation list.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class AIConversationTurn(Base):
+    """A single message in an AIConversation (user prompt or AI reply).
+
+    Each row stores the full text + the dedup entity list the AI cited
+    (so the UI can re-render entity chips without re-running the LLM).
+    Latency is captured on assistant turns for the usage dashboard.
+    """
+
+    __tablename__ = "ai_conversation_turns"
+    __table_args__ = (
+        Index("ai_conversation_turns_conv_idx", "conversation_id", "created_at"),
+        CheckConstraint(
+            "role IN ('user', 'assistant')",
+            name="ai_conversation_turns_role_check",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # JSONB list of {type, id, name} dicts so the UI can render
+    # clickable chips without re-querying the LLM on conversation load.
+    # Null on user turns (no entities to surface there).
+    entities: Mapped[list[dict] | None] = mapped_column(JSONB)
+    # Only populated on assistant turns; null on user turns.
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class InfraInsight(Base):
     """One AI-generated infrastructure recommendation.
 
