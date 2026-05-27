@@ -381,10 +381,12 @@ async def _apply_create_subnet(db: AsyncSession, payload: dict[str, Any]) -> str
     can never produce inventory state that the canonical endpoint would
     have rejected.
 
-    Specifically: validate the CIDR, ensure the gateway is inside it, and
-    reject a malformed combination before the INSERT — Postgres' INET
-    column stores any address regardless of membership, so the DB alone is
-    not enough."""
+    Forwards vrf_id and parent_subnet_id from the draft payload — the
+    previous applier silently dropped both, so AI-applied subnets always
+    landed in the global VRF as roots, bypassing the per-VRF GiST
+    exclusion + the parent-containment guard. Combined with subsequent
+    edits, that left the hierarchy in a half-broken state.
+    """
     from ipaddress import IPv4Address, IPv4Network
 
     try:
@@ -418,11 +420,36 @@ async def _apply_create_subnet(db: AsyncSession, payload: dict[str, Any]) -> str
         if not vlan_row:
             raise ValueError(f"VLAN id {payload['vlan_id']} not found")
         vlan_pk = vlan_row.id
+
+    vrf_id = payload.get("vrf_id")
+    parent_subnet_id = payload.get("parent_subnet_id")
+
+    # If the payload specifies a parent, mirror /api/subnets' containment
+    # check: the parent must exist, live in the same VRF, and strictly
+    # contain the child. Without this an AI-applied subnet can violate
+    # the hierarchy invariant; subsequent edits then 400 with confusing
+    # INVALID_PARENT errors.
+    if parent_subnet_id is not None:
+        parent = await db.get(Subnet, parent_subnet_id)
+        if parent is None:
+            raise ValueError(f"parent subnet {parent_subnet_id} not found")
+        if parent.vrf_id != vrf_id:
+            raise ValueError(
+                "parent subnet must live in the same VRF as the child"
+            )
+        parent_net = IPv4Network(str(parent.cidr), strict=False)
+        if not (network.subnet_of(parent_net) and network != parent_net):
+            raise ValueError(
+                f"{network} is not strictly contained in parent {parent_net}"
+            )
+
     subnet = Subnet(
         cidr=str(network),
         gateway=str(gw) if gateway else None,
         vlan_id=vlan_pk,
         site_id=site.id,
+        vrf_id=vrf_id,
+        parent_subnet_id=parent_subnet_id,
         description=payload.get("description"),
     )
     db.add(subnet)

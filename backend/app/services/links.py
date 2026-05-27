@@ -16,7 +16,7 @@ from app.models.port import Port
 from app.models.switch import Switch
 from app.schemas.common import PageParams
 from app.schemas.link import LinkCreate, LinkCreateByName, LinkUpdate
-from app.services.errors import catch_integrity_errors, not_found
+from app.services.errors import business_rule, catch_integrity_errors, not_found
 
 
 async def list_links(
@@ -61,6 +61,40 @@ async def create_link(db: AsyncSession, payload: LinkCreate) -> Link:
         port = await db.get(Port, data[key])
         if port is None:
             not_found("Port", data[key])
+
+    # Refuse to create a second link for a port that's already an endpoint
+    # of another one. The DB has `UniqueConstraint(port_a_id, port_b_id)`
+    # but no constraint that a single port appears in at most one Link —
+    # a physical port can only realise one cable, so the AI suggest-links
+    # accept path AND any direct POST /api/links must surface this clash
+    # explicitly instead of producing a non-physical topology. (LOW-sev
+    # find from the backend scan; long-term fix is two partial unique
+    # indexes on port_a_id / port_b_id at the DB level.)
+    existing = await db.execute(
+        select(Link.id, Link.port_a_id, Link.port_b_id).where(
+            or_(
+                Link.port_a_id.in_([data["port_a_id"], data["port_b_id"]]),
+                Link.port_b_id.in_([data["port_a_id"], data["port_b_id"]]),
+            )
+        )
+    )
+    for row in existing.all():
+        if row.id is None:
+            continue
+        # Same pair, canonical order — leave the integrity layer to
+        # surface that as DUPLICATE_LINK (it already maps the unique
+        # constraint to a clean 409).
+        if row.port_a_id == data["port_a_id"] and row.port_b_id == data["port_b_id"]:
+            continue
+        business_rule(
+            "PORT_ALREADY_LINKED",
+            "One or both ports are already an endpoint of another link.",
+            details={
+                "existing_link_id": int(row.id),
+                "port_a_id": data["port_a_id"],
+                "port_b_id": data["port_b_id"],
+            },
+        )
 
     link = Link(**data)
     db.add(link)
