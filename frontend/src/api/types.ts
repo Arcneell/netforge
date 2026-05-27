@@ -28,12 +28,22 @@ export interface PageParams {
   page_size?: number
 }
 
+interface CanonicalError {
+  code: ApiErrorCode | string
+  message: string
+  details?: Record<string, unknown>
+}
+
 export interface ApiErrorBody {
-  error: {
-    code: ApiErrorCode | string
-    message: string
-    details?: Record<string, unknown>
-  }
+  // FastAPI wraps every HTTPException's `detail` field in this key.
+  // Our `http_error` helper sets the inner detail to `{error: {...}}` —
+  // so the canonical envelope is two levels deep: `detail.error.code`.
+  // Bare HTTPException calls (without our helper) put a plain string in
+  // here instead.
+  detail?: string | { error?: CanonicalError }
+  // Reserved for routes that return a JSONResponse directly instead of
+  // raising HTTPException (e.g. rate-limit middleware).
+  error?: CanonicalError
 }
 
 export type ApiErrorCode =

@@ -76,14 +76,33 @@ api.interceptors.response.use(
     }
 
     const { status, data } = error.response
-    const body = data?.error
-    const code = body?.code ?? 'UNKNOWN'
-    const message = body?.message ?? error.message ?? 'Unknown error'
+    // Three envelope shapes in production:
+    //   1. Canonical:        `{detail: {error: {code, message, details?}}}`
+    //      FastAPI wraps HTTPException.detail in `detail`, and our
+    //      `http_error` helper builds `{error: {code, message}}` as
+    //      the inner detail. Two levels deep.
+    //   2. Bare:             `{detail: "<exception type>: <message>"}`
+    //      Raw HTTPException calls that didn't use our helper — the AI
+    //      502 / 422 / 501 catch-alls historically take this path.
+    //   3. Top-level error:  `{error: {code, message, details?}}`
+    //      Reserved for cases where a router returns a JSONResponse
+    //      directly (e.g. rate-limit middleware) instead of raising.
+    // Pick the canonical structure first; fall back to bare string;
+    // legacy top-level last. Pre-fix, the interceptor only read shape #3
+    // — every real backend error fell through to axios's generic
+    // "Request failed with status code XXX".
+    const innerError =
+      (data && typeof data.detail === 'object' && data.detail !== null
+        ? (data.detail as { error?: ApiErrorBody['error'] }).error
+        : undefined) ?? data?.error
+    const detailString = typeof data?.detail === 'string' ? data.detail : undefined
+    const code = innerError?.code ?? (detailString ? 'UPSTREAM_ERROR' : 'UNKNOWN')
+    const message = innerError?.message ?? detailString ?? error.message ?? 'Unknown error'
 
     if (status === 401) hooks.onUnauthorized?.()
     if (status === 403) hooks.onForbidden?.()
 
-    return Promise.reject(new ApiError(status, code, message, body?.details))
+    return Promise.reject(new ApiError(status, code, message, innerError?.details))
   },
 )
 
