@@ -23,6 +23,12 @@ def mock_db() -> AsyncMock:
 
     db = AsyncMock()
     db.get = AsyncMock(return_value=Port(id=1, switch_id=1, number=1))
+    # `create_link` runs a SELECT to refuse re-linking a port that's
+    # already an endpoint of another link — return an empty result here
+    # so the canonical-ordering tests aren't impacted by that guard.
+    empty_clash = MagicMock()
+    empty_clash.all = MagicMock(return_value=[])
+    db.execute = AsyncMock(return_value=empty_clash)
     db.add = MagicMock(side_effect=lambda obj: captured.append(obj))
     db.commit = AsyncMock()
 
@@ -53,6 +59,44 @@ async def test_link_preserves_already_canonical(mock_db: AsyncMock) -> None:
     assert link.port_b_id == 8
 
 
+@pytest.mark.asyncio
+async def test_create_link_rejects_port_already_linked() -> None:
+    """A physical port can only realise one cable, but the DB has no
+    constraint that a single port appears in at most one Link. The
+    service must refuse to create a second link for a port that's
+    already an endpoint of another one — otherwise the AI suggest-links
+    accept path (or any direct POST) silently produces a non-physical
+    topology where one port is connected to two different peers."""
+
+    class _Row:
+        def __init__(self, link_id: int, a: int, b: int) -> None:
+            self.id, self.port_a_id, self.port_b_id = link_id, a, b
+
+    # An existing link between ports 5 and 12. Caller now tries to wire
+    # port 5 to port 99 — port 5 is already taken.
+    clash = MagicMock()
+    clash.all = MagicMock(return_value=[_Row(42, 5, 12)])
+
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=Port(id=5, switch_id=1, number=1))
+    db.execute = AsyncMock(return_value=clash)
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+
+    with pytest.raises(HTTPException) as exc:
+        await service.create_link(
+            db, LinkCreate(port_a_id=5, port_b_id=99, link_type=LinkType.copper)
+        )
+    assert exc.value.status_code == 400
+    detail = exc.value.detail["error"]
+    assert detail["code"] == "PORT_ALREADY_LINKED"
+    assert detail["details"]["existing_link_id"] == 42
+    # Refusal happens BEFORE we touch the session — no insert leaks
+    # through if the guard fires.
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+
+
 # --- create_link_by_name --------------------------------------------------- #
 
 
@@ -73,13 +117,19 @@ async def test_create_by_name_resolves_endpoints() -> None:
     port_a = Port(id=7, switch_id=1, number=24)
     port_b = Port(id=12, switch_id=2, number=1)
 
+    # No existing link involves either port (the create_link clash guard
+    # added in this PR will short-circuit on an empty result).
+    empty_clash = MagicMock()
+    empty_clash.all = MagicMock(return_value=[])
+
     db = AsyncMock()
-    # Order matches the service: switch_a → port_a → switch_b → port_b
+    # Order matches the service: switch_a → port_a → switch_b → port_b → clash check
     db.execute = AsyncMock(side_effect=[
         _result(sw_a),
         _result(port_a),
         _result(sw_b),
         _result(port_b),
+        empty_clash,
     ])
     # The downstream create_link does its own port-exists check via db.get.
     db.get = AsyncMock(side_effect=lambda _model, pid: {7: port_a, 12: port_b}[pid])
