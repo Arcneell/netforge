@@ -152,10 +152,26 @@ def _write_audit_row(
     )
 
 
+_listeners_registered = False
+
+
 def register_audit_listeners() -> None:
-    """Idempotent: wires after_* events on every audited model."""
+    """Idempotent: wires after_* events on every audited model.
+
+    The idempotency guard matters because `create_app()` can run more
+    than once in the same Python process (test factories that build a
+    fresh app per fixture, uvicorn --reload picking up a code change,
+    a future multi-app harness). `event.listens_for` happily attaches
+    a NEW handler every call — without the flag we end up with N
+    duplicate listeners, which produce N duplicate audit_log rows AND
+    N duplicate webhook events per mutation.
+    """
+    global _listeners_registered
+    if _listeners_registered:
+        return
     for model, entity in _AUDITED:
         _attach_listeners(model, entity)
+    _listeners_registered = True
 
 
 def _attach_listeners(model: type, entity: str) -> None:
