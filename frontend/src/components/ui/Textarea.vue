@@ -10,7 +10,14 @@ withDefaults(
     invalid?: boolean
     id?: string
   }>(),
-  { disabled: false, invalid: false, rows: 3 },
+  {
+    modelValue: '',
+    placeholder: undefined,
+    disabled: false,
+    invalid: false,
+    rows: 3,
+    id: undefined,
+  },
 )
 
 defineEmits<{ (e: 'update:modelValue', v: string): void }>()

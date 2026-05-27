@@ -6,7 +6,7 @@ withDefaults(
     size?: 'sm' | 'md' | 'lg'
     label?: string
   }>(),
-  { size: 'md' },
+  { size: 'md', label: undefined },
 )
 
 const sizeClass = {
