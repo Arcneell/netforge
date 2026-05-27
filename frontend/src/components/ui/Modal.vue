@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref, toRef, useId, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 
 import { useScrollLock } from '@/composables/useScrollLock'
+import { pushModal, popModal, isTopmostModal } from '@/composables/useModalStack'
 
 const props = withDefaults(
   defineProps<{
@@ -50,9 +51,18 @@ function focusables(): HTMLElement[] {
   )
 }
 
+// Per-instance identity that joins the global modal stack. Symbols are
+// unique even when the same Modal component renders multiple times.
+const stackId = Symbol('modal')
+
 function onKey(e: KeyboardEvent) {
   if (!props.open) return
+  // Only the topmost modal in the stack handles keyboard input.
+  // Otherwise pressing Escape on the inner dialog also dismisses the
+  // outer one, and the outer's focus-trap fights the inner's Tab.
+  if (!isTopmostModal(stackId)) return
   if (e.key === 'Escape' && props.closable) {
+    e.stopPropagation()
     emit('close')
     return
   }
@@ -88,12 +98,16 @@ useScrollLock(toRef(props, 'open'))
 onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
+  // Belt-and-suspenders pop in case the parent unmounted us while
+  // `props.open` was still true (route change mid-open, v-if flip).
+  popModal(stackId)
 })
 
 watch(
   () => props.open,
   (open) => {
     if (open) {
+      pushModal(stackId)
       previouslyFocused.value = document.activeElement as HTMLElement | null
       requestAnimationFrame(() => {
         // Prefer the first focusable inside the dialog (input, button) so the
@@ -104,6 +118,7 @@ watch(
         else dialogRef.value?.focus()
       })
     } else {
+      popModal(stackId)
       // Return focus to the trigger on close. Microtask defers until after
       // the closing transition swaps focus targets.
       const target = previouslyFocused.value

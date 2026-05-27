@@ -36,7 +36,14 @@ const tab = useStoredRef<'rack' | 'table'>('netforge.switch.tab', 'rack')
 
 const id = computed(() => Number(route.params.id))
 
+// Sequence guard — `watch(id, loadAll)` re-fires on every adjacent
+// /switches/:id navigation. Without the token, a slow first response
+// can land after the fresh one and overwrite the visible data with the
+// previous switch's payload. Mirrors SubnetDetailView.
+let detailLoadSeq = 0
+
 async function loadAll() {
+  const seq = ++detailLoadSeq
   loading.value = true
   try {
     const [s, p, v] = await Promise.all([
@@ -46,14 +53,16 @@ async function loadAll() {
       portsApi.listForSwitch(id.value, { page_size: 200 }),
       vlansApi.list({ page_size: 200 }),
     ])
+    if (seq !== detailLoadSeq) return
     sw.value = s
     ports.value = p.items
     vlansById.value = new Map(v.items.map((vl) => [vl.id, vl]))
   } catch (err) {
+    if (seq !== detailLoadSeq) return
     void describe(err)
     router.replace('/switches')
   } finally {
-    loading.value = false
+    if (seq === detailLoadSeq) loading.value = false
   }
 }
 
