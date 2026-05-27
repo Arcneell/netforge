@@ -14,7 +14,7 @@ COPY . .
 RUN npm run build
 
 # ---------- Runtime stage ----------
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 
 # Drop the stock site, install our SPA + reverse-proxy config. The image
 # ships with the TLS-terminating prod config by default — the HTTP-only
