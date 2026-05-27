@@ -39,7 +39,13 @@ const editing = ref<Device | null>(null)
 const deleteTarget = ref<Device | null>(null)
 const deleting = ref(false)
 
+// Sequence guard: a stale response from an earlier filter combination
+// must NOT overwrite the fresh visible rows. Reproduces by toggling
+// filters quickly on a slow backend.
+let loadSeq = 0
+
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const res = await devicesApi.list({
@@ -48,10 +54,11 @@ async function load() {
       q: debouncedQuery.value || undefined,
       type: typeFilter.value || undefined,
     })
+    if (seq !== loadSeq) return
     items.value = res.items
     total.value = res.total
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { HelpCircle } from 'lucide-vue-next'
 
 /**
@@ -173,9 +173,18 @@ function onDocClick(e: MouseEvent) {
     hide()
   }
 }
-if (typeof window !== 'undefined') {
-  window.addEventListener('click', onDocClick)
-}
+// Register listeners on mount (paired with the onBeforeUnmount removal
+// below) so we don't accumulate handlers on components that get
+// constructed but never mounted — Suspense rejections, async-setup
+// errors, and `<Transition>` race conditions all leave script-setup
+// to run while the component never lands in the DOM. Every page has
+// dozens of HelpTooltips, so an unpaired window-level click handler
+// matters at scale.
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('click', onDocClick)
+  }
+})
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('click', onDocClick)
