@@ -84,6 +84,16 @@ class Settings(BaseSettings):
     rate_limit_writes_per_window: int = 60
     rate_limit_window_seconds: int = 60
 
+    # Trusted reverse-proxy networks. The backend only honours `X-Real-IP`
+    # when the immediate TCP peer matches one of these CIDRs — otherwise
+    # an attacker can spoof the header to bypass per-IP rate limits and
+    # poison `audit_log.ip_address` / `sessions.ip_address`. Default
+    # covers loopback (single uvicorn behind nginx on the same host) and
+    # the standard docker-compose bridge subnet (172.16.0.0/12). For
+    # deployments with an external LB or sidecar proxy, add that
+    # subnet/IP here.
+    trusted_proxies: str = "127.0.0.1/32,::1/128,172.16.0.0/12"
+
     # ------------------------------------------------------------------
     # AI integration (provider-agnostic; see app/services/ai)
     # ------------------------------------------------------------------
