@@ -161,6 +161,13 @@ class QueryRequest(BaseModel):
     question: str = Field(min_length=2, max_length=1000)
     history: list[QueryHistoryTurn] = Field(default_factory=list, max_length=10)
     lite_context: bool = False
+    # When set, the backend persists this exchange (user + assistant turns)
+    # into the matching `ai_conversations` row and uses the last N
+    # persisted turns as the effective history (the client-supplied
+    # `history` field is ignored). When unset, the call stays stateless
+    # — the operator can still see the local in-browser history but
+    # nothing is stored server-side.
+    conversation_id: int | None = Field(default=None, gt=0)
 
 
 class QueryEntityRef(BaseModel):
@@ -183,6 +190,47 @@ class QueryAnswerRead(BaseModel):
     latency_ms: int
     prompt_tokens: int
     completion_tokens: int
+
+
+# --- Conversation history --------------------------------------------------
+
+
+class ConversationTurnRead(BaseModel):
+    """One turn of a persisted Ask-AI conversation."""
+
+    id: int
+    role: str
+    text: str
+    entities: list[QueryEntityRef] = Field(default_factory=list)
+    latency_ms: int | None = None
+    created_at: datetime
+
+
+class ConversationRead(BaseModel):
+    """Conversation list-item — no turns embedded.
+
+    The list endpoint surfaces these so the sidebar can render quickly
+    without dragging the full transcript across the wire on every load."""
+
+    id: int
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    turn_count: int
+    preview: str | None = None
+
+
+class ConversationDetailRead(ConversationRead):
+    """A single conversation with every turn embedded — used by the
+    "load this thread" path."""
+
+    turns: list[ConversationTurnRead]
+
+
+class ConversationUpdate(BaseModel):
+    """PATCH body — only the title is editable today."""
+
+    title: str = Field(min_length=1, max_length=200)
 
 
 # --- AI Usage dashboard ------------------------------------------------------
