@@ -100,11 +100,21 @@ let observer: IntersectionObserver | null = null
 // first reload (Codex P1 on #81).
 const fallbackEager = ref(false)
 
-function setChunkRef(id: string) {
+// Stable per-chunk-id callbacks, cached in a Map. Without this the
+// template `:ref="setChunkRef(chunk.id)"` builds a NEW function identity
+// every render — Vue then runs the previous one with `null` (unobserve +
+// delete) and the new one with the element (observe + set) on every
+// reactive change of `props.ips` or any parent re-render, defeating the
+// virtualisation perf gains and momentarily emptying chunkRefs.
+const _refCallbacks = new Map<string, (el: unknown) => void>()
+
+function setChunkRef(id: string): (el: unknown) => void {
+  const cached = _refCallbacks.get(id)
+  if (cached) return cached
   // Vue's :ref callback is typed `(ref: Element | ComponentPublicInstance
   // | null) => void`. We're attaching to a plain <div>, so we narrow with
   // `instanceof` before storing it.
-  return (el: unknown) => {
+  const cb = (el: unknown) => {
     if (el instanceof HTMLDivElement) {
       chunkRefs.value.set(id, el)
       observer?.observe(el)
@@ -114,6 +124,8 @@ function setChunkRef(id: string) {
       chunkRefs.value.delete(id)
     }
   }
+  _refCallbacks.set(id, cb)
+  return cb
 }
 
 onMounted(() => {
