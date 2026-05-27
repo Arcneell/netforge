@@ -8,6 +8,7 @@ network.
 
 from __future__ import annotations
 
+from ipaddress import IPv4Interface
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -63,6 +64,64 @@ async def test_next_free_skips_already_assigned() -> None:
 async def test_next_free_returns_first_when_no_gateway_set() -> None:
     db = _mock_db(_subnet(gateway=None), ips=[])
     assert await service.next_free_ip(db, 1) == "10.0.0.1"
+
+
+@pytest.mark.asyncio
+async def test_next_free_skips_ips_with_asyncpg_ipv4interface_address() -> None:
+    """asyncpg decodes INET to IPv4Interface, so `ip.address` is an
+    IPv4Interface at runtime and `str(...)` returns "10.0.0.2/32". A naive
+    `{str(ip.address): ip}` lookup against `str(host)` from
+    `IPv4Network.hosts()` always misses — `next_free_ip` then returns an
+    address that already has a row in `ips` (silently handing out
+    duplicates). This pins the canonical-string contract through
+    `_ip_text()`.
+    """
+    db = _mock_db(
+        _subnet(),
+        ips=[Ip(id=1, subnet_id=1, address=IPv4Interface("10.0.0.2/32"))],
+    )
+    # .1 is the gateway, .2 is "used" via IPv4Interface → first free is .3
+    assert await service.next_free_ip(db, 1) == "10.0.0.3"
+
+
+@pytest.mark.asyncio
+async def test_next_free_handles_asyncpg_ipv4interface_gateway() -> None:
+    """`subnet.gateway` is INET → asyncpg returns IPv4Interface, whose
+    str() form is "10.0.0.1/32". The old code did `IPv4Address(gw)` which
+    raised `AddressValueError` on that mask suffix and 500'd every
+    `POST /api/subnets/{id}/next-free` against a subnet that has a
+    gateway set.
+    """
+    subnet = Subnet(
+        id=1,
+        cidr="10.0.0.0/29",
+        gateway=IPv4Interface("10.0.0.1/32"),
+        site_id=1,
+        dhcp_enabled=False,
+    )
+    db = _mock_db(subnet, ips=[])
+    # Gateway .1 is skipped — first free is .2
+    assert await service.next_free_ip(db, 1) == "10.0.0.2"
+
+
+@pytest.mark.asyncio
+async def test_next_free_skips_dhcp_range_with_asyncpg_interfaces() -> None:
+    """Same problem as gateway: `dhcp_range_start` / `dhcp_range_end`
+    come back as IPv4Interface, so `_dhcp_bounds` must canonicalise
+    them before constructing IPv4Address objects for the bounds check.
+    """
+    subnet = Subnet(
+        id=1,
+        cidr="10.0.0.0/29",
+        gateway=None,
+        site_id=1,
+        dhcp_enabled=True,
+        dhcp_range_start=IPv4Interface("10.0.0.1/32"),
+        dhcp_range_end=IPv4Interface("10.0.0.3/32"),
+    )
+    db = _mock_db(subnet, ips=[])
+    # .1 .. .3 in DHCP pool → first free is .4
+    assert await service.next_free_ip(db, 1) == "10.0.0.4"
 
 
 @pytest.mark.asyncio
