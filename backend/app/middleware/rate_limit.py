@@ -98,8 +98,38 @@ class WriteRateLimitMiddleware:
                 await response(scope, receive, send)
                 return
             bucket.append(now)
+            # Periodic GC of empty / stale buckets. Without this, every
+            # unique source IP that ever wrote leaves a deque() entry in
+            # `_hits` forever — a slow memory leak on a public-facing edge
+            # and an amplification surface for a low-rate scan probing
+            # from many addresses. We piggy-back on writes so the cost
+            # stays near zero on idle (no async sweeper task).
+            if len(self._hits) > self._gc_threshold:
+                self._gc_locked(cutoff)
 
         await self.app(scope, receive, send)
+
+    # Trigger a GC sweep once every `_gc_threshold` distinct keys. The
+    # threshold scales with `max_per_window` because each bucket holds at
+    # most that many entries — a higher write cap implies less concern
+    # about per-bucket size and we just want to keep the dict bounded.
+    @property
+    def _gc_threshold(self) -> int:
+        return 1024
+
+    def _gc_locked(self, cutoff: float) -> None:
+        """Caller must hold self._lock. Drop entries whose bucket is empty
+        after `cutoff`-trimming. Bounded: at most O(N) over `_hits` once
+        per `_gc_threshold` writes.
+        """
+        stale: list[str] = []
+        for k, bucket in self._hits.items():
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+            if not bucket:
+                stale.append(k)
+        for k in stale:
+            self._hits.pop(k, None)
 
 
 __all__ = ["WRITE_METHODS", "WriteRateLimitMiddleware"]

@@ -39,6 +39,22 @@ if not any(getattr(r, "path", "") == _PROBE_PATH for r in app.routes):
 
 @pytest_asyncio.fixture
 async def client() -> AsyncIterator[AsyncClient]:
+    # 127.0.0.1 is in the default `trusted_proxies` set (loopback +
+    # docker bridge), so the middleware will honour X-Real-IP from it.
+    # That matches the production case: the bundled nginx terminates
+    # on the same host (loopback) and unconditionally overwrites
+    # X-Real-IP — so any X-Real-IP we observe IS what nginx asserted.
+    transport = ASGITransport(app=app, client=("127.0.0.1", 51234))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest_asyncio.fixture
+async def untrusted_peer_client() -> AsyncIterator[AsyncClient]:
+    """Simulates a direct connection from a non-loopback / non-docker
+    peer. The middleware must NOT honour X-Real-IP from an untrusted
+    proxy — otherwise an attacker can spoof it to bypass per-IP rate
+    limits and poison audit_log.ip_address."""
     transport = ASGITransport(app=app, client=("203.0.113.42", 51234))
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
@@ -46,9 +62,13 @@ async def client() -> AsyncIterator[AsyncClient]:
 
 @pytest.mark.asyncio
 async def test_middleware_captures_client_host_and_user_agent(
-    client: AsyncClient,
+    untrusted_peer_client: AsyncClient,
 ) -> None:
-    r = await client.get(_PROBE_PATH, headers={"user-agent": "TestAgent/1.0"})
+    """Direct connection from a public client (no proxy in front).
+    No X-Real-IP header → we see the TCP peer host."""
+    r = await untrusted_peer_client.get(
+        _PROBE_PATH, headers={"user-agent": "TestAgent/1.0"}
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["ip"] == "203.0.113.42"
@@ -56,25 +76,43 @@ async def test_middleware_captures_client_host_and_user_agent(
 
 
 @pytest.mark.asyncio
-async def test_middleware_trusts_x_real_ip_not_x_forwarded_for(
+async def test_middleware_trusts_x_real_ip_from_trusted_proxy(
     client: AsyncClient,
 ) -> None:
-    """Behind nginx (which sets X-Real-IP unconditionally), the audit log
-    must record the value nginx vouched for — not whatever the client
-    placed in the X-Forwarded-For chain. XFF's first entry is fully
-    attacker-controlled with our `$proxy_add_x_forwarded_for` config."""
+    """Behind nginx (peer = 127.0.0.1, in the default `trusted_proxies`),
+    the audit log records the value nginx vouched for in X-Real-IP — not
+    whatever the client placed in X-Forwarded-For. XFF's first entry is
+    fully attacker-controlled with our `$proxy_add_x_forwarded_for` config."""
     r = await client.get(
         _PROBE_PATH,
         headers={
             "x-real-ip": "198.51.100.7",
-            # A malicious client trying to spoof a different identity in XFF.
             "x-forwarded-for": "1.2.3.4, 10.0.0.1",
             "user-agent": "TestAgent/1.0",
         },
     )
     assert r.status_code == 200
-    body = r.json()
-    assert body["ip"] == "198.51.100.7"
+    assert r.json()["ip"] == "198.51.100.7"
+
+
+@pytest.mark.asyncio
+async def test_middleware_ignores_x_real_ip_from_untrusted_peer(
+    untrusted_peer_client: AsyncClient,
+) -> None:
+    """When the TCP peer is NOT in `trusted_proxies` (here: a public IP),
+    the middleware must refuse to honour X-Real-IP — otherwise any client
+    can spoof the header to bypass per-IP rate limits and poison
+    `audit_log.ip_address`. The peer host wins, not the header."""
+    r = await untrusted_peer_client.get(
+        _PROBE_PATH,
+        headers={
+            "x-real-ip": "198.51.100.7",
+            "user-agent": "TestAgent/1.0",
+        },
+    )
+    assert r.status_code == 200
+    # Peer is 203.0.113.42, header is ignored.
+    assert r.json()["ip"] == "203.0.113.42"
 
 
 @pytest.mark.asyncio
@@ -87,8 +125,8 @@ async def test_middleware_ignores_x_forwarded_for_without_x_real_ip(
         headers={"x-forwarded-for": "1.2.3.4", "user-agent": "TestAgent/1.0"},
     )
     assert r.status_code == 200
-    # The transport is configured with client=(203.0.113.42, 51234)
-    assert r.json()["ip"] == "203.0.113.42"
+    # The transport is configured with client=(127.0.0.1, 51234)
+    assert r.json()["ip"] == "127.0.0.1"
 
 
 @pytest.mark.asyncio

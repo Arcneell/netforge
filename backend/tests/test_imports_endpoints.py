@@ -355,7 +355,18 @@ async def test_export_all_rejects_anon(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_export_all_returns_zip_for_authenticated_user(client: AsyncClient) -> None:
+async def test_export_all_rejects_viewer(client: AsyncClient) -> None:
+    """`/api/exports/all` is admin-only: it returns the full inventory in
+    one in-memory ZIP, so a viewer with an API token could loop the call
+    to balloon worker memory or to exfiltrate the entire DB. Match the
+    surface to `/api/imports/bulk` (also admin-only)."""
+    _install_db(user=_viewer())
+    r = await client.get("/api/exports/all", cookies={"netforge_session": "sess"})
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_export_all_returns_zip_for_admin(client: AsyncClient) -> None:
     """All entities are queried in sequence. Each call to `select(...)` returns
     an empty list — we just want to assert the route assembles a valid ZIP
     with one member per entity, not that the CSV contents are correct (the
@@ -375,7 +386,7 @@ async def test_export_all_returns_zip_for_authenticated_user(client: AsyncClient
         return r
 
     _install_db(
-        user=_viewer(),
+        user=_admin(),
         execute_returns=[_empty_result() for _ in range(9)],
     )
 
