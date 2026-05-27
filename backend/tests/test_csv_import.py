@@ -161,6 +161,128 @@ def test_subnet_row_parses_boolean_yes_no() -> None:
     assert blank.dhcp_enabled is None
 
 
+@pytest.mark.asyncio
+async def test_persist_subnet_keeps_existing_dhcp_enabled_when_csv_cell_blank() -> None:
+    """Re-importing a CSV that lacks (or has a blank) `dhcp_enabled` cell
+    must NOT disable DHCP on existing subnets. The previous logic coerced
+    blank → False at the data-dict step, and the setattr branch ran on
+    any non-None value, so every round-trip silently flipped DHCP off
+    across the inventory.
+    """
+    from app.models.core import Site
+    from app.models.subnet import Subnet
+
+    existing = Subnet(
+        id=42,
+        cidr="10.0.0.0/24",
+        site_id=1,
+        dhcp_enabled=True,
+        dhcp_range_start="10.0.0.50",
+        dhcp_range_end="10.0.0.100",
+    )
+
+    # _site_by_code is the first lookup. We control the result sequence so
+    # the second execute() returns our pre-existing subnet.
+    site_result = AsyncMock()
+    site_result.scalar_one_or_none = lambda: Site(id=1, code="HQ", name="HQ")
+    subnet_result = AsyncMock()
+    subnet_result.scalar_one_or_none = lambda: existing
+
+    db = _fresh_db()
+    db.execute = AsyncMock(side_effect=[site_result, subnet_result])
+
+    row = service._SubnetRow(cidr="10.0.0.0/24", site_code="HQ", dhcp_enabled="")
+    assert row.dhcp_enabled is None
+    await service._persist_subnet(db, row)
+
+    # The whole point: existing.dhcp_enabled must NOT have flipped to False.
+    assert existing.dhcp_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_persist_port_replaces_trunk_vlans_via_symmetric_diff() -> None:
+    """The trunk replacement used to delete every existing PortVlan row
+    and re-add every wanted vlan, which trips port_vlan_pk when the two
+    sets overlap (Postgres can flush the INSERT before the matching
+    DELETE in the same unit-of-work). Pin the new symmetric-diff path:
+    only delete rows that are leaving the set, only add rows that are
+    joining it.
+    """
+    from app.models.port import Port, PortVlan
+    from app.models.switch import Switch
+    from app.models.vlan import Vlan
+
+    switch = Switch(id=1, name="SW-A", port_count=24)
+    port = Port(id=10, switch_id=1, number=2, native_vlan_id=None)
+    # PortVlan.vlan_id is FK → vlans.id (the row PK), not the 802.1Q
+    # public VLAN number. Existing tagged set holds Vlan PKs 100 & 200
+    # (i.e. public VLAN ids 10 & 20). Wanted set after the CSV will be
+    # Vlan PKs 200 & 300 (public 20 & 30): expect 1 delete (PK 100)
+    # and 1 add (PK 300); the row for PK 200 stays.
+    existing_pvs = [
+        PortVlan(port_id=10, vlan_id=100),
+        PortVlan(port_id=10, vlan_id=200),
+    ]
+    vlans = {
+        10: Vlan(id=100, vlan_id=10, name="legacy"),
+        20: Vlan(id=200, vlan_id=20, name="keep"),
+        30: Vlan(id=300, vlan_id=30, name="new"),
+    }
+
+    async def fake_switch_by_name(_db, name, column="switch_name"):
+        assert name == "SW-A"
+        return switch
+
+    async def fake_port_on_switch(_db, sw, num, column="number"):
+        assert sw is switch and num == 2
+        return port
+
+    async def fake_vlan_by_id(_db, vid, column=None):
+        if vid is None:
+            return None
+        return vlans[vid]
+
+    pv_scalars = AsyncMock()
+    pv_scalars.all = lambda: existing_pvs
+    pv_result = AsyncMock()
+    pv_result.scalars = lambda: pv_scalars
+
+    db = _fresh_db()
+    db.execute = AsyncMock(return_value=pv_result)
+    db.delete = AsyncMock()
+    added: list[PortVlan] = []
+    db.add = lambda obj: added.append(obj)  # type: ignore[assignment]
+
+    monkey_patches = {
+        "_switch_by_name": fake_switch_by_name,
+        "_port_on_switch": fake_port_on_switch,
+        "_vlan_by_id": fake_vlan_by_id,
+    }
+    orig = {k: getattr(service, k) for k in monkey_patches}
+    try:
+        for k, v in monkey_patches.items():
+            setattr(service, k, v)
+        row = service._PortRow(
+            switch_name="SW-A",
+            number=2,
+            trunk_vlans="20, 30",
+        )
+        await service._persist_port(db, row)
+    finally:
+        for k, v in orig.items():
+            setattr(service, k, v)
+
+    # Exactly one delete (for Vlan PK 100 / public id 10) — the row
+    # for PK 200 / public id 20 stays put.
+    assert db.delete.await_count == 1
+    deleted_pv = db.delete.await_args_list[0].args[0]
+    assert deleted_pv.vlan_id == 100
+    # Exactly one add (for Vlan PK 300 / public id 30 — public id 20
+    # is reused from the existing row).
+    assert len(added) == 1
+    assert added[0].vlan_id == 300
+
+
 def test_friendly_integrity_recognises_known_constraints() -> None:
     assert "overlaps" in service._friendly_integrity(
         "violates exclusion constraint subnets_no_overlap"
