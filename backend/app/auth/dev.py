@@ -35,7 +35,13 @@ _DEV_SUBJECT = "local-admin"
 # DNS name, a LAN IP) is rejected at provider construction because the
 # dev login endpoint creates an admin session on every hit — a remote
 # attacker reaching it gets admin instantly, no credentials needed.
-_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+#
+# 0.0.0.0 is NOT included: it's the wildcard bind that means "every
+# interface" and is the exact misconfiguration that exposes the dev
+# provider to the LAN. Operators who want loopback should set
+# localhost / 127.0.0.1 explicitly. (The docker-compose port mapping
+# to 127.0.0.1 is the other half of this defence.)
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def _public_url_is_loopback(public_url: str) -> bool:

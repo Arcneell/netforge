@@ -57,6 +57,12 @@ class WriteRateLimitMiddleware:
         self._window = float(window_seconds)
         self._hits: dict[str, deque[float]] = {}
         self._lock = Lock()
+        # Counter of writes since the last GC sweep. Sweeps run once per
+        # _GC_EVERY_N writes (amortising the O(N) work), not once per
+        # write past _GC_THRESHOLD — otherwise a hot-looped scan that
+        # keeps N active IPs all-busy degrades each write to O(N) under
+        # one mutex.
+        self._writes_since_gc = 0
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -98,29 +104,34 @@ class WriteRateLimitMiddleware:
                 await response(scope, receive, send)
                 return
             bucket.append(now)
-            # Periodic GC of empty / stale buckets. Without this, every
-            # unique source IP that ever wrote leaves a deque() entry in
-            # `_hits` forever — a slow memory leak on a public-facing edge
-            # and an amplification surface for a low-rate scan probing
-            # from many addresses. We piggy-back on writes so the cost
-            # stays near zero on idle (no async sweeper task).
-            if len(self._hits) > self._gc_threshold:
+            # Amortised periodic GC of empty / stale buckets. Without
+            # this, every unique source IP that ever wrote leaves a
+            # deque() in `_hits` forever — a slow memory leak on a
+            # public-facing edge and an amplification surface for a
+            # low-rate scan probing from many addresses. The sweep
+            # itself is O(N); we run it at most once every _GC_EVERY_N
+            # writes regardless of how big `_hits` gets, so the per-write
+            # cost is O(N/_GC_EVERY_N) ≈ O(1) on average. The previous
+            # gate ("sweep every write past 1024 keys") regressed every
+            # write to O(N) under one mutex when an N-IP scan kept all
+            # buckets busy.
+            self._writes_since_gc += 1
+            if self._writes_since_gc >= self._GC_EVERY_N:
+                self._writes_since_gc = 0
                 self._gc_locked(cutoff)
 
         await self.app(scope, receive, send)
 
-    # Trigger a GC sweep once every `_gc_threshold` distinct keys. The
-    # threshold scales with `max_per_window` because each bucket holds at
-    # most that many entries — a higher write cap implies less concern
-    # about per-bucket size and we just want to keep the dict bounded.
-    @property
-    def _gc_threshold(self) -> int:
-        return 1024
+    # How many writes between GC sweeps. 1024 keeps the amortised cost
+    # of the O(N) sweep at ≈1/1024 per write — small enough to be
+    # invisible in the request hot path on any deployment short of
+    # millions of distinct active IPs.
+    _GC_EVERY_N: int = 1024
 
     def _gc_locked(self, cutoff: float) -> None:
         """Caller must hold self._lock. Drop entries whose bucket is empty
-        after `cutoff`-trimming. Bounded: at most O(N) over `_hits` once
-        per `_gc_threshold` writes.
+        after `cutoff`-trimming. Bounded: at most O(N) over `_hits`, and
+        amortised at one such sweep per `_GC_EVERY_N` writes.
         """
         stale: list[str] = []
         for k, bucket in self._hits.items():

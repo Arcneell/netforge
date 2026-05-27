@@ -40,15 +40,24 @@ async def upsert_user_from_provider(
     user = result.scalar_one_or_none()
 
     if user is None:
-        # Serialise the cold-start admin race: two browsers hitting
-        # /api/auth/callback at the same time on a fresh install would
-        # both observe `count == 0` and both insert themselves with
-        # role=admin. The transaction-scoped advisory lock blocks the
-        # second flow until the first commits, at which point the
-        # second sees count > 0 and lands as a viewer. Sqlite-backed
-        # tests don't know `pg_advisory_xact_lock` — best-effort skip.
-        await _acquire_bootstrap_lock(db)
-        role = await _initial_role(db, info.email, settings)
+        # The cold-start admin promotion is the only branch that needs
+        # serialising. For every other first-time login (a brand-new
+        # user joining an established install, an SSO rollout that
+        # creates many users at once) the lock would turn the login
+        # path into a serial bottleneck across all workers. Take the
+        # lock ONLY when the count is zero AND there's no
+        # BOOTSTRAP_ADMIN_EMAIL match — that's the race surface.
+        bootstrap = (settings.bootstrap_admin_email or "").strip().lower()
+        matches_bootstrap = bool(bootstrap) and info.email.lower() == bootstrap
+        if not matches_bootstrap and await _user_count(db) == 0:
+            await _acquire_bootstrap_lock(db)
+            # Re-check after taking the lock: another worker might have
+            # committed the first admin while we waited.
+            role = UserRole.admin if await _user_count(db) == 0 else UserRole.viewer
+        elif matches_bootstrap:
+            role = UserRole.admin
+        else:
+            role = UserRole.viewer
         user = User(
             provider=provider,
             subject=info.subject,
@@ -102,17 +111,6 @@ def _dialect_name(db: AsyncSession) -> str:
     except AttributeError:
         return ""
     return str(name) if isinstance(name, str) else ""
-
-
-async def _initial_role(
-    db: AsyncSession, email: str, settings: Settings
-) -> UserRole:
-    bootstrap = (settings.bootstrap_admin_email or "").strip().lower()
-    if bootstrap and email.lower() == bootstrap:
-        return UserRole.admin
-    if await _user_count(db) == 0:
-        return UserRole.admin
-    return UserRole.viewer
 
 
 async def _user_count(db: AsyncSession) -> int:

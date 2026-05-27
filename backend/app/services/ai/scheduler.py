@@ -270,10 +270,10 @@ async def _send_webhook(url: str, payload: dict[str, Any]) -> None:
     # path uses the same admin-supplied URL surface as the webhooks
     # router so the same protection applies.
     from app.config import get_settings
-    from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url
+    from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url_async
 
     try:
-        check_outbound_url(
+        await check_outbound_url_async(
             url, allow_private=get_settings().webhook_allow_private_targets
         )
     except UnsafeOutboundURL as exc:

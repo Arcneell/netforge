@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models.webhook import Webhook, WebhookDelivery
-from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url
+from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url_async
 
 logger = logging.getLogger("netforge.webhooks")
 
@@ -304,7 +304,7 @@ async def _deliver_one(
     # backend's own /api/, and the first 200 bytes of the response leak
     # into WebhookDelivery.error.
     try:
-        check_outbound_url(
+        await check_outbound_url_async(
             url, allow_private=get_settings().webhook_allow_private_targets
         )
     except UnsafeOutboundURL as exc:
