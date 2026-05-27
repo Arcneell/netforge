@@ -190,16 +190,22 @@ async def get_subnet(db: AsyncSession, subnet_id: int) -> Subnet:
 
 def _validate_dhcp_range(cidr: str, payload: dict) -> None:
     """Reject DHCP ranges that fall outside the CIDR (DB has no such trigger)."""
-    network = IPv4Network(cidr, strict=False)
+    network = IPv4Network(str(cidr), strict=False)
     for key in ("gateway", "dhcp_range_start", "dhcp_range_end"):
         addr = payload.get(key)
         if addr is None:
             continue
-        if IPv4Address(addr) not in network:
+        # Canonicalise: incoming payloads carry plain strings, but values
+        # merged from an ORM-loaded Subnet come back from asyncpg as
+        # IPv4Interface ("10.0.0.5/32"), and IPv4Address can't parse the
+        # mask suffix — would raise on every PATCH that touched any other
+        # field on a DHCP-enabled subnet.
+        addr_text = _ip_text(addr)
+        if IPv4Address(addr_text) not in network:
             business_rule(
                 "ADDRESS_OUT_OF_SUBNET",
-                f"{key} ({addr}) is not contained in {cidr}.",
-                details={"field": key, "address": addr, "cidr": cidr},
+                f"{key} ({addr_text}) is not contained in {cidr}.",
+                details={"field": key, "address": addr_text, "cidr": str(cidr)},
             )
 
 
@@ -356,8 +362,14 @@ def _check_size(network: IPv4Network) -> None:
 
 
 async def _used_addresses(db: AsyncSession, subnet_id: int) -> dict[str, Ip]:
+    # `Ip.address` is INET → asyncpg returns IPv4Interface, whose
+    # str() form is "10.0.0.1/32". Canonicalise to a bare dotted-quad
+    # so callers comparing against `str(host)` from IPv4Network.hosts()
+    # actually find a match (otherwise next_free_ip hands out addresses
+    # that already have an Ip row and list_subnet_ips shows every host
+    # as free regardless of the stored rows).
     result = await db.execute(select(Ip).where(Ip.subnet_id == subnet_id))
-    return {str(ip.address): ip for ip in result.scalars().all()}
+    return {_ip_text(ip.address): ip for ip in result.scalars().all()}
 
 
 def _dhcp_bounds(subnet: Subnet) -> tuple[IPv4Address, IPv4Address] | None:
@@ -368,7 +380,12 @@ def _dhcp_bounds(subnet: Subnet) -> tuple[IPv4Address, IPv4Address] | None:
     """
     if not (subnet.dhcp_enabled and subnet.dhcp_range_start and subnet.dhcp_range_end):
         return None
-    return IPv4Address(subnet.dhcp_range_start), IPv4Address(subnet.dhcp_range_end)
+    # asyncpg returns IPv4Interface for INET — canonicalise so
+    # IPv4Address(...) doesn't see "10.0.0.5/32" and raise.
+    return (
+        IPv4Address(_ip_text(subnet.dhcp_range_start)),
+        IPv4Address(_ip_text(subnet.dhcp_range_end)),
+    )
 
 
 async def next_free_ip(db: AsyncSession, subnet_id: int) -> str:
@@ -377,7 +394,9 @@ async def next_free_ip(db: AsyncSession, subnet_id: int) -> str:
     _check_size(network)
 
     used = await _used_addresses(db, subnet_id)
-    skip: set[str] = {str(IPv4Address(subnet.gateway))} if subnet.gateway else set()
+    skip: set[str] = (
+        {str(IPv4Address(_ip_text(subnet.gateway)))} if subnet.gateway else set()
+    )
 
     # Skip addresses inside the DHCP pool: they're reserved for dynamic
     # leases, so handing one back to the "next free for manual assignment"
