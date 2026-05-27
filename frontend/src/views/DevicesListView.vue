@@ -101,14 +101,16 @@ async function confirmDelete() {
   }
 }
 
-const columns: DataTableColumn[] = [
+// Wrap in computed so column labels follow the i18n locale (otherwise
+// the header row stays in the language active when the view mounted).
+const columns = computed<DataTableColumn[]>(() => [
   { key: 'name', label: t('device.fields.name'), cellClass: 'font-medium' },
   { key: 'type', label: t('device.fields.type'), cellClass: 'w-28' },
   { key: 'vendor', label: t('device.fields.vendor'), hideOnSm: true },
   { key: 'model', label: t('device.fields.model'), hideOnSm: true },
   { key: 'serial', label: t('device.fields.serial'), hideOnSm: true, cellClass: 'font-mono' },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-32' },
-]
+])
 </script>
 
 <template>

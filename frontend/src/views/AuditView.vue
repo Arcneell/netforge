@@ -74,7 +74,10 @@ const actionTone: Record<AuditAction, 'success' | 'primary' | 'danger'> = {
   delete: 'danger',
 }
 
-const columns: DataTableColumn[] = [
+// Wrap in computed so column labels follow the active i18n locale —
+// without this, switching language leaves the header row in the
+// originally-mounted language until the user re-enters the page.
+const columns = computed<DataTableColumn[]>(() => [
   { key: 'created_at', label: t('audit.fields.when'), cellClass: 'w-44 whitespace-nowrap' },
   { key: 'action', label: t('audit.fields.action'), cellClass: 'w-24' },
   { key: 'entity', label: t('audit.fields.entity'), cellClass: 'w-28' },
@@ -86,7 +89,7 @@ const columns: DataTableColumn[] = [
   },
   { key: 'user_id', label: t('audit.fields.user'), align: 'right', cellClass: 'w-20 font-mono' },
   { key: 'actions', label: '', align: 'right', cellClass: 'w-16' },
-]
+])
 
 function exportCsv() {
   // Carry the visible filters into the export so what the admin sees on

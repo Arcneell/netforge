@@ -175,11 +175,10 @@ router.beforeEach(async (to) => {
   return true
 })
 
-router.afterEach((to) => {
-  const titleKey = [...to.matched].reverse().find((r) => r.meta.titleKey)?.meta.titleKey
-  if (titleKey) {
-    // Title is set in main.ts via watch on the i18n locale + the meta.titleKey;
-    // keep this as a fallback for direct navigations before that watch runs.
-    document.title = `NetForge`
-  }
-})
+// Note: document.title is fully owned by App.vue's watch on
+// `route.meta.titleKey` + the i18n locale (immediate: true so direct
+// navigations are covered too). The previous `afterEach` here unconditionally
+// reset the title to the bare app name AFTER App.vue's watch had set the
+// real "Section · App" form — every navigation lost the page name from the
+// browser tab and history entry. Leave the title to the single source of
+// truth in App.vue.

@@ -188,13 +188,14 @@ async function onIpClick(entry: SubnetIpEntry) {
   editingIpFor.value = { ip: null, address: entry.address }
 }
 
-const ipColumns: DataTableColumn[] = [
+// Wrap in computed so labels follow the i18n locale.
+const ipColumns = computed<DataTableColumn[]>(() => [
   { key: 'address', label: t('ip.fields.address'), cellClass: 'font-mono w-40' },
   { key: 'status', label: t('ip.fields.status'), cellClass: 'w-28' },
   { key: 'hostname', label: t('ip.fields.hostname') },
   { key: 'mac', label: t('ip.fields.mac'), cellClass: 'font-mono', hideOnSm: true },
   { key: 'description', label: t('ip.fields.description'), hideOnSm: true },
-]
+])
 
 // Client-side filter on the table view — the data is already in memory
 // (the /ips endpoint capped at /20 = 4096 rows), so a substring scan over
