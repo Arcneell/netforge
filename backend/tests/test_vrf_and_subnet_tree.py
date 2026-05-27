@@ -317,3 +317,67 @@ async def test_vrf_move_allowed_when_subnet_has_no_children() -> None:
     db = _mock_db_with_children_query([])
     # Should not raise.
     await service._reject_vrf_move_with_children(db, parent, new_vrf=2)
+
+
+# --- _reject_cidr_shrink_with_orphaned_children ----------------------------
+
+
+@pytest.mark.asyncio
+async def test_reject_cidr_shrink_when_children_no_longer_fit() -> None:
+    """Shrinking a parent's CIDR (or moving its base address) must refuse
+    if any existing child would fall outside the new range — otherwise
+    those children silently violate `child ⊂ parent` and later edits on
+    them fail with INVALID_PARENT with no in-product fix. Mirror to the
+    VRF guard above."""
+    from types import SimpleNamespace
+
+    parent = _subnet(id=10, cidr="10.0.0.0/16", vrf_id=1)
+    # 10.0.1.0/24 fits in 10.0.0.0/24 (no — 10.0.1.x is outside /24).
+    # 10.0.0.128/25 fits in 10.0.0.0/24 (yes).
+    db = _mock_db_with_children_query(
+        [
+            SimpleNamespace(id=11, cidr="10.0.0.128/25"),
+            SimpleNamespace(id=12, cidr="10.0.1.0/24"),
+        ]
+    )
+    with pytest.raises(HTTPException) as exc:
+        await service._reject_cidr_shrink_with_orphaned_children(
+            db, parent, new_cidr="10.0.0.0/24"
+        )
+    assert exc.value.status_code == 400
+    detail = exc.value.detail["error"]
+    assert detail["code"] == "INVALID_PARENT"
+    # Only the child that no longer fits should be flagged; 10.0.0.128/25
+    # still fits in 10.0.0.0/24, so it must be absent.
+    orphaned = detail["details"]["orphaned_children"]
+    assert [c["id"] for c in orphaned] == [12]
+    assert detail["details"]["requested_cidr"] == "10.0.0.0/24"
+
+
+@pytest.mark.asyncio
+async def test_cidr_shrink_allowed_when_all_children_still_fit() -> None:
+    """Happy path: shrinking the parent enough that all children still
+    sit inside the new network is allowed (the helper returns without
+    raising)."""
+    from types import SimpleNamespace
+
+    parent = _subnet(id=10, cidr="10.0.0.0/16", vrf_id=1)
+    db = _mock_db_with_children_query(
+        [
+            SimpleNamespace(id=11, cidr="10.0.0.0/26"),
+            SimpleNamespace(id=12, cidr="10.0.0.64/26"),
+        ]
+    )
+    # Both children fit in 10.0.0.0/24 — no raise.
+    await service._reject_cidr_shrink_with_orphaned_children(
+        db, parent, new_cidr="10.0.0.0/24"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cidr_shrink_allowed_when_subnet_has_no_children() -> None:
+    parent = _subnet(id=10, cidr="10.0.0.0/16", vrf_id=1)
+    db = _mock_db_with_children_query([])
+    await service._reject_cidr_shrink_with_orphaned_children(
+        db, parent, new_cidr="10.0.0.0/24"
+    )
