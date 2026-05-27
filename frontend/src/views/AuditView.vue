@@ -46,7 +46,13 @@ const actionOptions = computed(() => [
   { value: 'delete', label: t('audit.actions.delete') },
 ])
 
+// Sequence guard: a stale response from an earlier filter combination
+// must NOT overwrite the fresh visible rows when the user toggles
+// entity / action filters quickly. Same pattern as DevicesListView.
+let loadSeq = 0
+
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const res = await auditApi.list({
@@ -55,10 +61,11 @@ async function load() {
       entity: entityFilter.value || undefined,
       action: actionFilter.value || undefined,
     })
+    if (seq !== loadSeq) return
     items.value = res.items
     total.value = res.total
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

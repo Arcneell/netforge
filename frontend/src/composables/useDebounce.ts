@@ -24,7 +24,6 @@ export interface Debounced<T> {
 export function useDebounce<T>(source: Ref<T>, delayMs = 250): Ref<T> & { flush: () => void } {
   const debounced = ref(source.value) as Ref<T>
   let timer: ReturnType<typeof setTimeout> | null = null
-  let pending: T | undefined
 
   function clear() {
     if (timer) {
@@ -33,21 +32,24 @@ export function useDebounce<T>(source: Ref<T>, delayMs = 250): Ref<T> & { flush:
     }
   }
 
+  /**
+   * Force-settle the debounced value RIGHT NOW. Reads directly from the
+   * source ref — Vue's `watch(source, ...)` callback runs in a microtask,
+   * so a caller that does `searchInput.value = ''; searchQuery.flush()`
+   * is acting BEFORE the watcher has had a chance to capture the new
+   * value into the timer's closure. Using `source.value` is the only
+   * way to guarantee flush() always reflects the latest write.
+   */
   function flush() {
-    if (timer && pending !== undefined) {
-      debounced.value = pending as T
-    }
     clear()
-    pending = undefined
+    debounced.value = source.value
   }
 
   watch(source, (value) => {
-    pending = value
     clear()
     timer = setTimeout(() => {
       debounced.value = value
       timer = null
-      pending = undefined
     }, delayMs)
   })
 
