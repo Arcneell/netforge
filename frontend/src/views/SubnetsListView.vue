@@ -67,7 +67,16 @@ const editing = ref<Subnet | null>(null)
 const deleteTarget = ref<Subnet | null>(null)
 const deleting = ref(false)
 
+// Monotonic sequence counter so a stale in-flight response from an earlier
+// filter combination can't overwrite the fresh data. Each load() call snapshots
+// the next sequence id; the response is only applied when our token is still
+// the latest. Without this, toggling filters quickly on a slow backend lets
+// older responses win and the visible rows lag the active filter.
+let listLoadSeq = 0
+let treeLoadSeq = 0
+
 async function load() {
+  const seq = ++listLoadSeq
   loading.value = true
   try {
     const res = await subnetsApi.list({
@@ -78,26 +87,30 @@ async function load() {
       vlan_id: vlanFilter.value,
       q: searchQuery.value.trim() || undefined,
     })
+    if (seq !== listLoadSeq) return // a newer call has been issued — discard.
     items.value = res.items
     total.value = res.total
   } finally {
-    loading.value = false
+    if (seq === listLoadSeq) loading.value = false
   }
 }
 
 async function loadTree() {
+  const seq = ++treeLoadSeq
   treeLoading.value = true
   try {
     // Map the chip back to the tree endpoint: undefined / 0 = global.
     // Site + VLAN narrow the result; the backend handles the orphan
     // promotion so filtering by a leaf VLAN still surfaces matches.
-    tree.value = await subnetsApi.tree({
+    const res = await subnetsApi.tree({
       vrf_id: vrfFilter.value && vrfFilter.value > 0 ? vrfFilter.value : 0,
       site_id: siteFilter.value,
       vlan_id: vlanFilter.value,
     })
+    if (seq !== treeLoadSeq) return
+    tree.value = res
   } finally {
-    treeLoading.value = false
+    if (seq === treeLoadSeq) treeLoading.value = false
   }
 }
 
@@ -159,6 +172,13 @@ function onVlanFilterChange(value: number | undefined) {
 
 function clearFilters() {
   searchInput.value = ''
+  // Force-settle the debounced search so the subsequent load() sees the
+  // empty query, not the 200ms-stale value. Without this, the load fired
+  // by reloadCurrentView reads the OLD `searchQuery` and re-issues the
+  // request with the previous query still attached; the debounce fires a
+  // second load 200ms later and the two race — older response wins ⇒ the
+  // user sees the previously-filtered subset after explicitly clearing.
+  searchQuery.flush()
   siteFilter.value = undefined
   vlanFilter.value = undefined
   vrfFilter.value = undefined

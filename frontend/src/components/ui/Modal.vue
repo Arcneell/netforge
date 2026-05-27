@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { onMounted, onUnmounted, ref, toRef, useId, watch } from 'vue'
 import { X } from 'lucide-vue-next'
+
+import { useScrollLock } from '@/composables/useScrollLock'
 
 const props = withDefaults(
   defineProps<{
@@ -77,16 +79,20 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+// Ref-counted body scroll-lock. Replaces the per-instance
+// `document.body.style.overflow = 'hidden' / ''` toggle that broke when
+// modals stacked (closing the inner one released the lock while the
+// outer was still visible).
+useScrollLock(toRef(props, 'open'))
+
 onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
-  document.body.style.overflow = ''
 })
 
 watch(
   () => props.open,
   (open) => {
-    document.body.style.overflow = open ? 'hidden' : ''
     if (open) {
       previouslyFocused.value = document.activeElement as HTMLElement | null
       requestAnimationFrame(() => {

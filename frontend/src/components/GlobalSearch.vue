@@ -67,21 +67,31 @@ watch(
   },
 )
 
+// Sequence guard against the keystroke race. With a 200ms debounce + a slow
+// backend, "swit" → "switch" → "switche" can have three searches in flight;
+// whichever resolves LAST wins on `results.value = …` because there's no
+// ordering. Pin the freshest call by token so the late stragglers are
+// dropped silently.
+let searchSeq = 0
+
 watch(debounced, async (q) => {
   const trimmed = q.trim()
   if (trimmed.length < 2) {
     results.value = []
     return
   }
+  const seq = ++searchSeq
   loading.value = true
   try {
     const res = await searchApi.search(trimmed)
+    if (seq !== searchSeq) return
     results.value = res.results
     activeIndex.value = 0
   } catch {
+    if (seq !== searchSeq) return
     results.value = []
   } finally {
-    loading.value = false
+    if (seq === searchSeq) loading.value = false
   }
 })
 

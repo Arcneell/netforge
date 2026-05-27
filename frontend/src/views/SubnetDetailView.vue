@@ -63,7 +63,13 @@ const tooLarge = ref(false)
 
 const id = computed(() => Number(route.params.id))
 
+// Sequence guard — `watch(id, load)` re-fires when the user navigates
+// between adjacent subnet detail pages quickly. Without this token, the
+// stale response from the previous subnet can overwrite the fresh view.
+let detailLoadSeq = 0
+
 async function load() {
+  const seq = ++detailLoadSeq
   loading.value = true
   tooLarge.value = false
   try {
@@ -78,11 +84,14 @@ async function load() {
       subnetsApi.get(id.value),
       subnetsApi.utilization(id.value),
     ])
+    if (seq !== detailLoadSeq) return
     subnet.value = s
     utilization.value = util
     vlan.value = s.vlan_id ? await vlansApi.get(s.vlan_id) : null
+    if (seq !== detailLoadSeq) return
     try {
       const list = await subnetsApi.ips(id.value)
+      if (seq !== detailLoadSeq) return
       ips.value = list.ips
     } catch (err) {
       // Only swallow the size cap — every other failure (network, auth,
@@ -98,10 +107,11 @@ async function load() {
       }
     }
   } catch (err) {
+    if (seq !== detailLoadSeq) return
     void describe(err)
     router.replace('/subnets')
   } finally {
-    loading.value = false
+    if (seq === detailLoadSeq) loading.value = false
   }
 }
 
