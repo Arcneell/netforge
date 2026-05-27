@@ -129,23 +129,38 @@ def _refuse_private_addresses(host: str, infos: list) -> None:
             )
 
 
+# RFC 6598 CGNAT space (carrier-grade NAT). Python's `is_private` flag
+# does NOT include this range — `100.64.x.x` reports as neither
+# `is_private` nor `is_reserved`. Common for VPN / ISP / internal
+# service networks, so we MUST refuse explicitly. The Codex review on
+# PR #90 caught this gap.
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _is_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """Return True for any address not safe to dispatch a webhook to.
 
-    Catches the standard Python flags plus the AWS/GCP metadata IP and
-    the IPv6 ULA + link-local ranges. We treat "private" defensively —
-    if there's any doubt, refuse.
+    Uses `is_global` as the inverse contract (anything that isn't a
+    public, globally-routable address is treated as private). Pin the
+    cloud-metadata literal and the CGNAT range explicitly because
+    `is_global` covers most of those but the IPv4 `is_global` flag was
+    flaky across stdlib versions for documentation-range edges.
     """
     if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
         return True
-    if ip.is_private:
+    if ip.is_private or ip.is_unspecified:
         return True
-    if ip.is_unspecified:
+    # Not-global covers RFC 5737 documentation ranges, RFC 6890 special-use,
+    # and various IPv6 reservations that the individual flags above miss.
+    if not ip.is_global:
         return True
     # 169.254.169.254 / fd00:ec2::254 — cloud-metadata endpoints. Both
     # are already covered by `is_link_local` / `is_private`, but pin
     # the literal for clarity and to survive any future stdlib change.
-    return isinstance(ip, ipaddress.IPv4Address) and str(ip) == "169.254.169.254"
+    if isinstance(ip, ipaddress.IPv4Address) and str(ip) == "169.254.169.254":
+        return True
+    # CGNAT — see _CGNAT_NETWORK comment above.
+    return isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NETWORK
 
 
 __all__ = [
