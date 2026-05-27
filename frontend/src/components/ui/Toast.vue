@@ -36,84 +36,92 @@ const assertiveToasts = computed(() =>
 </script>
 
 <template>
-  <!-- Polite region for informational toasts. -->
+  <!-- Single positioned wrapper so the two ARIA regions stack
+       vertically instead of overlapping. The previous implementation
+       had both regions `fixed bottom-4 right-4` at the same z-index;
+       when both held a toast (bulk import with mixed success/error,
+       success toast followed by a network error within the dismissal
+       window, etc.), the assertive region painted on top of the polite
+       one — the success/info card became visually invisible and its
+       dismiss-X was covered by the assertive card's pointer-events
+       surface. Use `flex-col-reverse` so newer toasts sit closer to
+       the corner (matching how each region's TransitionGroup already
+       enters new items), and render assertive first so warnings/errors
+       end up at the bottom (most visually prominent).
+  -->
   <div
-    class="fixed z-[60] bottom-4 right-4 flex flex-col gap-2 w-full max-w-sm pointer-events-none"
-    role="region"
-    aria-live="polite"
-    aria-label="Notifications"
+    class="fixed z-[60] bottom-4 right-4 flex flex-col-reverse gap-2 w-full max-w-sm pointer-events-none"
   >
-    <TransitionGroup
-      enter-active-class="transition duration-150 ease-out"
-      enter-from-class="opacity-0 translate-x-2"
-      enter-to-class="opacity-100 translate-x-0"
-      leave-active-class="transition duration-100 ease-in absolute"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0 translate-x-2"
-    >
-      <div
-        v-for="t in politeToasts"
-        :key="t.id"
-        :class="['nf-card pointer-events-auto flex items-start gap-3 p-3 pr-2']"
-        role="status"
+    <!-- Assertive region (rendered first so it sits at the bottom
+         under `flex-col-reverse`) for warnings + errors. -->
+    <div role="region" aria-live="assertive" aria-label="Alerts" class="flex flex-col gap-2">
+      <TransitionGroup
+        enter-active-class="transition duration-150 ease-out"
+        enter-from-class="opacity-0 translate-x-2"
+        enter-to-class="opacity-100 translate-x-0"
+        leave-active-class="transition duration-100 ease-in absolute"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0 translate-x-2"
       >
-        <div :class="['flex-shrink-0 rounded-md p-1.5', kindClasses[t.kind]]">
-          <component :is="icons[t.kind]" class="w-4 h-4" aria-hidden="true" />
-        </div>
-        <div class="flex-1 min-w-0">
-          <p v-if="t.title" class="text-sm font-semibold text-fg">{{ t.title }}</p>
-          <p class="text-sm text-fg-muted break-words">{{ t.message }}</p>
-        </div>
-        <button
-          type="button"
-          class="p-1 rounded hover:bg-surface-hover text-fg-muted"
-          :aria-label="$t('common.close')"
-          @click="ui.dismissToast(t.id)"
+        <div
+          v-for="t in assertiveToasts"
+          :key="t.id"
+          :class="['nf-card pointer-events-auto flex items-start gap-3 p-3 pr-2']"
+          role="alert"
         >
-          <X class="w-4 h-4" />
-        </button>
-      </div>
-    </TransitionGroup>
-  </div>
+          <div :class="['flex-shrink-0 rounded-md p-1.5', kindClasses[t.kind]]">
+            <component :is="icons[t.kind]" class="w-4 h-4" aria-hidden="true" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <p v-if="t.title" class="text-sm font-semibold text-fg">{{ t.title }}</p>
+            <p class="text-sm text-fg-muted break-words">{{ t.message }}</p>
+          </div>
+          <button
+            type="button"
+            class="p-1 rounded hover:bg-surface-hover text-fg-muted"
+            :aria-label="$t('common.close')"
+            @click="ui.dismissToast(t.id)"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+      </TransitionGroup>
+    </div>
 
-  <!-- Assertive region for warnings + errors — screen readers
-       interrupt the current utterance so the failure isn't missed. -->
-  <div
-    class="fixed z-[60] bottom-4 right-4 flex flex-col gap-2 w-full max-w-sm pointer-events-none"
-    role="region"
-    aria-live="assertive"
-    aria-label="Alerts"
-  >
-    <TransitionGroup
-      enter-active-class="transition duration-150 ease-out"
-      enter-from-class="opacity-0 translate-x-2"
-      enter-to-class="opacity-100 translate-x-0"
-      leave-active-class="transition duration-100 ease-in absolute"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0 translate-x-2"
-    >
-      <div
-        v-for="t in assertiveToasts"
-        :key="t.id"
-        :class="['nf-card pointer-events-auto flex items-start gap-3 p-3 pr-2']"
-        role="alert"
+    <!-- Polite region (rendered second so it sits ABOVE the assertive
+         one under `flex-col-reverse`) for info + success toasts. -->
+    <div role="region" aria-live="polite" aria-label="Notifications" class="flex flex-col gap-2">
+      <TransitionGroup
+        enter-active-class="transition duration-150 ease-out"
+        enter-from-class="opacity-0 translate-x-2"
+        enter-to-class="opacity-100 translate-x-0"
+        leave-active-class="transition duration-100 ease-in absolute"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0 translate-x-2"
       >
-        <div :class="['flex-shrink-0 rounded-md p-1.5', kindClasses[t.kind]]">
-          <component :is="icons[t.kind]" class="w-4 h-4" aria-hidden="true" />
-        </div>
-        <div class="flex-1 min-w-0">
-          <p v-if="t.title" class="text-sm font-semibold text-fg">{{ t.title }}</p>
-          <p class="text-sm text-fg-muted break-words">{{ t.message }}</p>
-        </div>
-        <button
-          type="button"
-          class="p-1 rounded hover:bg-surface-hover text-fg-muted"
-          :aria-label="$t('common.close')"
-          @click="ui.dismissToast(t.id)"
+        <div
+          v-for="t in politeToasts"
+          :key="t.id"
+          :class="['nf-card pointer-events-auto flex items-start gap-3 p-3 pr-2']"
+          role="status"
         >
-          <X class="w-4 h-4" />
-        </button>
-      </div>
-    </TransitionGroup>
+          <div :class="['flex-shrink-0 rounded-md p-1.5', kindClasses[t.kind]]">
+            <component :is="icons[t.kind]" class="w-4 h-4" aria-hidden="true" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <p v-if="t.title" class="text-sm font-semibold text-fg">{{ t.title }}</p>
+            <p class="text-sm text-fg-muted break-words">{{ t.message }}</p>
+          </div>
+          <button
+            type="button"
+            class="p-1 rounded hover:bg-surface-hover text-fg-muted"
+            :aria-label="$t('common.close')"
+            @click="ui.dismissToast(t.id)"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+      </TransitionGroup>
+    </div>
   </div>
 </template>
