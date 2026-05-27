@@ -11,9 +11,12 @@ const props = withDefaults(
     id?: string
   }>(),
   {
+    modelValue: '',
     type: 'text',
+    placeholder: undefined,
     disabled: false,
     invalid: false,
+    id: undefined,
   },
 )
 

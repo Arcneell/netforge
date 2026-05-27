@@ -9,7 +9,7 @@ withDefaults(
     description?: string
     size?: 'sm' | 'md'
   }>(),
-  { icon: Inbox, size: 'md' },
+  { icon: Inbox, description: undefined, size: 'md' },
 )
 </script>
 
