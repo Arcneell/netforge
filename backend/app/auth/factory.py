@@ -30,6 +30,7 @@ def make_provider(settings: Settings, oauth: OAuth) -> AuthProvider:
             settings.oidc_client_id,
             settings.oidc_client_secret,
             settings.oidc_scope,
+            require_email_verified=settings.oidc_require_email_verified,
         )
     if name == "dev":
         # Strongest "is this production?" signal we have. If it's set we refuse to
@@ -40,7 +41,11 @@ def make_provider(settings: Settings, oauth: OAuth) -> AuthProvider:
                 "The dev provider has no IdP and signs anyone in as admin — it must "
                 "never be used over HTTPS / in production."
             )
-        return DevAuthProvider(settings.dev_admin_email, settings.dev_admin_name)
+        return DevAuthProvider(
+            settings.dev_admin_email,
+            settings.dev_admin_name,
+            public_url=settings.public_url,
+        )
     raise RuntimeError(
         f"Unknown AUTH_PROVIDER={settings.auth_provider!r}. "
         "Expected 'github', 'oidc', or 'dev'."
