@@ -1,0 +1,95 @@
+# Dependabot config — keeps the toolchain + image base layers + workflow
+# action SHAs current. Five ecosystems track separately so a Python
+# bump doesn't show up in a "frontend dependencies" PR.
+#
+# release.yml pins third-party actions to full commit SHAs (defence
+# against "tag move" attacks on a workflow with `packages: write`).
+# Dependabot's `github-actions` ecosystem will open PRs that update both
+# the SHA and the trailing `# vX` comment in lockstep, so the pinned
+# workflow stays current without manual SHA bookkeeping.
+#
+# ci.yml uses floating tags (`@v4`/`@v3`/...) on purpose: that workflow
+# is read-only (`contents: read` only) so a compromised action could not
+# pivot to publish anything; the ergonomic win of automatic updates
+# outweighs the SHA-pinning complexity there. Dependabot still files
+# major-version bumps via this same config (it updates by tag if the
+# workflow uses tags).
+
+version: 2
+
+updates:
+  # ---------------- GitHub Actions ----------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci(deps)
+    labels:
+      - dependencies
+      - github_actions
+
+  # ---------------- Python (backend) ----------------
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps(backend)
+    labels:
+      - dependencies
+      - python
+    # Group runtime + dev-tool minor/patch bumps into one PR per week so
+    # the queue stays manageable. Majors still open individual PRs so
+    # they're reviewed in isolation.
+    groups:
+      backend-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # ---------------- Node.js (frontend) ----------------
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps(frontend)
+    labels:
+      - dependencies
+      - javascript
+    groups:
+      frontend-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # ---------------- Docker (backend image base layer) ----------------
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: deps(docker-backend)
+    labels:
+      - dependencies
+      - docker
+
+  # ---------------- Docker (frontend image base layer) ----------------
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: deps(docker-frontend)
+    labels:
+      - dependencies
+      - docker
