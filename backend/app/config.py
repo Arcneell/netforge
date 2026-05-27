@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
     oidc_scope: str = "openid email profile"
+    # OIDC encodes "the IdP verified this email" in the boolean
+    # `email_verified` claim. On a permissive IdP (multi-tenant Entra,
+    # public Google, self-service Keycloak realm) an attacker can
+    # register an account with an arbitrary email and — combined with
+    # JIT user creation + BOOTSTRAP_ADMIN_EMAIL — JIT-promote themselves
+    # to admin. We refuse logins whose email is not verified by the IdP.
+    # Set to False only if your IdP does not emit the claim AND you trust
+    # every email it asserts (e.g. a single-tenant corporate Entra).
+    oidc_require_email_verified: bool = True
 
     # ------------------------------------------------------------------
     # Sessions

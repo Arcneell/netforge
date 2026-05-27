@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.models.user import Session, User
+from app.utils.request import client_ip
 
 # Renew the session whenever less than this much time is left on the clock.
 _RENEW_THRESHOLD = timedelta(hours=1)
@@ -36,7 +37,11 @@ async def create_session(
         id=secrets.token_urlsafe(32),
         user_id=user.id,
         expires_at=_utcnow() + timedelta(seconds=settings.session_max_age_seconds),
-        ip_address=request.client.host if request.client else None,
+        # Use the same trust order as the audit log (X-Real-IP first,
+        # immediate peer as fallback) so admins troubleshooting "where
+        # did this login come from?" see the real client IP instead of
+        # the nginx loopback peer behind a reverse proxy.
+        ip_address=client_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     db.add(sess)
