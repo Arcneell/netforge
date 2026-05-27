@@ -1088,31 +1088,50 @@ def extract_zip(content: bytes) -> list[tuple[str, bytes]]:
             },
         ) from exc
 
-    total = 0
+    # Bound the decompressed budget against ACTUAL bytes read, not the
+    # attacker-supplied `info.file_size` field from the ZIP central
+    # directory. A malicious ZIP can declare each member as 1 byte and
+    # then explode on `fh.read()` — the previous check (`total +=
+    # info.file_size`) accepted that lie and OOM'd the worker.
     out: list[tuple[str, bytes]] = []
+    remaining = ZIP_MAX_UNCOMPRESSED
     for info in zf.infolist():
         if info.is_dir():
             continue
         name = info.filename.rsplit("/", 1)[-1]
         if not name.lower().endswith(".csv"):
             continue
-        total += info.file_size
-        if total > ZIP_MAX_UNCOMPRESSED:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": {
-                        "code": "ZIP_TOO_LARGE",
-                        "message": (
-                            f"ZIP expands to more than "
-                            f"{ZIP_MAX_UNCOMPRESSED} bytes uncompressed."
-                        ),
-                    }
-                },
-            )
+        # First-line defence: if the declared size already overflows the
+        # remaining budget we can refuse without opening the member. Cheap
+        # and catches non-malicious "this export is huge" cases.
+        if info.file_size > remaining:
+            _raise_zip_too_large()
         with zf.open(info, "r") as fh:
-            out.append((name, fh.read()))
+            # Read at most `remaining + 1` so we can detect overflow even
+            # when the header lied about the size. The extra byte means
+            # we never read more than the cap (limit on the next member
+            # is reduced to 0, which triggers the refusal above).
+            buf = fh.read(remaining + 1)
+            if len(buf) > remaining:
+                _raise_zip_too_large()
+            remaining -= len(buf)
+            out.append((name, buf))
     return out
+
+
+def _raise_zip_too_large() -> None:
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": {
+                "code": "ZIP_TOO_LARGE",
+                "message": (
+                    f"ZIP expands to more than "
+                    f"{ZIP_MAX_UNCOMPRESSED} bytes uncompressed."
+                ),
+            }
+        },
+    )
 
 
 async def run_bulk_import(
