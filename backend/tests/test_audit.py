@@ -10,14 +10,19 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import Enum
 
+from sqlalchemy import event
+
+from app.models.core import Site
 from app.models.port import PortMode
 from app.models.user import AuditAction
+from app.services import audit as audit_module
 from app.services.audit import (
     _dump_columns,
     _jsonsafe,
     current_request_ip_var,
     current_request_ua_var,
     current_user_id_var,
+    register_audit_listeners,
 )
 
 
@@ -103,3 +108,52 @@ def test_request_metadata_context_vars_round_trip() -> None:
 
     assert current_request_ip_var.get() is None
     assert current_request_ua_var.get() is None
+
+
+def _count_after_insert(model: type) -> int:
+    return len(model.__mapper__.dispatch.after_insert.listeners)
+
+
+def test_register_audit_listeners_is_idempotent() -> None:
+    """`create_app()` can run more than once in the same process (test
+    factories that build a fresh app per fixture, uvicorn --reload, a
+    future multi-app harness). Without an idempotency guard every extra
+    `register_audit_listeners()` call attached duplicate after_insert /
+    after_update / after_delete handlers on every audited model —
+    producing N duplicate audit_log rows AND N duplicate webhook
+    events per real mutation. Pin the contract: the first call attaches
+    the listeners; every subsequent call is a no-op.
+    """
+    # Ensure we start from a known state by clearing existing listeners
+    # and the flag, so the test does not depend on collection order.
+    _strip_audit_listeners()
+    audit_module._listeners_registered = False
+
+    register_audit_listeners()
+    after_first = _count_after_insert(Site)
+    assert after_first >= 1, "first call must attach at least one listener"
+
+    register_audit_listeners()
+    register_audit_listeners()
+    assert _count_after_insert(Site) == after_first, (
+        "subsequent calls must be no-ops"
+    )
+
+
+def _strip_audit_listeners() -> None:
+    """Remove every audit-registered after_insert/update/delete handler
+    on Site. Helper used by the idempotency test to start from a known
+    baseline regardless of which other tests ran first.
+
+    SQLAlchemy wraps closures so `remove()` can fail to find the exact
+    registered key — best-effort cleanup is fine because the subsequent
+    `register_audit_listeners()` will recreate whatever we miss.
+    """
+    import contextlib
+
+    for evt_name in ("after_insert", "after_update", "after_delete"):
+        listeners = list(getattr(Site.__mapper__.dispatch, evt_name).listeners)
+        for fn in listeners:
+            with contextlib.suppress(Exception):
+                event.remove(Site, evt_name, fn)
+
