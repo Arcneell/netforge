@@ -53,6 +53,13 @@ class _UserCounter:
 
 _USERS: dict[int, _UserCounter] = {}
 _USERS_LOCK = Lock()
+# Counter of consumes since the last GC sweep. Same pattern as the
+# write-rate-limit middleware: a long-lived process onboarding/offboarding
+# users over months would otherwise accumulate `_UserCounter`s in `_USERS`
+# forever (each one holding a Lock + deque). Sweep amortised at one
+# per _GC_EVERY_N calls so the per-consume cost stays O(1).
+_GC_EVERY_N = 1024
+_consumes_since_gc = 0
 
 
 def check_and_consume(user_id: int) -> None:
@@ -67,4 +74,31 @@ def check_and_consume(user_id: int) -> None:
     settings = get_settings()
     with _USERS_LOCK:
         counter = _USERS.setdefault(user_id, _UserCounter())
+        global _consumes_since_gc
+        _consumes_since_gc += 1
+        if _consumes_since_gc >= _GC_EVERY_N:
+            _consumes_since_gc = 0
+            _gc_idle_counters(window=settings.ai_rate_window_seconds)
     counter.consume(limit=settings.ai_rate_limit_calls, window=settings.ai_rate_window_seconds)
+
+
+def _gc_idle_counters(window: int) -> None:
+    """Drop counters whose call deque is empty after window-trimming.
+    Caller must hold _USERS_LOCK.
+
+    Locking discipline: we touch each `_UserCounter._lock` to peek-trim
+    its deque, then read `len(_calls)` under that same lock. Acquiring
+    a child lock while holding the parent is safe here because no other
+    code path holds the child lock while needing the parent.
+    """
+    now = time.monotonic()
+    cutoff = now - window
+    stale: list[int] = []
+    for uid, counter in _USERS.items():
+        with counter._lock:
+            while counter._calls and counter._calls[0] < cutoff:
+                counter._calls.popleft()
+            if not counter._calls:
+                stale.append(uid)
+    for uid in stale:
+        _USERS.pop(uid, None)

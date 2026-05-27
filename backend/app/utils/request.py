@@ -44,7 +44,20 @@ def client_ip(request: Request) -> str | None:
     peer = request.client.host if request.client else None
     real_ip = request.headers.get("x-real-ip")
     if real_ip and peer and _is_trusted_proxy(peer):
-        return real_ip.strip()
+        candidate = real_ip.strip()
+        # Validate the proxy's claim as a real IP literal before we
+        # trust it. A misconfigured proxy (e.g. one that joins XFF
+        # entries with a comma into X-Real-IP, or that pastes the
+        # original hostname) would otherwise poison
+        # `audit_log.ip_address` / `sessions.ip_address` (both INET
+        # columns — asyncpg crashes the whole mutation on a malformed
+        # value) AND key the rate-limit bucket on a garbage string that
+        # never matches the same client's subsequent peer-keyed entries.
+        try:
+            ipaddress.ip_address(candidate)
+        except ValueError:
+            return peer
+        return candidate
     return peer
 
 

@@ -187,17 +187,28 @@ async def test_oidc_allows_unverified_when_opted_out() -> None:
 
 def test_make_provider_dev_accepts_loopback_public_urls() -> None:
     """Loopback variants we explicitly accept: localhost, 127.0.0.1,
-    ::1, 0.0.0.0 (the last for the docker-compose case where the
-    container binds 0.0.0.0 but is mapped to 127.0.0.1 on the host).
-    Each must produce a working DevAuthProvider with no raise.
+    ::1. Each must produce a working DevAuthProvider with no raise.
     """
     for url in (
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "http://[::1]:8000",
-        "http://0.0.0.0:8000",
     ):
         settings = Settings(
             auth_provider="dev", session_cookie_secure=False, public_url=url
         )
         assert isinstance(make_provider(settings, OAuth()), DevAuthProvider), url
+
+
+def test_make_provider_dev_refuses_wildcard_bind_public_url() -> None:
+    """0.0.0.0 is NOT a loopback — it's the wildcard bind that means
+    "every interface" and is the misconfiguration that exposes the
+    dev bypass to the LAN. Refuse it explicitly so operators can't
+    accidentally hand admin to the network."""
+    settings = Settings(
+        auth_provider="dev",
+        session_cookie_secure=False,
+        public_url="http://0.0.0.0:8000",
+    )
+    with pytest.raises(RuntimeError, match="loopback"):
+        make_provider(settings, OAuth())
