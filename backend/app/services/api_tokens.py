@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import SessionLocal
 from app.models.user import ApiToken, User
 from app.services.errors import not_found
 
@@ -99,10 +100,14 @@ async def revoke_token(db: AsyncSession, user: User, token_id: int) -> None:
 async def verify_token(db: AsyncSession, plaintext: str) -> User | None:
     """Resolve a plaintext token to its owning user, or None if invalid.
 
-    Best-effort updates `last_used_at` on a successful verify so admins can
-    spot stale tokens. The write is fired in the same transaction as the
-    enclosing request — a tiny cost but the call is on every API request
-    using Bearer auth, so we keep it to a single UPDATE without re-SELECTing.
+    Best-effort updates `last_used_at` on a successful verify so admins
+    can spot stale tokens. The update runs in its own short transaction
+    via a side session — the enclosing request session is the read path
+    for GET endpoints (the typical bearer-auth use case: scripts polling
+    `/api/devices`), and `get_session` doesn't commit at teardown, so a
+    plain `await db.execute(update(...))` was silently dropped on read
+    endpoints. Side-session keeps the timestamp accurate regardless of
+    what the surrounding handler decides to commit or roll back.
     """
     if not plaintext.startswith(TOKEN_PREFIX):
         return None
@@ -125,9 +130,21 @@ async def verify_token(db: AsyncSession, plaintext: str) -> User | None:
         # against race conditions) — treat as unauthenticated.
         return None
 
-    # Single UPDATE, no SELECT round-trip. We commit at the end of the
-    # request alongside any other writes the handler may have done.
-    await db.execute(
-        update(ApiToken).where(ApiToken.id == row.id).values(last_used_at=now)
-    )
+    await _touch_last_used_at(row.id, now)
     return user
+
+
+async def _touch_last_used_at(token_id: int, when: datetime) -> None:
+    """Side-session UPDATE for `last_used_at`. Best-effort: a transient
+    DB error here must not deny an otherwise-valid bearer-auth request.
+    """
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        async with SessionLocal() as side:
+            await side.execute(
+                update(ApiToken)
+                .where(ApiToken.id == token_id)
+                .values(last_used_at=when)
+            )
+            await side.commit()

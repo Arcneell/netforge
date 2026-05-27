@@ -54,13 +54,22 @@ async def export_audit(
     )
 
 
-@router.get("/all", dependencies=[Depends(get_current_user)])
+@router.get(
+    "/all",
+    dependencies=[Depends(require_role(UserRole.admin))],
+)
 async def export_all(db: AsyncSession = Depends(get_db)) -> Response:
     """Bundle every entity's CSV into a single ZIP archive.
 
     The archive is structured exactly like what `POST /api/imports/bulk`
     accepts (one `<entity>.csv` per member, headers matching the importer),
     so it doubles as a logical backup and as a round-trip-ready snapshot.
+
+    Admin-only because (a) importing the same payload back is admin-only,
+    so symmetric exporting should be too, and (b) the response is the
+    full inventory in one in-memory bytes blob — a viewer with an API
+    token can loop the call to balloon worker memory or to exfiltrate
+    every site / room / IP / MAC / etc. snapshot.
     """
     payload = await service.build_zip(db)
     filename = f"netforge-export-{datetime.now(UTC).strftime('%Y-%m-%d')}.zip"

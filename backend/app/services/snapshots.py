@@ -31,10 +31,19 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import AuditLog
+from app.services.errors import business_rule
+
+# Hard cap on rows materialised into Python per call. The router caps the
+# window at 90 days but on a busy install (CSV imports, bulk-IP ops,
+# scheduler runs — each generating many audit rows) that window can
+# easily produce millions of rows. Materialising them all into a list
+# would OOM the worker. We pre-check the count so the caller gets a
+# clear "narrow the filters" message instead of a 500.
+_MAX_ROWS_PER_WINDOW = 100_000
 
 
 def _extract_field_names(changes: dict[str, Any] | None) -> set[str]:
@@ -86,6 +95,32 @@ async def compare_window(
     )
     if entity is not None:
         base = base.where(AuditLog.entity == entity)
+
+    # Pre-check the row count so we never materialise a million-row
+    # window into Python and OOM the worker. The router's 90-day cap
+    # alone isn't enough: a busy install with CSV imports + bulk-IP +
+    # scheduler runs can produce 100k+ rows per day.
+    count_q = select(func.count(AuditLog.id)).where(
+        AuditLog.created_at >= from_ts, AuditLog.created_at <= to_ts
+    )
+    if entity is not None:
+        count_q = count_q.where(AuditLog.entity == entity)
+    total = int((await db.execute(count_q)).scalar() or 0)
+    if total > _MAX_ROWS_PER_WINDOW:
+        business_rule(
+            "WINDOW_TOO_DENSE",
+            f"The selected window contains {total} audit rows, more than "
+            f"the {_MAX_ROWS_PER_WINDOW} cap. Narrow the date range or "
+            "filter by entity.",
+            details={
+                "total_rows": total,
+                "max_rows": _MAX_ROWS_PER_WINDOW,
+                "from_ts": from_ts.isoformat(),
+                "to_ts": to_ts.isoformat(),
+                "entity": entity,
+            },
+        )
+
     rows: list[AuditLog] = list((await db.execute(base)).scalars().all())
 
     # Bucket by (entity, entity_id). Skip rows with no entity_id (e.g.
