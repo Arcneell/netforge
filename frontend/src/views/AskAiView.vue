@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -38,6 +38,14 @@ const status = ref<AIStatus | null>(null)
 const turns = ref<Turn[]>([])
 const input = ref('')
 const pending = ref(false)
+// Holds the in-flight stream's reader so we can cancel it on unmount or
+// when the user spams Enter (a second submission while the first is still
+// streaming). Without this, navigating away from /ask mid-answer leaks
+// the HTTP connection and the closure keeps mutating an orphan
+// assistantTurn until the server finishes — a guaranteed
+// unhandled-rejection on the next view's mount.
+let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
+let streamCancelled = false
 // Lite-context toggle: ask the backend to send a stripped snapshot
 // (identifiers only — no vendor / model / serial / notes / descriptions /
 // MACs / addresses). Cuts tokens ~10× and keeps free-text out of the
@@ -70,9 +78,28 @@ function historyForBackend(): QueryHistoryTurn[] {
   }))
 }
 
+function cancelActiveStream(): void {
+  streamCancelled = true
+  if (activeReader) {
+    try {
+      void activeReader.cancel()
+    } catch {
+      // The reader can throw if the stream is already done — best-effort.
+    }
+    activeReader = null
+  }
+}
+
+onBeforeUnmount(cancelActiveStream)
+
 async function send() {
   const question = input.value.trim()
   if (!question || pending.value) return
+  // Cancel any earlier inflight stream (e.g., the operator hit Enter
+  // again while a slow answer was still streaming). Without this the
+  // two streams race and tokens interleave in the same assistant bubble.
+  cancelActiveStream()
+  streamCancelled = false
   input.value = ''
   // Snapshot history BEFORE we push the new user turn so the server sees
   // exactly the prior exchange, not a copy of the question it's about to
@@ -177,13 +204,16 @@ async function streamAnswer(
     throw new Error(`stream rejected: HTTP ${resp.status}`)
   }
   const reader = resp.body.getReader()
+  activeReader = reader
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
   let streamError: string | null = null
   const outcome: StreamOutcome = { deltas: 0, completed: false }
   while (true) {
+    if (streamCancelled) break
     const { value, done } = await reader.read()
     if (done) break
+    if (streamCancelled) break
     buffer += decoder.decode(value, { stream: true })
     // SSE frames are separated by blank lines (\n\n). Split, leaving any
     // trailing partial frame in `buffer` for the next iteration.
@@ -204,6 +234,11 @@ async function streamAnswer(
   if (buffer.trim().length > 0) {
     const result = handleFrame(buffer.trim(), onDelta, outcome)
     if (result?.error) streamError = result.error
+  }
+  // Drop the reader handle whether we exited cleanly or via cancellation
+  // so a subsequent send() doesn't double-cancel a finished stream.
+  if (activeReader === reader) {
+    activeReader = null
   }
   if (streamError) throw new Error(streamError)
   return outcome

@@ -35,8 +35,21 @@ function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
 }
 
+// Module-scope listener handle so we only register the system-theme
+// matchMedia change listener ONCE per process. The store factory used to
+// add it on every `useUiStore()` call, which accumulated listeners over
+// HMR reloads and Pinia store-recreation in tests.
+let _systemThemeListenerAttached = false
+let _currentTheme: { value: Theme } | null = null
+function _onSystemThemeChange(): void {
+  if (_currentTheme && _currentTheme.value === 'system') applyTheme('system')
+}
+
 export const useUiStore = defineStore('ui', () => {
   const theme = ref<Theme>(readStoredTheme())
+  // Module-level handle on the current theme so the matchMedia listener
+  // (registered once at first store creation) always reads the live value.
+  _currentTheme = theme
   const sidebarCollapsed = ref<boolean>(false)
   // Slide-in mobile drawer state. Separate from `sidebarCollapsed` because on
   // desktop a collapsed sidebar still shows icons, whereas on mobile the
@@ -46,11 +59,13 @@ export const useUiStore = defineStore('ui', () => {
   let nextToastId = 1
 
   // Keep the html.dark class in sync with the system preference when in `system` mode.
-  if (typeof window !== 'undefined' && window.matchMedia) {
+  // Module-level guard so re-creating the store across HMR / test mounts
+  // doesn't accumulate listeners (each previous one would keep its closure
+  // over the now-stale `theme` ref alive).
+  if (typeof window !== 'undefined' && window.matchMedia && !_systemThemeListenerAttached) {
+    _systemThemeListenerAttached = true
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    mq.addEventListener('change', () => {
-      if (theme.value === 'system') applyTheme('system')
-    })
+    mq.addEventListener('change', _onSystemThemeChange)
   }
 
   function setTheme(next: Theme): void {
