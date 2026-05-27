@@ -105,7 +105,7 @@ onUnmounted(() => {
 
 watch(
   () => props.open,
-  (open) => {
+  (open, prev) => {
     if (open) {
       pushModal(stackId)
       previouslyFocused.value = document.activeElement as HTMLElement | null
@@ -117,15 +117,26 @@ watch(
         if (els.length > 0) els[0].focus()
         else dialogRef.value?.focus()
       })
-    } else {
+    } else if (prev) {
+      // Close-path only fires on a real open→close transition. Avoids
+      // running the focus-restore + popModal on the synthetic initial
+      // run when the modal mounted with `open=false` (prev === undefined).
       popModal(stackId)
-      // Return focus to the trigger on close. Microtask defers until after
-      // the closing transition swaps focus targets.
+      // Return focus to the trigger on close. Microtask defers until
+      // after the closing transition swaps focus targets.
       const target = previouslyFocused.value
       previouslyFocused.value = null
       queueMicrotask(() => target?.focus?.())
     }
   },
+  // `immediate: true` so a modal mounted with `open` already true (the
+  // typical `v-if="editing"` + `:open="!!editing"` pattern across the
+  // editors — IpEditor, SubnetEditor, VlanEditor, etc.) still gets
+  // pushed onto the stack on first render. Without this, the topmost-
+  // modal guard returns early for Escape/Tab and the keyboard close +
+  // focus trap silently break for every "open on mount" path (Codex
+  // P2 on #98).
+  { immediate: true },
 )
 </script>
 

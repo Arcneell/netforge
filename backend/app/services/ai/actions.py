@@ -88,6 +88,10 @@ DRAFT_TOOL = ToolDef(
                     "cidr": {"type": "string", "maxLength": 40},
                     "gateway": {"type": "string", "maxLength": 40},
                     "color": {"type": "string", "maxLength": 7},
+                    # Optional scope. The applier validates against the
+                    # snapshot — invalid ids fail at apply time, not draft.
+                    "vrf_id": {"type": "integer", "minimum": 1},
+                    "parent_subnet_id": {"type": "integer", "minimum": 1},
                 },
             },
             "reasoning": {"type": "string", "maxLength": 500},
@@ -156,6 +160,18 @@ def _validate_payload(intent: str, payload: dict[str, Any]) -> dict[str, Any] | 
                 payload_out["vlan_id"] = int(payload["vlan_id"])
             except (TypeError, ValueError):
                 return "vlan_id must be an integer"
+        # Forward vrf_id / parent_subnet_id when the LLM emitted them.
+        # PR #96 added applier-side handling but the validator dropped
+        # both fields here, so AI-applied subnets still landed in the
+        # global VRF as roots regardless of the prompt (Codex P2 on
+        # #96). Coerce to ints — anything else fails the applier's own
+        # check chain.
+        for key in ("vrf_id", "parent_subnet_id"):
+            if payload.get(key) is not None:
+                try:
+                    payload_out[key] = int(payload[key])
+                except (TypeError, ValueError):
+                    return f"{key} must be an integer"
         if payload.get("description"):
             payload_out["description"] = str(payload["description"]).strip()
         return payload_out

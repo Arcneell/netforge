@@ -35,14 +35,21 @@ def _enforce_size(content: bytes) -> None:
         )
 
 
-async def _read_capped(file: UploadFile) -> bytes:
-    """Stream the upload into memory, enforcing `_MAX_BYTES` as we go.
+async def _read_capped(file: UploadFile, *, max_bytes: int = _MAX_BYTES) -> bytes:
+    """Stream the upload into memory, enforcing `max_bytes` as we go.
 
     The previous `await file.read()` materialised the whole body before
     the size check — nginx's 16 MiB body cap meant an admin (or an
     admin API token holder) could force ~16 MiB of resident memory per
     concurrent request before the 10 MiB refusal fired. Stream-reading
-    in 64 KiB chunks bounds the peak at `_MAX_BYTES` and refuses early.
+    in 64 KiB chunks bounds the peak at `max_bytes` and refuses early.
+
+    The cap is parameterised because the bulk endpoint accepts a single
+    ZIP of CSVs whose compressed size can legitimately exceed the
+    per-CSV cap. The single-CSV routes still pass the default
+    `_MAX_BYTES`; the bulk route raises the cap to
+    `BULK_MAX_TOTAL_BYTES` for ZIP members and to `_MAX_BYTES` for
+    loose CSVs.
     """
     chunks: list[bytes] = []
     size = 0
@@ -51,11 +58,11 @@ async def _read_capped(file: UploadFile) -> bytes:
         if not chunk:
             break
         size += len(chunk)
-        if size > _MAX_BYTES:
+        if size > max_bytes:
             business_rule(
                 "CSV_TOO_LARGE",
-                f"Upload exceeds the {_MAX_BYTES} byte limit.",
-                details={"size": size, "max": _MAX_BYTES},
+                f"Upload exceeds the {max_bytes} byte limit.",
+                details={"size": size, "max": max_bytes},
             )
         chunks.append(chunk)
     return b"".join(chunks)
@@ -92,13 +99,19 @@ async def import_bulk(
     """
     payloads: list[tuple[str, bytes]] = []
     for f in files:
-        content = await _read_capped(f)
         name = f.filename or "upload.csv"
-        # A single .zip member explodes into its CSVs in-place; mixing a zip
-        # with extra loose CSVs in the same request is supported too.
+        # ZIP members are bounded by BULK_MAX_TOTAL_BYTES (50 MiB) on
+        # the compressed side and by ZIP_MAX_UNCOMPRESSED inside
+        # extract_zip — applying the 10 MiB single-CSV cap here would
+        # reject perfectly valid /exports/all round-trips whose
+        # compressed ZIP happens to fall between 10 MiB and 50 MiB.
+        # Loose CSVs in a bulk submit are still capped at _MAX_BYTES
+        # each so a single bogus file can't OOM the worker.
         if name.lower().endswith(".zip"):
+            content = await _read_capped(f, max_bytes=service.BULK_MAX_TOTAL_BYTES)
             payloads.extend(service.extract_zip(content))
         else:
+            content = await _read_capped(f)
             payloads.append((name, content))
 
     total = sum(len(c) for _, c in payloads)

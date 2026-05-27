@@ -173,20 +173,53 @@ onBeforeUnmount(() => {
   observer = null
 })
 
-// When the IPs list changes (e.g. parent reload after a bulk action),
-// the chunk ids change too. In observer mode we clear the visibility
-// set and let the IntersectionObserver repopulate it on the next
-// mount tick. In fallback (eager) mode there's no observer to do that —
-// we have to repopulate the set ourselves with every new chunk id, or
-// the grid stays blank forever after the first reload (Codex P1 on
-// #81).
+// When the IPs list changes (e.g. parent reload after a bulk action)
+// the chunk ids may or may not change:
+//
+//  - DIFFERENT subnet (size changed, navigated to another /subnets/:id):
+//    chunk ids differ → Vue unmounts old chunks and mounts new ones →
+//    the stable per-id ref callbacks (PR #94) call `setChunkRef`'s
+//    handler with null then the new element → IntersectionObserver
+//    re-attaches and fires once synchronously. Safe to clear
+//    `visibleChunks`; the IO repopulates it on the next paint.
+//
+//  - SAME size reload (bulk-IP edit, individual IP status change): chunk
+//    ids stay the same. The cached ref callbacks (PR #94) keep the
+//    SAME element references, so Vue does NOT call setChunkRef with
+//    null + new — the observer never re-fires. If we cleared
+//    `visibleChunks` here, the grid would render as the empty
+//    placeholder strip until the user scrolled, which Codex P1 on
+//    #94 flagged. So: only clear the set when the chunk-id set
+//    actually changed, and re-observe explicitly otherwise.
+let _lastChunkIds: string[] = []
 watch(
   () => props.ips,
   () => {
+    const ids = chunks.value.map((c) => c.id)
+    const idsChanged =
+      ids.length !== _lastChunkIds.length || ids.some((id, i) => id !== _lastChunkIds[i])
+    _lastChunkIds = ids
+
     if (fallbackEager.value) {
-      visibleChunks.value = new Set(chunks.value.map((c) => c.id))
-    } else {
+      visibleChunks.value = new Set(ids)
+      return
+    }
+    if (idsChanged) {
+      // The cached ref-callbacks were freed for the dropped chunk ids
+      // when their elements unmounted; drop the cached entries too so
+      // a future subnet with the same chunk-N name doesn't re-use a
+      // stale callback bound to the previous lifetime.
+      for (const id of _refCallbacks.keys()) {
+        if (!ids.includes(id)) _refCallbacks.delete(id)
+      }
       visibleChunks.value = new Set()
+    } else {
+      // Same ids — same DOM elements per stable refs. Keep the set;
+      // the IO will fire on real intersection changes. Belt-and-braces
+      // re-observe in case the observer was disconnected for any reason.
+      if (observer) {
+        for (const el of chunkRefs.value.values()) observer.observe(el)
+      }
     }
   },
 )

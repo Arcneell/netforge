@@ -10,12 +10,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import Enum
 
-from sqlalchemy import event
-
 from app.models.core import Site
 from app.models.port import PortMode
 from app.models.user import AuditAction
-from app.services import audit as audit_module
 from app.services.audit import (
     _dump_columns,
     _jsonsafe,
@@ -123,12 +120,16 @@ def test_register_audit_listeners_is_idempotent() -> None:
     producing N duplicate audit_log rows AND N duplicate webhook
     events per real mutation. Pin the contract: the first call attaches
     the listeners; every subsequent call is a no-op.
-    """
-    # Ensure we start from a known state by clearing existing listeners
-    # and the flag, so the test does not depend on collection order.
-    _strip_audit_listeners()
-    audit_module._listeners_registered = False
 
+    Cleanup uses the precise `reset_audit_listeners` helper from the
+    audit module (which tracks the exact (model, evt, fn) tuples it
+    attached) so no orphaned wrapped closures are left on any mapper
+    after this test runs — that was the Codex P2 on #87.
+    """
+    from app.services.audit import reset_audit_listeners
+
+    # Drop everything we previously attached, then re-attach exactly once.
+    reset_audit_listeners()
     register_audit_listeners()
     after_first = _count_after_insert(Site)
     assert after_first >= 1, "first call must attach at least one listener"
@@ -138,22 +139,4 @@ def test_register_audit_listeners_is_idempotent() -> None:
     assert _count_after_insert(Site) == after_first, (
         "subsequent calls must be no-ops"
     )
-
-
-def _strip_audit_listeners() -> None:
-    """Remove every audit-registered after_insert/update/delete handler
-    on Site. Helper used by the idempotency test to start from a known
-    baseline regardless of which other tests ran first.
-
-    SQLAlchemy wraps closures so `remove()` can fail to find the exact
-    registered key — best-effort cleanup is fine because the subsequent
-    `register_audit_listeners()` will recreate whatever we miss.
-    """
-    import contextlib
-
-    for evt_name in ("after_insert", "after_update", "after_delete"):
-        listeners = list(getattr(Site.__mapper__.dispatch, evt_name).listeners)
-        for fn in listeners:
-            with contextlib.suppress(Exception):
-                event.remove(Site, evt_name, fn)
 
