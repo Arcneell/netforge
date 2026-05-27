@@ -41,8 +41,10 @@ from sqlalchemy import delete, event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import SessionLocal
 from app.models.webhook import Webhook, WebhookDelivery
+from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url
 
 logger = logging.getLogger("netforge.webhooks")
 
@@ -295,17 +297,31 @@ async def _deliver_one(
     status_code = 0
     error: str | None = None
     started = time.monotonic()
+    # SSRF guard — refuse to dispatch to private / loopback / metadata
+    # IPs unless the operator has explicitly opted in. Without this, an
+    # admin (or any holder of an admin API token) can point a webhook
+    # at http://postgres:5432, http://169.254.169.254/..., or the
+    # backend's own /api/, and the first 200 bytes of the response leak
+    # into WebhookDelivery.error.
     try:
-        async with httpx.AsyncClient(timeout=_DISPATCH_TIMEOUT_S) as client:
-            resp = await client.post(url, content=body, headers=headers)
-            status_code = resp.status_code
-            if status_code >= 400:
-                error = f"HTTP {status_code}: {resp.text[:200]}"
-    except httpx.TimeoutException:
-        error = f"timeout after {_DISPATCH_TIMEOUT_S}s"
-    except Exception as exc:
-        # Log + persist any transport failure (DNS, connection refused, ...).
-        error = f"{type(exc).__name__}: {exc}"
+        check_outbound_url(
+            url, allow_private=get_settings().webhook_allow_private_targets
+        )
+    except UnsafeOutboundURL as exc:
+        error = f"UnsafeOutboundURL: {exc}"
+
+    if error is None:
+        try:
+            async with httpx.AsyncClient(timeout=_DISPATCH_TIMEOUT_S) as client:
+                resp = await client.post(url, content=body, headers=headers)
+                status_code = resp.status_code
+                if status_code >= 400:
+                    error = f"HTTP {status_code}: {resp.text[:200]}"
+        except httpx.TimeoutException:
+            error = f"timeout after {_DISPATCH_TIMEOUT_S}s"
+        except Exception as exc:
+            # Log + persist any transport failure (DNS, connection refused, ...).
+            error = f"{type(exc).__name__}: {exc}"
     latency_ms = int((time.monotonic() - started) * 1000)
     success = 200 <= status_code < 300 and error is None
 
