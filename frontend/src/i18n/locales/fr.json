@@ -78,7 +78,10 @@
     "INVALID_LINK": "Un port ne peut pas être lié à lui-même.",
     "INTEGRITY_VIOLATION": "Violation de contrainte en base.",
     "NETWORK_ERROR": "Serveur injoignable.",
-    "RATE_LIMITED": "Trop de requêtes — ralentissez."
+    "RATE_LIMITED": "Trop de requêtes — ralentissez.",
+    "DRAFT_INVALID": "Ce brouillon ne peut plus être appliqué.",
+    "AI_APPLY_FAILED": "L'action IA n'a pas pu être appliquée. Réessayez ou vérifiez les données.",
+    "UNKNOWN": "Une erreur est survenue."
   },
   "nav": {
     "dashboard": "Tableau de bord",

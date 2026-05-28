@@ -78,7 +78,10 @@
     "INVALID_LINK": "A port cannot link to itself.",
     "INTEGRITY_VIOLATION": "Database constraint violation.",
     "NETWORK_ERROR": "Cannot reach the server.",
-    "RATE_LIMITED": "Too many requests — please slow down."
+    "RATE_LIMITED": "Too many requests — please slow down.",
+    "DRAFT_INVALID": "This draft can no longer be applied.",
+    "AI_APPLY_FAILED": "The AI action couldn't be applied. Try again or review the payload.",
+    "UNKNOWN": "Something went wrong."
   },
   "nav": {
     "dashboard": "Dashboard",

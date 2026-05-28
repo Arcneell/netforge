@@ -234,6 +234,11 @@ class AIActionDraft(Base):
         nullable=False,
         default=AIActionDraftStatus.pending,
     )
+    # `error_code` holds the same stable UPPER_SNAKE code the API surfaces
+    # for transient errors (e.g. SUBNET_OVERLAP). It lets the frontend look
+    # the message up in i18n and show a localized string in the failed-draft
+    # card — `error_message` keeps the raw text for the details / debug pane.
+    error_code: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(Text)
     applied_resource: Mapped[str | None] = mapped_column(String(120))
     applied_by_user_id: Mapped[int | None] = mapped_column(

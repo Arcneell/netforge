@@ -12,8 +12,20 @@ import { aiApi, type ActionDraft, type ActionDraftStatus } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { describe } = useApiErrorMessage()
+
+function draftErrorMessage(d: ActionDraft): string {
+  // Prefer the stable code stored on the row so the card translates with
+  // the active locale. Fall back to the raw `error_message` for older rows
+  // (or unknown codes) — better than an empty bubble.
+  const code = d.error_code
+  if (code) {
+    const key = `errorCodes.${code}`
+    if (te(key)) return t(key)
+  }
+  return d.error_message ?? ''
+}
 const { error: toastError, success: toastSuccess } = useToast()
 
 const prompt = ref('')
@@ -203,10 +215,10 @@ const pendingCount = computed(() => drafts.value.filter((d) => d.status === 'pen
           ><code>{{ payloadString(d.payload) }}</code></pre>
 
           <p
-            v-if="d.error_message"
+            v-if="d.error_message || d.error_code"
             class="text-xs text-danger mt-2 p-2 rounded bg-danger/5 border border-danger/20"
           >
-            {{ d.error_message }}
+            {{ draftErrorMessage(d) }}
           </p>
         </li>
       </ul>
