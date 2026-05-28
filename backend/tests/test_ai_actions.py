@@ -119,12 +119,13 @@ async def test_apply_create_subnet_requires_existing_site_and_vlan() -> None:
 @pytest.mark.asyncio
 async def test_apply_draft_marks_failed_on_inner_exception(monkeypatch: pytest.MonkeyPatch) -> None:
     """When the per-intent applier raises, the draft must transition to
-    `failed` with the error message captured."""
+    `failed` with the error code+message captured."""
     draft = SimpleNamespace(
         id=1,
         intent="create_vlan",
         payload={"vlan_id": 50, "name": "IoT", "description": None, "color": None},
         status=svc.AIActionDraftStatus.pending,
+        error_code=None,
         error_message=None,
         applied_at=None,
         applied_by_user_id=None,
@@ -143,7 +144,49 @@ async def test_apply_draft_marks_failed_on_inner_exception(monkeypatch: pytest.M
     with pytest.raises(ValueError):
         await svc.apply_draft(db, draft_id=1, user_id=99)
     assert draft.status == svc.AIActionDraftStatus.failed
+    assert draft.error_code == "DRAFT_INVALID"
     assert "boom" in (draft.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_apply_draft_classifies_integrity_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A subnet-overlap IntegrityError should map to SUBNET_OVERLAP + a
+    friendly English message that the frontend i18n keys off."""
+    from sqlalchemy.exc import IntegrityError
+
+    draft = SimpleNamespace(
+        id=1,
+        intent="create_subnet",
+        payload={"cidr": "10.10.10.0/24", "site_code": "PAR-DC1"},
+        status=svc.AIActionDraftStatus.pending,
+        error_code=None,
+        error_message=None,
+        applied_at=None,
+        applied_by_user_id=None,
+        applied_resource=None,
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=draft)
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+
+    async def overlap(*a, **k):
+        raise IntegrityError(
+            "INSERT INTO subnets ...",
+            params=None,
+            orig=Exception(
+                "ExclusionViolationError: conflicting key value violates "
+                "exclusion constraint 'subnets_no_overlap_global'"
+            ),
+        )
+
+    monkeypatch.setattr(svc, "_apply_create_subnet", overlap)
+
+    with pytest.raises(IntegrityError):
+        await svc.apply_draft(db, draft_id=1, user_id=99)
+    assert draft.status == svc.AIActionDraftStatus.failed
+    assert draft.error_code == "SUBNET_OVERLAP"
+    assert draft.error_message == "This CIDR overlaps an existing subnet."
 
 
 @pytest.mark.asyncio
@@ -153,6 +196,7 @@ async def test_apply_draft_rejects_already_resolved() -> None:
         intent="create_vlan",
         payload={},
         status=svc.AIActionDraftStatus.applied,
+        error_code=None,
         error_message=None,
         applied_at=None,
         applied_by_user_id=None,

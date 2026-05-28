@@ -111,6 +111,32 @@ DRAFT_TOOL = ToolDef(
 )
 
 
+def _classify_apply_error(exc: BaseException) -> tuple[str, str | None]:
+    """Translate an apply-time exception into a (code, friendly_message) pair.
+
+    Mirrors the routing-layer mapping so the message we persist on a `failed`
+    draft is the same one operators would see if the applier raised in-flight.
+    The frontend looks the code up in `errorCodes.<CODE>` to render a
+    localized string; `friendly_message` is the English fallback baked into
+    the row so older clients (or the audit log) still get a human read.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from app.services.errors import match_constraint
+
+    if isinstance(exc, IntegrityError):
+        raw = str(getattr(exc, "orig", exc))
+        match = match_constraint(raw)
+        if match:
+            return match
+        return "INTEGRITY_VIOLATION", "Data integrity violation."
+    if isinstance(exc, LookupError):
+        return "NOT_FOUND", str(exc) or "Referenced entity not found."
+    if isinstance(exc, ValueError):
+        return "DRAFT_INVALID", str(exc) or "This draft can no longer be applied."
+    return "AI_APPLY_FAILED", None
+
+
 # --- Pure payload validators (no DB) ---------------------------------------
 
 
@@ -308,7 +334,9 @@ async def apply_draft(
         if not draft:
             raise
         draft.status = AIActionDraftStatus.failed
-        draft.error_message = str(exc)[:1000]
+        code, friendly = _classify_apply_error(exc)
+        draft.error_code = code
+        draft.error_message = friendly or str(exc)[:1000]
         draft.applied_at = datetime.now(UTC)
         draft.applied_by_user_id = user_id
         await db.commit()

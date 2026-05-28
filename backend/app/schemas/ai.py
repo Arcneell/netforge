@@ -403,6 +403,7 @@ class ActionDraftRead(BaseModel):
     intent: str
     payload: dict
     status: str
+    error_code: str | None
     error_message: str | None
     applied_resource: str | None
     applied_by_user_id: int | None

@@ -263,6 +263,7 @@ export interface ActionDraft {
   intent: string
   payload: Record<string, unknown>
   status: ActionDraftStatus
+  error_code: string | null
   error_message: string | null
   applied_resource: string | null
   applied_by_user_id: number | null

@@ -60,6 +60,8 @@ export type ApiErrorCode =
   | 'INTEGRITY_VIOLATION'
   | 'NETWORK_ERROR'
   | 'RATE_LIMITED'
+  | 'DRAFT_INVALID'
+  | 'AI_APPLY_FAILED'
   | 'UNKNOWN'
 
 // ---------------------------------------------------------------------------
