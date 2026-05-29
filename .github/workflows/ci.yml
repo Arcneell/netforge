@@ -99,18 +99,27 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install backend deps + pip-audit
+      - name: Install pip-audit (isolated from the audited deps)
+        # pipx keeps pip-audit and its own dependency tree out of the
+        # environment we audit below.
+        run: pipx install pip-audit
+
+      - name: Build an isolated backend runtime environment
         working-directory: backend
         run: |
-          python -m pip install --upgrade pip pip-audit
-          pip install -e .
+          python -m venv .audit-venv
+          .audit-venv/bin/pip install --upgrade pip
+          .audit-venv/bin/pip install -e .
 
-      - name: pip-audit (backend runtime deps)
+      - name: pip-audit (backend runtime deps only)
         working-directory: backend
-        # Audits the resolved environment installed above. Add
-        # `--ignore-vuln <GHSA/PYSEC id>` with a justification comment here if a
-        # finding has no fix available and is assessed as not exploitable.
-        run: pip-audit --desc
+        # --path audits ONLY the runtime deps installed in the isolated venv,
+        # so an advisory in pip-audit's own dependency tree (never shipped in
+        # the backend image) can no longer fail this gate. Add
+        # `--ignore-vuln <GHSA/PYSEC id>` + justification for findings with no
+        # fix available.
+        run: |
+          pip-audit --desc --path "$(.audit-venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
 
       - name: Set up Node 22
         uses: actions/setup-node@v6
