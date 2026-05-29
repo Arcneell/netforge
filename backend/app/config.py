@@ -152,6 +152,9 @@ class Settings(BaseSettings):
 
     # Observability
     log_level: str = "info"
+    # "text" (default, human-readable) or "json" (one JSON object per line for
+    # log aggregators). JSON mode carries the request id + structured fields.
+    log_format: str = "text"
 
     # CORS (comma-separated origin list)
     cors_origins: str = ""
