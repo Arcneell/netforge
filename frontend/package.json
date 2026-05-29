@@ -12,7 +12,8 @@
     "format": "prettier --write \"src/**/*.{vue,ts,js,json,css}\"",
     "gen:types": "openapi-typescript http://localhost:8000/api/openapi.json -o src/api/schema.d.ts",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "i18n:check": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@fontsource/geist-mono": "^5.2.8",
