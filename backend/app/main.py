@@ -13,6 +13,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import __version__
 from app.config import get_settings
+from app.logging_config import configure_logging, request_id_var
 from app.middleware.rate_limit import WriteRateLimitMiddleware
 from app.routers import (
     ai,
@@ -49,13 +50,6 @@ from app.services.webhooks import (
 from app.utils.request import client_ip
 
 logger = logging.getLogger("netforge")
-
-
-def _configure_logging(level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
 
 
 @asynccontextmanager
@@ -97,6 +91,9 @@ class _RequestLogMiddleware:
 
         request = Request(scope)
         request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+        # Propagate to the ContextVar so every log line emitted while handling
+        # this request — not just the final access line — carries the rid.
+        request_id_var.set(request_id)
         start = time.monotonic()
 
         # Make request metadata visible to the audit-log SQLAlchemy listeners,
@@ -137,6 +134,12 @@ class _RequestLogMiddleware:
                 scope.get("method"),
                 scope.get("path"),
                 duration_ms,
+                extra={
+                    "event": "request.error",
+                    "method": scope.get("method"),
+                    "path": scope.get("path"),
+                    "duration_ms": duration_ms,
+                },
             )
             raise
         # Dispatch events that survived a session commit. Anything still in
@@ -153,12 +156,19 @@ class _RequestLogMiddleware:
             scope.get("path"),
             status_holder["code"],
             duration_ms,
+            extra={
+                "event": "request",
+                "method": scope.get("method"),
+                "path": scope.get("path"),
+                "status": status_holder["code"],
+                "duration_ms": duration_ms,
+            },
         )
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    _configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_format)
 
     app = FastAPI(
         title="Netforge API",
