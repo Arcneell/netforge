@@ -1,21 +1,26 @@
 """Tests for the streaming Ask AI pipeline.
 
 We test:
-- The streaming nl_query generator with a fake provider.
+- The streaming nl_query generator with a fake provider (service layer).
 - The provider type contract — `StreamDelta` / `StreamDone` consumption.
-
-The route layer (SSE framing) is exercised via the full app test in
-`test_ai_streaming.py::test_sse_endpoint_emits_frames` once a DB fixture
-is wired; for now we keep the unit coverage focused on the service layer.
+- The route layer (SSE framing) end-to-end via the ASGI app in
+  `test_sse_endpoint_emits_frames` / `test_sse_endpoint_emits_error_frame`.
 """
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
+from app.auth.dependencies import get_current_user
+from app.db import get_session as get_db_session
+from app.main import app
+from app.models.user import User, UserRole
 from app.services.ai import nl_query
 from app.services.ai.types import (
     AIProviderError,
@@ -246,3 +251,121 @@ async def test_streaming_logs_run_with_usage(monkeypatch: pytest.MonkeyPatch) ->
     # db.add called once for the AIRunLog row.
     assert db.add.call_count == 1
     db.commit.assert_awaited()
+
+
+# --- Route layer: SSE framing over the real ASGI app -----------------------
+
+
+def _admin_user() -> User:
+    return User(
+        id=7, provider="github", subject="a",
+        email="a@example.com", display_name="A", role=UserRole.admin,
+    )
+
+
+@pytest_asyncio.fixture
+async def sse_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
+    """ASGI client with AI enabled, an admin user, the rate limiter and the
+    DB dependency stubbed out. Each test monkeypatches `run_query_streaming`
+    to control the event sequence the route has to frame."""
+    # AI master flag on (so _require_ai_enabled passes) without touching env.
+    monkeypatch.setattr(
+        "app.routers.ai.get_settings",
+        lambda: SimpleNamespace(ai_enabled=True),
+    )
+    # Don't consume the real per-user rate-limit window.
+    monkeypatch.setattr("app.routers.ai.check_and_consume", lambda _user_id: None)
+
+    # get_current_user feeds both the explicit param and the admin role guard.
+    app.dependency_overrides[get_current_user] = _admin_user
+
+    async def _fake_db() -> AsyncIterator:
+        # conversation_id is omitted in these tests, so the route never
+        # actually touches this session — a stub keeps get_session from
+        # opening a real connection.
+        yield AsyncMock()
+
+    app.dependency_overrides[get_db_session] = _fake_db
+
+    # Use a dedicated client IP so our POSTs land in their own write
+    # rate-limit bucket — the suite's other write tests share the default
+    # 127.0.0.1 bucket and run right under the per-window cap.
+    transport = ASGITransport(app=app, client=("10.42.0.1", 5555))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+def _parse_sse(body: str) -> list[tuple[str, str]]:
+    """Parse an SSE body into (event, data) pairs, ignoring `:` comment
+    preamble frames."""
+    frames: list[tuple[str, str]] = []
+    for block in body.split("\n\n"):
+        block = block.strip()
+        if not block or block.startswith(":"):
+            continue
+        event = ""
+        data = ""
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                event = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                data = line[len("data:"):].strip()
+        frames.append((event, data))
+    return frames
+
+
+@pytest.mark.asyncio
+async def test_sse_endpoint_emits_frames(
+    sse_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The route must set text/event-stream + no-buffering headers and frame
+    each (event, data) pair from run_query_streaming as a proper SSE frame,
+    deltas before the final done."""
+    import json
+
+    async def _fake_stream(*_args, **_kwargs):
+        yield ("delta", {"text": "Hello"})
+        yield ("delta", {"text": " world"})
+        yield ("done", {"answer": "Hello world", "prompt_tokens": 1, "completion_tokens": 1})
+
+    monkeypatch.setattr("app.routers.ai.run_query_streaming", _fake_stream)
+
+    resp = await sse_client.post("/api/ai/query/stream", json={"question": "ping?"})
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    # SSE must not be buffered by intermediaries.
+    assert resp.headers.get("x-accel-buffering") == "no"
+    assert resp.headers.get("cache-control") == "no-cache"
+
+    frames = _parse_sse(resp.text)
+    assert [name for name, _ in frames] == ["delta", "delta", "done"]
+    assert json.loads(frames[0][1])["text"] == "Hello"
+    assert json.loads(frames[1][1])["text"] == " world"
+    done = json.loads(frames[2][1])
+    assert done["answer"] == "Hello world"
+
+
+@pytest.mark.asyncio
+async def test_sse_endpoint_emits_error_frame(
+    sse_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the generator blows up mid-stream the route catches it and frames a
+    terminal `error` event instead of letting the connection hang or 500."""
+    import json
+
+    async def _boom_stream(*_args, **_kwargs):
+        yield ("delta", {"text": "partial"})
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr("app.routers.ai.run_query_streaming", _boom_stream)
+
+    resp = await sse_client.post("/api/ai/query/stream", json={"question": "ping?"})
+
+    assert resp.status_code == 200
+    frames = _parse_sse(resp.text)
+    names = [name for name, _ in frames]
+    assert names == ["delta", "error"]
+    assert "done" not in names
+    assert "kaboom" in json.loads(frames[1][1])["message"]
