@@ -27,6 +27,7 @@ import {
   type QueryEntityRef,
   type QueryHistoryTurn,
 } from '@/api'
+import DOMPurify from 'dompurify'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
 
@@ -527,18 +528,31 @@ function _renderCitations(escaped: string): string {
   })
 }
 
+// Final allow-list for the sanitiser: exactly the tags/attributes
+// renderMarkdown can legitimately produce. Anything else the LLM (or a
+// future regression in the renderer) emits is stripped before it reaches
+// v-html.
+const _SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ['strong', 'code', 'br', 'a', 'span'],
+  ALLOWED_ATTR: ['href', 'class', 'data-internal-link'],
+}
+
 function renderMarkdown(src: string): string {
   // Escape first, then re-introduce only the markup we recognise. The
   // citation pattern is applied AFTER escape so its angle brackets in
   // the produced HTML survive the user-content sanitisation.
   const esc = src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return _renderCitations(esc)
+  const html = _renderCitations(esc)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(
       /`([^`]+)`/g,
       '<code class="px-1 py-0.5 rounded bg-muted/80 font-mono text-[0.85em]">$1</code>',
     )
     .replace(/\n/g, '<br>')
+  // Defence in depth: even though we escape and only inject a known subset,
+  // DOMPurify guarantees the string handed to v-html can never carry script,
+  // event handlers, or any tag/attribute outside the allow-list above.
+  return DOMPurify.sanitize(html, _SANITIZE_CONFIG)
 }
 
 const entityIcon: Record<string, typeof Server> = {
