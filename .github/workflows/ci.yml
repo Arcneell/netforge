@@ -74,6 +74,9 @@ jobs:
       - name: i18n parity (en/fr keys in sync, no empty values)
         run: npm run i18n:check
 
+      - name: Unit tests (Vitest)
+        run: npm run test:unit
+
       - name: ESLint (check only — no --fix)
         # The repo's `npm run lint` script ships `--fix`, which is fine
         # locally but mutates files in CI. Call eslint directly.
