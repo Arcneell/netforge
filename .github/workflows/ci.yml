@@ -78,3 +78,45 @@ jobs:
 
       - name: Production build (runs vue-tsc + vite build)
         run: npm run build
+
+  # Dependency vulnerability scan. Kept in its own job so a transitive
+  # advisory shows up as a distinct red check rather than masquerading as a
+  # lint/build failure. Runs on every PR and on main pushes alongside the
+  # other two jobs.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install backend deps + pip-audit
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip install -e .
+
+      - name: pip-audit (backend runtime deps)
+        working-directory: backend
+        # Audits the resolved environment installed above. Add
+        # `--ignore-vuln <GHSA/PYSEC id>` with a justification comment here if a
+        # finding has no fix available and is assessed as not exploitable.
+        run: pip-audit --desc
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm audit (frontend)
+        working-directory: frontend
+        # --audit-level=high so only High/Critical advisories fail the gate;
+        # lower-severity noise is reported but non-blocking.
+        run: |
+          npm ci
+          npm audit --audit-level=high
