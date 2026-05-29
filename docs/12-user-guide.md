@@ -371,10 +371,12 @@ Tokens stop working when:
 
 Two roles:
 
-- **viewer** — read-only, can use Ask AI but not Drafts, can't access
-  Settings or Audit.
-- **admin** — full CRUD plus Settings, Webhooks, VRFs, AI
-  configuration, audit log, and snapshot diff.
+- **viewer** — read-only. Browses the inventory and exports, but cannot
+  change anything and cannot use the AI surfaces (Ask AI, Advisor, Drafts)
+  or access Settings and Audit — those are all admin-only.
+- **admin** — full CRUD plus Settings, Webhooks, VRFs, the AI surfaces (Ask
+  AI, Advisor, Suggest links, Drafts) and their configuration, audit log,
+  and snapshot diff.
 
 Every create / update / delete on a tracked entity (sites, rooms,
 vlans, subnets, ips, devices, switches, ports, links) writes one row
