@@ -64,6 +64,7 @@ services:
       # must come back through there to land on the SPA after auth.
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:5173}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       # AI integration — provider-agnostic, off by default. Flip AI_ENABLED
       # in .env + drop in the matching API key, then `docker compose restart
