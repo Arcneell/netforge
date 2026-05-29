@@ -44,6 +44,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      # Mirrors the image's own HEALTHCHECK (backend/Dockerfile) so that the
+      # frontend can wait on `condition: service_healthy` below. curl is
+      # installed in the backend image.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     environment:
       DATABASE_URL: postgresql+asyncpg://netforge:${POSTGRES_PASSWORD}@postgres:5432/netforge
       PUBLIC_URL: ${PUBLIC_URL:?missing PUBLIC_URL in .env}
@@ -82,7 +91,8 @@ services:
       context: ./frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -90,6 +100,14 @@ services:
       # TLS material — mount your fullchain + privkey here. The image's
       # nginx config (frontend/nginx.prod.conf) expects exactly these names.
       - ./certs:/etc/nginx/certs:ro
+    healthcheck:
+      # Hits the plain-HTTP /healthz endpoint baked into both nginx configs
+      # (no TLS, no redirect). busybox wget ships in the nginx:alpine image.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   pgdata:
