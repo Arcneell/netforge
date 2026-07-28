@@ -3,10 +3,11 @@
  *
  * The Modal component used to set `body.style.overflow = 'hidden'` on open
  * and `''` on close — fine for one modal, broken when modals stack (a
- * ConfirmDialog opened from inside the SubnetEditor, the WebhooksSection's
- * editor + deliveries + ConfirmDialog mounted with separate `:open` flags,
- * etc.). Closing the inner modal cleared the lock while the outer was still
- * visible, and the page scrolled behind it.
+ * ConfirmDialog opened from inside an editor modal such as SiteEditor or
+ * RoomEditor, the WebhooksSection's editor + deliveries + ConfirmDialog
+ * mounted with separate `:open` flags, etc.). Closing the inner modal
+ * cleared the lock while the outer was still visible, and the page scrolled
+ * behind it.
  *
  * This composable counts active locks at module scope. The body's overflow
  * style is set on the 0→1 transition and cleared on the 1→0 transition, so

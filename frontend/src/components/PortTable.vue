@@ -17,7 +17,7 @@ defineEmits<{ (e: 'select', port: Port): void }>()
 const { t } = useI18n()
 
 const columns = computed<DataTableColumn[]>(() => [
-  { key: 'number', label: t('port.fields.number'), cellClass: 'w-12 font-mono' },
+  { key: 'number', label: t('port.fields.number'), cellClass: 'w-14' },
   { key: 'label', label: t('port.fields.label') },
   { key: 'mode', label: t('port.fields.mode'), cellClass: 'w-24' },
   { key: 'native_vlan_id', label: t('port.fields.nativeVlan'), cellClass: 'w-40' },
@@ -42,8 +42,14 @@ const modeBadge: Record<string, 'primary' | 'neutral' | 'warning' | 'muted'> = {
     clickable
     @row-click="(p) => $emit('select', p)"
   >
+    <!-- The port number is the row's identity: mono, tabular, slightly
+         heavier than the rest so the column scans as a ruler. -->
+    <template #cell-number="{ row }">
+      <span class="font-mono tabular-nums font-medium text-fg">{{ row.number }}</span>
+    </template>
     <template #cell-label="{ row }">
-      <span class="text-fg-muted">{{ row.label || '—' }}</span>
+      <span v-if="row.label" class="font-mono text-sm text-fg">{{ row.label }}</span>
+      <span v-else class="text-fg-subtle">—</span>
     </template>
     <template #cell-mode="{ row }">
       <Badge :tone="modeBadge[row.mode] ?? 'neutral'">
@@ -55,7 +61,7 @@ const modeBadge: Record<string, 'primary' | 'neutral' | 'warning' | 'muted'> = {
         v-if="row.native_vlan_id && props.vlans.get(row.native_vlan_id)"
         :vlan="props.vlans.get(row.native_vlan_id)!"
       />
-      <span v-else class="text-fg-muted">—</span>
+      <span v-else class="text-fg-subtle">—</span>
     </template>
     <template #cell-admin_status="{ row }">
       <Badge :tone="row.admin_status === 'up' ? 'success' : 'muted'">
@@ -63,7 +69,10 @@ const modeBadge: Record<string, 'primary' | 'neutral' | 'warning' | 'muted'> = {
       </Badge>
     </template>
     <template #cell-notes="{ row }">
-      <span class="text-fg-muted truncate">{{ row.notes || '—' }}</span>
+      <span v-if="row.notes" class="block max-w-xs truncate text-fg-muted" :title="row.notes">
+        {{ row.notes }}
+      </span>
+      <span v-else class="text-fg-subtle">—</span>
     </template>
   </DataTable>
 </template>

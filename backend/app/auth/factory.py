@@ -10,12 +10,32 @@ from app.auth.github import GitHubProvider
 from app.auth.oidc import OIDCProvider
 from app.config import Settings
 
+# Placeholder values shipped in config defaults / .env.example. Booting a
+# production instance (SESSION_COOKIE_SECURE=true) with any of these means
+# the OAuth-state cookie is signed with a key every reader of the repo
+# knows — an attacker can forge the state and drive CSRF through the OAuth
+# round-trip. Refuse to boot instead, same posture as the dev-provider
+# guard below.
+_PLACEHOLDER_SIGNING_KEYS = frozenset({"dev-signing-key-change-me", "change-me", ""})
+
 
 def make_provider(settings: Settings, oauth: OAuth) -> AuthProvider:
     """Build the configured auth provider.
 
     Extending: add a new branch and a new module under `app/auth/`.
     """
+    if (
+        settings.session_cookie_secure
+        and settings.session_signing_key.strip() in _PLACEHOLDER_SIGNING_KEYS
+    ):
+        raise RuntimeError(
+            "SESSION_SIGNING_KEY is still a placeholder value while "
+            "SESSION_COOKIE_SECURE=true (production mode). The key signs the "
+            "OAuth state cookie; a publicly-known key lets an attacker forge "
+            "it. Generate a real key with `openssl rand -hex 32` and set "
+            "SESSION_SIGNING_KEY before booting."
+        )
+
     name = (settings.auth_provider or "").strip().lower()
     if name == "github":
         return GitHubProvider(

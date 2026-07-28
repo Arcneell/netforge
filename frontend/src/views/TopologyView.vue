@@ -344,7 +344,7 @@ async function onLinkSaved() {
         <template v-else-if="selectedNode">
           <header class="flex items-start justify-between gap-2">
             <div class="min-w-0">
-              <p class="text-[10px] uppercase tracking-wide text-fg-muted">
+              <p class="nf-label">
                 {{ t('switch.label') }}
               </p>
               <h2 class="text-base font-semibold tracking-tight truncate">
@@ -406,7 +406,7 @@ async function onLinkSaved() {
         <template v-else-if="selectedEdge">
           <header class="flex items-start justify-between gap-2">
             <div class="min-w-0">
-              <p class="text-[10px] uppercase tracking-wide text-fg-muted">
+              <p class="nf-label">
                 {{ t('topology.link') }}
               </p>
               <h2 class="text-base font-semibold tracking-tight truncate">

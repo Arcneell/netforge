@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CheckCircle2, Sparkles, XCircle, Zap } from 'lucide-vue-next'
+import { AlertTriangle, CheckCircle2, XCircle, Zap } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import AiSchedulesSection from '@/components/settings/AiSchedulesSection.vue'
 import AiUsageSection from '@/components/settings/AiUsageSection.vue'
@@ -54,69 +55,71 @@ const providerLabel = computed(() => {
   }
   return map[status.value.provider] ?? status.value.provider
 })
+
+const isDisabled = computed(() => !loading.value && status.value?.enabled === false)
 </script>
 
 <template>
-  <section class="space-y-4">
-    <!-- Hero card explaining what's configured + how to change it -->
-    <div class="nf-card p-5 sm:p-6">
-      <div class="flex items-start gap-4">
-        <span
-          class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white flex-shrink-0"
-        >
-          <Sparkles class="w-5 h-5" aria-hidden="true" />
-        </span>
-        <div class="flex-1 min-w-0">
-          <h2 class="text-lg font-semibold tracking-tight inline-flex items-center gap-1.5">
-            <span>{{ t('ai.settings.title') }}</span>
-            <HelpTooltip :text="t('ai.settings.help.section')" />
-          </h2>
-          <p class="text-sm text-fg-muted mt-1 max-w-2xl leading-relaxed">
-            {{ t('ai.settings.description') }}
-          </p>
-        </div>
-        <Badge :tone="status?.enabled ? 'success' : 'muted'" class="flex-shrink-0">
-          {{ status?.enabled ? t('ai.settings.enabled') : t('ai.settings.disabled') }}
-        </Badge>
+  <section class="space-y-5">
+    <!-- Same anatomy as every other settings section: what it is, what it
+         controls, and its current state. -->
+    <div class="nf-toolbar items-start justify-between mb-0">
+      <div class="min-w-0">
+        <h2 class="nf-section-title">{{ t('ai.settings.title') }}</h2>
+        <p class="text-sm text-fg-muted mt-1 max-w-2xl inline-flex items-start gap-1.5">
+          <span>{{ t('ai.settings.description') }}</span>
+          <HelpTooltip :text="t('ai.settings.help.section')" placement="bottom" />
+        </p>
       </div>
+      <Badge :tone="status?.enabled ? 'success' : 'neutral'" size="md">
+        {{ status?.enabled ? t('ai.settings.enabled') : t('ai.settings.disabled') }}
+      </Badge>
+    </div>
 
-      <!-- Provider summary grid -->
-      <dl
-        class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 pt-5 border-t border-border/70 dark:border-border/40"
-      >
+    <div class="nf-card p-5 sm:p-6">
+      <!-- What is configured right now. Read-only: the provider is an env
+           decision, and the block at the bottom says how to change it. -->
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
-          <dt class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('ai.settings.provider') }}
-          </dt>
-          <dd class="text-sm font-medium text-fg mt-1">
-            <span v-if="loading" class="text-fg-muted">—</span>
+          <dt class="nf-label">{{ t('ai.settings.provider') }}</dt>
+          <dd class="text-base font-medium text-fg mt-1.5">
+            <Skeleton v-if="loading" width="8rem" height="1rem" />
             <span v-else>{{ providerLabel || '—' }}</span>
           </dd>
         </div>
         <div>
-          <dt class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('ai.settings.model') }}
-          </dt>
-          <dd class="text-sm font-mono text-fg mt-1">
-            <span v-if="loading" class="text-fg-muted">—</span>
+          <dt class="nf-label">{{ t('ai.settings.model') }}</dt>
+          <dd class="text-base font-mono text-fg mt-1.5">
+            <Skeleton v-if="loading" width="12rem" height="1rem" />
             <span v-else>{{ status?.model || '—' }}</span>
           </dd>
         </div>
       </dl>
 
+      <!-- AI off is not an error, but it silently removes features from the
+           whole app — say what it costs and where the switch lives. -->
+      <p
+        v-if="isDisabled"
+        class="mt-5 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/[0.06] px-3 py-2.5 text-sm text-fg"
+      >
+        <AlertTriangle class="w-4 h-4 text-warning flex-shrink-0 mt-0.5" aria-hidden="true" />
+        <span>{{ t('ai.settings.envHint') }}</span>
+      </p>
+
       <!-- Connection test -->
-      <div class="mt-6 pt-5 border-t border-border/70 dark:border-border/40">
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <p class="text-sm font-semibold inline-flex items-center gap-1.5">
+      <div class="mt-5 pt-5 border-t border-border">
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div class="min-w-0">
+            <p class="text-base font-medium text-fg inline-flex items-center gap-1.5">
               <span>{{ t('ai.settings.testTitle') }}</span>
               <HelpTooltip :text="t('ai.settings.help.test')" />
             </p>
-            <p class="text-xs text-fg-muted mt-1">{{ t('ai.settings.testDescription') }}</p>
+            <p class="text-sm text-fg-muted mt-1 max-w-2xl">
+              {{ t('ai.settings.testDescription') }}
+            </p>
           </div>
           <Button
-            variant="primary"
-            shape="pill"
+            variant="secondary"
             :loading="testing"
             :disabled="!status?.enabled"
             @click="runTest"
@@ -128,12 +131,13 @@ const providerLabel = computed(() => {
 
         <div
           v-if="lastTest"
-          class="mt-4 p-3 rounded-lg flex items-start gap-3"
+          class="mt-4 p-3 rounded-md flex items-start gap-3"
           :class="
             lastTest.ok
-              ? 'bg-success/5 border border-success/20'
-              : 'bg-danger/5 border border-danger/20'
+              ? 'bg-success/5 border border-success/25'
+              : 'bg-danger/5 border border-danger/25'
           "
+          role="status"
         >
           <CheckCircle2
             v-if="lastTest.ok"
@@ -142,7 +146,7 @@ const providerLabel = computed(() => {
           />
           <XCircle v-else class="w-5 h-5 text-danger flex-shrink-0 mt-0.5" aria-hidden="true" />
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium" :class="lastTest.ok ? 'text-success' : 'text-danger'">
+            <p class="text-base font-medium" :class="lastTest.ok ? 'text-success' : 'text-danger'">
               {{ lastTest.ok ? t('ai.settings.testOk') : t('ai.settings.testKo') }}
               <span class="font-normal text-fg-muted ml-2 tabular-nums">
                 · {{ lastTest.latency_ms }} ms
@@ -164,10 +168,14 @@ const providerLabel = computed(() => {
     <AiSchedulesSection v-if="status?.scheduler_enabled !== false" />
 
     <!-- How-to-change note -->
-    <div class="nf-card p-5 text-sm text-fg-muted leading-relaxed">
-      <p class="font-medium text-fg mb-2">{{ t('ai.settings.howToChange') }}</p>
-      <p>{{ t('ai.settings.envHint') }}</p>
-      <ul class="mt-3 space-y-1 font-mono text-xs">
+    <div class="nf-card p-5 sm:p-6">
+      <h3 class="nf-section-title">{{ t('ai.settings.howToChange') }}</h3>
+      <p class="text-sm text-fg-muted mt-1 max-w-2xl leading-relaxed">
+        {{ t('ai.settings.envHint') }}
+      </p>
+      <ul
+        class="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2.5 space-y-1 font-mono text-xs text-fg-muted"
+      >
         <li>AI_ENABLED=true</li>
         <li>AI_PROVIDER=anthropic | openai | gemini</li>
         <li>AI_MODEL=&lt;optional override&gt;</li>

@@ -61,17 +61,15 @@ function layoutOpts(name: LayoutName): LayoutOptions {
   }
 }
 
-// Node rendering — Linear/Stripe-flavoured "device card" instead of a
-// drawn-port chassis. Trying to draw a literal rack-mount switch at
-// 150 px wide reads as cluttered in a flat-design app; a clean card
-// with a brand accent stripe lets the hostname be the hero and lets
-// the graph as a whole feel like a Notion / Figma flow diagram.
+// Node rendering — a device plate with an accent tab on its left edge, the
+// same geometry the app uses for a mounted module. Drawing a literal
+// rack-mount switch at 150 px wide reads as clutter; the plate keeps the
+// hostname the hero and lets the graph stay legible at any zoom.
 //
-// The card is built from two rects in an inline SVG so cytoscape can
-// paint it via `background-image`. The hostname is rendered by
-// cytoscape's own canvas labeller (centered inside the node) — that
-// way Geist Sans actually applies and text stays crisp at every zoom
-// level.
+// The plate is built from two rects in an inline SVG so cytoscape can paint
+// it via `background-image`. The hostname is rendered by cytoscape's own
+// canvas labeller (centered inside the node) — that way Archivo actually
+// applies and text stays crisp at every zoom level.
 function buildCardSvg(
   width: number,
   height: number,
@@ -94,11 +92,13 @@ const CARD_SMALL = { w: 156, h: 48 }
 const CARD_LARGE = { w: 196, h: 48 }
 
 function buildStyles(isDark: boolean) {
-  const accent = isDark ? '#818cf8' : '#6366f1' // indigo-400 / indigo-500
-  const cardBg = isDark ? '#1f1f23' : '#ffffff' // soft lift off the page bg
-  const cardBorder = isDark ? '#3f3f46' : '#e4e4e7' // zinc-700 / zinc-200
-  const text = isDark ? '#fafafa' : '#111111'
-  const subText = isDark ? '#a1a1aa' : '#71717a'
+  // Faceplate palette, mirroring the CSS tokens in assets/tailwind.css. Kept
+  // as literals because cytoscape paints to canvas and can't read CSS vars.
+  const accent = isDark ? '#2BA79E' : '#0E8C84' // primary-400 / primary-500
+  const cardBg = isDark ? '#101A19' : '#FBFCFC' // surface
+  const cardBorder = isDark ? '#243835' : '#CBD6D3' // border
+  const text = isDark ? '#E7EFED' : '#0C1A18' // fg
+  const subText = isDark ? '#8CA3A0' : '#566A67' // fg-muted
 
   const cardSmall = svgDataUri(buildCardSvg(CARD_SMALL.w, CARD_SMALL.h, { card: cardBg, accent }))
   const cardLarge = svgDataUri(buildCardSvg(CARD_LARGE.w, CARD_LARGE.h, { card: cardBg, accent }))
@@ -121,7 +121,7 @@ function buildStyles(isDark: boolean) {
         label: 'data(label)',
         color: text,
         'font-size': 12,
-        'font-family': 'Geist Sans, Inter, system-ui, sans-serif',
+        'font-family': 'Archivo Variable, Archivo, system-ui, sans-serif',
         'font-weight': 600,
         'text-valign': 'center',
         'text-halign': 'center',
@@ -274,7 +274,7 @@ function fit() {
 }
 function exportPng(): string | null {
   if (!cy.value) return null
-  return cy.value.png({ full: true, bg: ui.isDark ? '#090b11' : '#ffffff', scale: 2 })
+  return cy.value.png({ full: true, bg: ui.isDark ? '#080F0F' : '#FBFCFC', scale: 2 })
 }
 function relayout() {
   cy.value?.layout(layoutOpts(props.layout)).run()

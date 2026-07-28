@@ -20,10 +20,17 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl tini \
  && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps first (cacheable layer)
-COPY pyproject.toml README.md ./
+# Install Python deps first (cacheable layer), pinned + hash-checked from the
+# lockfile so image builds are reproducible and pip-audit in CI audits exactly
+# what ships. Regenerate after editing pyproject.toml:
+#   docker run --rm -v "$PWD:/src" -w /src python:3.12-slim sh -c \
+#     "pip install pip-tools && pip-compile --generate-hashes --strip-extras \
+#      --output-file=requirements.lock.txt pyproject.toml"
+COPY pyproject.toml requirements.lock.txt README.md ./
+RUN pip install --require-hashes -r requirements.lock.txt
 # Trick so `pip install -e` can read the package metadata before the code is copied in.
-RUN mkdir -p app && touch app/__init__.py && pip install -e . && rm -rf app
+# --no-deps: everything already installed (and verified) from the lockfile above.
+RUN mkdir -p app && touch app/__init__.py && pip install --no-deps -e . && rm -rf app
 
 # Copy the source tree
 COPY . .

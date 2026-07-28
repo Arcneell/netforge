@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2 } from 'lucide-vue-next'
+import {
+  Building2,
+  DoorOpen,
+  KeyRound,
+  Network,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  Webhook as WebhookIcon,
+} from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Button from '@/components/ui/Button.vue'
@@ -12,16 +22,30 @@ import AiSection from '@/components/settings/AiSection.vue'
 import WebhooksSection from '@/components/settings/WebhooksSection.vue'
 import VrfsSection from '@/components/settings/VrfsSection.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { roomsApi, sitesApi } from '@/api'
+import { fetchAllPages, roomsApi, sitesApi } from '@/api'
 import type { Room, Site } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 
 const { t } = useI18n()
 const { success } = useToast()
-const { describe } = useApiErrorMessage()
+const { notify } = useApiErrorMessage()
 
-const tab = ref<'sites' | 'rooms' | 'tokens' | 'ai' | 'webhooks' | 'vrfs'>('sites')
+type SettingsTab = 'sites' | 'rooms' | 'tokens' | 'ai' | 'webhooks' | 'vrfs'
+
+const tab = ref<SettingsTab>('sites')
+
+// Six sections is past the point where a pill group reads as a control rather
+// than navigation — an underlined tab bar (the same `.nf-tab` the workspaces
+// use) keeps them legible and scannable in one row.
+const tabs = computed<{ value: SettingsTab; label: string; icon: Component }[]>(() => [
+  { value: 'sites', label: t('settings.sitesTab'), icon: Building2 },
+  { value: 'rooms', label: t('settings.roomsTab'), icon: DoorOpen },
+  { value: 'tokens', label: t('settings.tokensTab'), icon: KeyRound },
+  { value: 'ai', label: t('settings.aiTab'), icon: Sparkles },
+  { value: 'webhooks', label: t('settings.webhooksTab'), icon: WebhookIcon },
+  { value: 'vrfs', label: t('settings.vrfsTab'), icon: Network },
+])
 
 // --- Sites ---
 const sites = ref<Site[]>([])
@@ -34,8 +58,7 @@ const deletingSite = ref(false)
 async function loadSites() {
   sitesLoading.value = true
   try {
-    const res = await sitesApi.list({ page_size: 200 })
-    sites.value = res.items
+    sites.value = await fetchAllPages((p) => sitesApi.list(p))
   } finally {
     sitesLoading.value = false
   }
@@ -50,7 +73,7 @@ async function confirmDeleteSite() {
     siteToDelete.value = null
     loadSites()
   } catch (err) {
-    void describe(err)
+    notify(err)
   } finally {
     deletingSite.value = false
   }
@@ -68,8 +91,7 @@ const deletingRoom = ref(false)
 async function loadRooms() {
   roomsLoading.value = true
   try {
-    const res = await roomsApi.list({ page_size: 200 })
-    rooms.value = res.items
+    rooms.value = await fetchAllPages((p) => roomsApi.list(p))
   } finally {
     roomsLoading.value = false
   }
@@ -84,7 +106,7 @@ async function confirmDeleteRoom() {
     roomToDelete.value = null
     loadRooms()
   } catch (err) {
-    void describe(err)
+    notify(err)
   } finally {
     deletingRoom.value = false
   }
@@ -116,147 +138,103 @@ function openEditRoom(row: Room) {
   roomEditorOpen.value = true
 }
 
-const siteColumns: DataTableColumn[] = [
+const siteColumns = computed<DataTableColumn[]>(() => [
   { key: 'code', label: t('site.fields.code'), cellClass: 'font-mono w-40' },
   { key: 'name', label: t('site.fields.name'), cellClass: 'font-medium' },
   { key: 'address', label: t('site.fields.address'), hideOnSm: true },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-32' },
-]
+])
 
-const roomColumns: DataTableColumn[] = [
+const roomColumns = computed<DataTableColumn[]>(() => [
   { key: 'site_id', label: t('room.fields.site'), cellClass: 'w-40' },
   { key: 'code', label: t('room.fields.code'), cellClass: 'font-mono' },
   { key: 'description', label: t('room.fields.description'), hideOnSm: true },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-32' },
-]
+])
 </script>
 
 <template>
-  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('nav.settings')" :subtitle="t('settings.subtitle')" />
 
-    <div
-      class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface mb-4"
-      role="tablist"
-    >
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="tab === 'sites'"
-        :class="[
-          'px-3 h-8 rounded text-sm font-medium transition',
-          tab === 'sites'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-        ]"
-        @click="tab = 'sites'"
+    <!-- Section navigation. Underlined tabs, one row, horizontally scrollable
+         on narrow viewports so the bar never wraps into two lines. -->
+    <div class="border-b border-border mb-6">
+      <div
+        class="flex items-center gap-6 overflow-x-auto"
+        role="tablist"
+        :aria-label="t('settings.tabsLabel')"
       >
-        {{ t('settings.sitesTab') }}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="tab === 'rooms'"
-        :class="[
-          'px-3 h-8 rounded text-sm font-medium transition',
-          tab === 'rooms'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-        ]"
-        @click="tab = 'rooms'"
-      >
-        {{ t('settings.roomsTab') }}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="tab === 'tokens'"
-        :class="[
-          'px-3 h-8 rounded text-sm font-medium transition',
-          tab === 'tokens'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-        ]"
-        @click="tab = 'tokens'"
-      >
-        {{ t('settings.tokensTab') }}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="tab === 'ai'"
-        :class="[
-          'px-3 h-8 rounded text-sm font-medium transition',
-          tab === 'ai'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-        ]"
-        @click="tab = 'ai'"
-      >
-        {{ t('settings.aiTab') }}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="tab === 'webhooks'"
-        :class="[
-          'px-3 h-8 rounded text-sm font-medium transition',
-          tab === 'webhooks'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-        ]"
-        @click="tab = 'webhooks'"
-      >
-        {{ t('settings.webhooksTab') }}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="tab === 'vrfs'"
-        :class="[
-          'px-3 h-8 rounded text-sm font-medium transition',
-          tab === 'vrfs'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-        ]"
-        @click="tab = 'vrfs'"
-      >
-        {{ t('settings.vrfsTab') }}
-      </button>
+        <button
+          v-for="s in tabs"
+          :id="`settings-tab-${s.value}`"
+          :key="s.value"
+          type="button"
+          role="tab"
+          :aria-selected="tab === s.value"
+          :aria-controls="`settings-panel-${s.value}`"
+          :class="['nf-tab', tab === s.value ? 'nf-tab-active' : '']"
+          @click="tab = s.value"
+        >
+          <component :is="s.icon" class="w-4 h-4" :stroke-width="1.9" aria-hidden="true" />
+          {{ s.label }}
+        </button>
+      </div>
     </div>
 
-    <!-- Sites tab -->
-    <section v-if="tab === 'sites'">
-      <div class="flex justify-end mb-3">
+    <!-- Sites -->
+    <section
+      v-if="tab === 'sites'"
+      id="settings-panel-sites"
+      role="tabpanel"
+      aria-labelledby="settings-tab-sites"
+    >
+      <div class="nf-toolbar items-start justify-between">
+        <div class="min-w-0">
+          <h2 class="nf-section-title">{{ t('settings.sitesTab') }}</h2>
+          <p class="text-sm text-fg-muted mt-1 max-w-2xl">{{ t('settings.sitesDescription') }}</p>
+        </div>
         <Button variant="primary" @click="openNewSite">
           <Plus class="w-4 h-4" aria-hidden="true" />
           {{ t('site.new') }}
         </Button>
       </div>
+
       <DataTable
         :columns="siteColumns"
         :rows="sites"
         :loading="sitesLoading"
-        :empty-title="t('site.labelPlural')"
+        :empty-title="t('site.emptyTitle')"
         :empty-description="t('site.empty')"
       >
+        <template #empty-action>
+          <Button variant="primary" @click="openNewSite">
+            <Plus class="w-4 h-4" aria-hidden="true" />
+            {{ t('site.new') }}
+          </Button>
+        </template>
         <template #cell-address="{ row }">
           <span class="text-fg-muted">{{ row.address || '—' }}</span>
         </template>
         <template #cell-actions="{ row }">
-          <div class="flex justify-end gap-1">
+          <div class="flex items-center justify-end gap-1">
             <Button
               variant="ghost"
               size="sm"
-              :aria-label="t('common.edit')"
+              :aria-label="`${t('common.edit')} ${row.code}`"
+              :title="t('common.edit')"
               @click.stop="openEditSite(row)"
             >
               <Pencil class="w-4 h-4" aria-hidden="true" />
             </Button>
+            <!-- Hairline before the destructive action so it is never the
+                 button you hit by momentum after Edit. -->
+            <span class="w-px h-5 bg-border" aria-hidden="true" />
             <Button
               variant="ghost"
               size="sm"
-              :aria-label="t('common.delete')"
+              :aria-label="`${t('common.delete')} ${row.code}`"
+              :title="t('common.delete')"
               @click.stop="siteToDelete = row"
             >
               <Trash2 class="w-4 h-4 text-danger" aria-hidden="true" />
@@ -266,33 +244,37 @@ const roomColumns: DataTableColumn[] = [
       </DataTable>
     </section>
 
-    <!-- Tokens tab -->
-    <ApiTokensSection v-else-if="tab === 'tokens'" />
-
-    <!-- AI tab -->
-    <AiSection v-else-if="tab === 'ai'" />
-
-    <!-- Webhooks tab -->
-    <WebhooksSection v-else-if="tab === 'webhooks'" />
-
-    <!-- VRFs tab -->
-    <VrfsSection v-else-if="tab === 'vrfs'" />
-
-    <!-- Rooms tab -->
-    <section v-else>
-      <div class="flex justify-end mb-3">
+    <!-- Rooms -->
+    <section
+      v-else-if="tab === 'rooms'"
+      id="settings-panel-rooms"
+      role="tabpanel"
+      aria-labelledby="settings-tab-rooms"
+    >
+      <div class="nf-toolbar items-start justify-between">
+        <div class="min-w-0">
+          <h2 class="nf-section-title">{{ t('settings.roomsTab') }}</h2>
+          <p class="text-sm text-fg-muted mt-1 max-w-2xl">{{ t('settings.roomsDescription') }}</p>
+        </div>
         <Button variant="primary" @click="openNewRoom">
           <Plus class="w-4 h-4" aria-hidden="true" />
           {{ t('room.new') }}
         </Button>
       </div>
+
       <DataTable
         :columns="roomColumns"
         :rows="rooms"
         :loading="roomsLoading"
-        :empty-title="t('room.labelPlural')"
-        :empty-description="t('room.empty')"
+        :empty-title="t('room.emptyTitle')"
+        :empty-description="t('room.emptyHint')"
       >
+        <template #empty-action>
+          <Button variant="primary" @click="openNewRoom">
+            <Plus class="w-4 h-4" aria-hidden="true" />
+            {{ t('room.new') }}
+          </Button>
+        </template>
         <template #cell-site_id="{ row }">
           <span class="font-mono text-xs">
             {{ sitesById.get(row.site_id)?.code ?? `#${row.site_id}` }}
@@ -302,19 +284,22 @@ const roomColumns: DataTableColumn[] = [
           <span class="text-fg-muted">{{ row.description || '—' }}</span>
         </template>
         <template #cell-actions="{ row }">
-          <div class="flex justify-end gap-1">
+          <div class="flex items-center justify-end gap-1">
             <Button
               variant="ghost"
               size="sm"
-              :aria-label="t('common.edit')"
+              :aria-label="`${t('common.edit')} ${row.code}`"
+              :title="t('common.edit')"
               @click.stop="openEditRoom(row)"
             >
               <Pencil class="w-4 h-4" aria-hidden="true" />
             </Button>
+            <span class="w-px h-5 bg-border" aria-hidden="true" />
             <Button
               variant="ghost"
               size="sm"
-              :aria-label="t('common.delete')"
+              :aria-label="`${t('common.delete')} ${row.code}`"
+              :title="t('common.delete')"
               @click.stop="roomToDelete = row"
             >
               <Trash2 class="w-4 h-4 text-danger" aria-hidden="true" />
@@ -323,6 +308,38 @@ const roomColumns: DataTableColumn[] = [
         </template>
       </DataTable>
     </section>
+
+    <!-- API tokens -->
+    <ApiTokensSection
+      v-else-if="tab === 'tokens'"
+      id="settings-panel-tokens"
+      role="tabpanel"
+      aria-labelledby="settings-tab-tokens"
+    />
+
+    <!-- AI -->
+    <AiSection
+      v-else-if="tab === 'ai'"
+      id="settings-panel-ai"
+      role="tabpanel"
+      aria-labelledby="settings-tab-ai"
+    />
+
+    <!-- Webhooks -->
+    <WebhooksSection
+      v-else-if="tab === 'webhooks'"
+      id="settings-panel-webhooks"
+      role="tabpanel"
+      aria-labelledby="settings-tab-webhooks"
+    />
+
+    <!-- VRFs -->
+    <VrfsSection
+      v-else
+      id="settings-panel-vrfs"
+      role="tabpanel"
+      aria-labelledby="settings-tab-vrfs"
+    />
 
     <SiteEditor
       :open="siteEditorOpen"
@@ -340,6 +357,7 @@ const roomColumns: DataTableColumn[] = [
       :open="!!siteToDelete"
       :title="t('common.confirmDelete.title', { label: siteToDelete?.code ?? '' })"
       :message="t('common.confirmDelete.message')"
+      :confirm-label="t('common.delete')"
       variant="danger"
       :loading="deletingSite"
       @confirm="confirmDeleteSite"
@@ -349,6 +367,7 @@ const roomColumns: DataTableColumn[] = [
       :open="!!roomToDelete"
       :title="t('common.confirmDelete.title', { label: roomToDelete?.code ?? '' })"
       :message="t('common.confirmDelete.message')"
+      :confirm-label="t('common.delete')"
       variant="danger"
       :loading="deletingRoom"
       @confirm="confirmDeleteRoom"

@@ -3,15 +3,17 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { RouterLink, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
+  AlertTriangle,
+  ArrowRight,
   Bot,
   History,
-  MessageSquare,
   Network,
   Plus,
   Send,
   Server,
   Sparkles,
   Tags,
+  Trash2,
   User as UserIcon,
   Router as RouterIcon,
 } from 'lucide-vue-next'
@@ -167,7 +169,7 @@ async function send() {
 
   pending.value = true
   // The assistant turn is created lazily on the FIRST delta so the existing
-  // "thinking" indicator (three bouncing dots) stays visible until the
+  // "thinking" indicator (three pulsing dots) stays visible until the
   // model actually starts emitting tokens. After that it's replaced by the
   // typed bubble, which grows in place.
   //
@@ -517,12 +519,15 @@ function _renderCitations(escaped: string): string {
   return escaped.replace(_CITATION_RE, (_match, type: string, id: string, label?: string) => {
     const text = (label || `${type} #${id}`).trim()
     const href = _citationHref(type, id)
+    // Same visual language as the chip row under an answer: a bordered
+    // pill. The clickable variant additionally underlines on hover so a
+    // citation never reads as decoration.
     const base =
-      'inline-flex items-center gap-1 px-1.5 py-0.5 rounded ' +
-      'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 ' +
-      'border border-primary-200/60 dark:border-primary-800/60 font-medium text-[0.92em]'
+      'inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium text-[0.92em] ' +
+      'border border-primary-200 dark:border-primary-800 ' +
+      'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
     if (href) {
-      return `<a href="${href}" data-internal-link="1" class="${base} hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors">${text}</a>`
+      return `<a href="${href}" data-internal-link="1" class="${base} cursor-pointer hover:border-primary-500 hover:underline underline-offset-2 transition-colors duration-150">${text}</a>`
     }
     return `<span class="${base}">${text}</span>`
   })
@@ -546,7 +551,7 @@ function renderMarkdown(src: string): string {
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(
       /`([^`]+)`/g,
-      '<code class="px-1 py-0.5 rounded bg-muted/80 font-mono text-[0.85em]">$1</code>',
+      '<code class="px-1 py-0.5 rounded bg-muted font-mono text-[0.85em]">$1</code>',
     )
     .replace(/\n/g, '<br>')
   // Defence in depth: even though we escape and only inject a known subset,
@@ -582,6 +587,8 @@ function entityLabel(e: QueryEntityRef): string {
   return e.name || `${e.type} #${e.id}`
 }
 
+const composerDisabled = computed(() => !status.value?.enabled)
+
 onMounted(() => {
   void loadStatus()
   void loadConversations()
@@ -589,7 +596,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-4 sm:p-8 max-w-4xl mx-auto h-full flex flex-col">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('ai.askView.title')" :subtitle="t('ai.askView.subtitle')">
       <template #help>
         <HelpTooltip :text="t('ai.askView.help')" placement="bottom" />
@@ -598,7 +605,6 @@ onMounted(() => {
         <Button
           variant="ghost"
           size="sm"
-          shape="pill"
           :aria-label="t('ai.askView.historyTitle')"
           @click="historyOpen = true"
         >
@@ -606,16 +612,15 @@ onMounted(() => {
           {{ t('ai.askView.historyTitle') }}
           <span
             v-if="conversations.length > 0"
-            class="ml-1 px-1.5 py-0.5 rounded-full bg-muted text-[10px] tabular-nums leading-none"
+            class="ml-1 px-1.5 py-0.5 rounded bg-muted text-2xs tabular-nums leading-none"
           >
             {{ conversations.length }}
           </span>
         </Button>
         <Button
           v-if="hasConversation"
-          variant="ghost"
+          variant="secondary"
           size="sm"
-          shape="pill"
           :disabled="pending"
           @click="newChat"
         >
@@ -625,174 +630,217 @@ onMounted(() => {
       </template>
     </PageHeader>
 
-    <!-- Transcript scroll -->
-    <div ref="transcriptRef" class="flex-1 min-h-0 overflow-y-auto space-y-4 pb-6">
-      <!-- Empty: explain + suggestions -->
-      <EmptyState
-        v-if="turns.length === 0"
-        :icon="Sparkles"
-        :title="t('ai.askView.emptyTitle')"
-        :description="t('ai.askView.emptyDescription')"
+    <!-- The conversation column. Narrower than the page so answer text keeps
+         a comfortable measure; the prose itself is capped at 70ch below. -->
+    <section class="mx-auto w-full max-w-4xl">
+      <!-- Provider off: say so once, at the top, with the fix. -->
+      <div
+        v-if="status && !status.enabled"
+        class="nf-card border-l-[3px] border-l-warning p-4 mb-4 flex items-start gap-3"
       >
-        <template #action>
-          <div class="flex flex-wrap justify-center gap-2 max-w-2xl mt-2">
-            <button
-              v-for="key in suggestions"
-              :key="key"
-              type="button"
-              class="nf-pill bg-muted/70 hover:bg-primary-50 hover:text-primary-700 cursor-pointer text-left"
-              @click="useSuggestion(key)"
-            >
-              <MessageSquare class="w-3 h-3" aria-hidden="true" />
-              {{ t(key) }}
-            </button>
-          </div>
-        </template>
-      </EmptyState>
+        <AlertTriangle
+          class="w-4 h-4 text-warning flex-shrink-0 mt-0.5"
+          :stroke-width="1.9"
+          aria-hidden="true"
+        />
+        <div class="min-w-0">
+          <p class="text-base font-medium text-fg">{{ t('ai.askView.disabledTitle') }}</p>
+          <p class="text-sm text-fg-muted mt-0.5">{{ t('ai.askView.disabledHint') }}</p>
+        </div>
+      </div>
 
-      <!-- Chat turns -->
-      <div v-for="turn in turns" :key="turn.id" class="flex gap-3">
-        <span
-          v-if="turn.role === 'assistant'"
-          class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white"
-          aria-hidden="true"
+      <!-- Transcript. Its own scroll region so a long answer stays pinned to
+           the bottom without dragging the composer off screen. -->
+      <div
+        ref="transcriptRef"
+        class="nf-card overflow-y-auto min-h-[18rem] max-h-[min(60vh,42rem)] mb-3"
+      >
+        <!-- Empty: explain + one-click examples -->
+        <EmptyState
+          v-if="turns.length === 0"
+          :icon="Sparkles"
+          :title="t('ai.askView.emptyTitle')"
+          :description="t('ai.askView.emptyDescription')"
         >
-          <Bot class="w-4 h-4" />
-        </span>
-        <span
-          v-else
-          class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-2xl bg-muted text-fg-muted"
-          aria-hidden="true"
-        >
-          <UserIcon class="w-4 h-4" />
-        </span>
-        <div class="min-w-0 flex-1">
-          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1">
-            {{ turn.role === 'assistant' ? t('ai.askView.assistant') : t('ai.askView.you') }}
-          </p>
-          <div
-            class="rounded-lg px-4 py-3 text-sm leading-relaxed"
-            :class="
-              turn.role === 'assistant'
-                ? 'bg-surface border border-border/70 dark:border-border/40'
-                : 'bg-primary-50 dark:bg-primary-400/10'
-            "
-          >
-            <!-- renderMarkdown escapes HTML before applying the bold/code/br
-                 transforms, so the input is safe even if the LLM returns
-                 raw markup. Inline citation tokens [[type:id|label]]
-                 become <a data-internal-link>; we intercept clicks on
-                 those at this wrapping div to route through Vue Router
-                 instead of triggering a full page reload. -->
-            <!-- eslint-disable-next-line vue/no-v-html -->
-            <div class="prose-sm" @click="onInlineClick" v-html="renderMarkdown(turn.text)" />
-            <div
-              v-if="turn.entities && turn.entities.length"
-              class="mt-3 pt-3 border-t border-border/50 flex flex-wrap gap-1.5"
-            >
-              <RouterLink
-                v-for="(e, idx) in turn.entities"
-                :key="`${e.type}-${e.id}-${idx}`"
-                v-slot="{ href, navigate }"
-                :to="entityRoute(e) ?? ''"
-                custom
+          <template #action>
+            <div class="grid sm:grid-cols-2 gap-2 max-w-xl text-left">
+              <button
+                v-for="key in suggestions"
+                :key="key"
+                type="button"
+                class="group nf-card nf-interactive flex items-start gap-2 px-3 py-2.5 text-left"
+                @click="useSuggestion(key)"
               >
-                <a
-                  :href="entityRoute(e) ? href : undefined"
-                  :class="[
-                    'nf-pill bg-muted/70',
-                    entityRoute(e)
-                      ? 'hover:bg-primary-50 hover:text-primary-700 cursor-pointer'
-                      : 'cursor-default text-fg-muted',
-                  ]"
-                  @click="entityRoute(e) ? navigate($event) : null"
-                >
-                  <component
-                    :is="entityIcon[e.type] ?? Server"
-                    class="w-3 h-3"
-                    aria-hidden="true"
-                  />
-                  {{ entityLabel(e) }}
-                </a>
-              </RouterLink>
+                <span class="text-base text-fg leading-snug flex-1">{{ t(key) }}</span>
+                <ArrowRight
+                  class="w-3.5 h-3.5 text-fg-subtle flex-shrink-0 mt-0.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 ease-soft"
+                  aria-hidden="true"
+                />
+              </button>
             </div>
-            <p
-              v-if="turn.latency_ms !== undefined"
-              class="text-[11px] text-fg-muted mt-2 tabular-nums"
+          </template>
+        </EmptyState>
+
+        <!-- Thread. One hairline per turn boundary — the cheapest way to say
+             "this is where the answer starts". -->
+        <div v-else class="divide-y divide-border">
+          <article
+            v-for="turn in turns"
+            :key="turn.id"
+            class="flex gap-3 px-4 py-4 sm:px-5 sm:py-5"
+          >
+            <span
+              v-if="turn.role === 'assistant'"
+              class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary-600 text-white"
+              aria-hidden="true"
             >
-              {{ t('ai.askView.latency', { ms: turn.latency_ms }) }}
-            </p>
+              <Bot class="w-4 h-4" />
+            </span>
+            <span
+              v-else
+              class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-muted text-fg-muted border border-border"
+              aria-hidden="true"
+            >
+              <UserIcon class="w-4 h-4" />
+            </span>
+
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 mb-1.5">
+                <span class="text-sm font-semibold text-fg">
+                  {{ turn.role === 'assistant' ? t('ai.askView.assistant') : t('ai.askView.you') }}
+                </span>
+                <span
+                  v-if="turn.latency_ms !== undefined"
+                  class="text-xs text-fg-subtle tabular-nums"
+                >
+                  {{ t('ai.askView.latency', { ms: turn.latency_ms }) }}
+                </span>
+              </div>
+
+              <!-- renderMarkdown escapes HTML before applying the bold/code/br
+                   transforms, so the input is safe even if the LLM returns
+                   raw markup. Inline citation tokens [[type:id|label]]
+                   become <a data-internal-link>; we intercept clicks on
+                   those at this wrapping div to route through Vue Router
+                   instead of triggering a full page reload. -->
+              <!-- eslint-disable vue/no-v-html -->
+              <div
+                :class="[
+                  'text-base leading-relaxed max-w-[70ch] break-words',
+                  turn.role === 'assistant'
+                    ? 'text-fg'
+                    : 'text-fg rounded-lg bg-muted px-3.5 py-2.5 inline-block',
+                ]"
+                @click="onInlineClick"
+                v-html="renderMarkdown(turn.text)"
+              />
+              <!-- eslint-enable vue/no-v-html -->
+
+              <div v-if="turn.entities && turn.entities.length" class="mt-3 max-w-[70ch]">
+                <p class="nf-label mb-1.5">{{ t('ai.askView.sourcesTitle') }}</p>
+                <div class="flex flex-wrap gap-1.5">
+                  <RouterLink
+                    v-for="(e, idx) in turn.entities"
+                    :key="`${e.type}-${e.id}-${idx}`"
+                    v-slot="{ href, navigate }"
+                    :to="entityRoute(e) ?? ''"
+                    custom
+                  >
+                    <a
+                      :href="entityRoute(e) ? href : undefined"
+                      :class="[
+                        'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-xs font-medium',
+                        'transition-colors duration-150 ease-soft',
+                        entityRoute(e)
+                          ? 'border-border bg-surface text-fg hover:border-primary-500 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer'
+                          : 'border-transparent bg-muted text-fg-subtle cursor-default',
+                      ]"
+                      @click="entityRoute(e) ? navigate($event) : null"
+                    >
+                      <component
+                        :is="entityIcon[e.type] ?? Server"
+                        class="w-3 h-3 flex-shrink-0"
+                        aria-hidden="true"
+                      />
+                      {{ entityLabel(e) }}
+                    </a>
+                  </RouterLink>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Thinking indicator. Opacity-only CSS animation, removed the
+               instant the first token lands (`pending` flips on delta #1). -->
+          <div v-if="pending" class="flex gap-3 px-4 py-4 sm:px-5 sm:py-5" aria-busy="true">
+            <span
+              class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary-600 text-white"
+              aria-hidden="true"
+            >
+              <Bot class="w-4 h-4" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold text-fg mb-1.5">{{ t('ai.askView.assistant') }}</p>
+              <p class="inline-flex items-center gap-2 text-base text-fg-muted">
+                <span class="inline-flex gap-1" aria-hidden="true">
+                  <span class="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
+                  <span
+                    class="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse"
+                    style="animation-delay: 160ms"
+                  />
+                  <span
+                    class="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse"
+                    style="animation-delay: 320ms"
+                  />
+                </span>
+                {{ t('ai.askView.thinking') }}
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Pending bubble -->
-      <div v-if="pending" class="flex gap-3" aria-busy="true">
-        <span
-          class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white"
-          aria-hidden="true"
-        >
-          <Bot class="w-4 h-4" />
-        </span>
-        <div class="min-w-0 flex-1">
-          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1">
-            {{ t('ai.askView.assistant') }}
-          </p>
-          <div class="rounded-lg px-4 py-3 bg-surface border border-border/70 inline-flex gap-1.5">
-            <span class="w-2 h-2 bg-fg-muted rounded-full animate-bounce" />
-            <span
-              class="w-2 h-2 bg-fg-muted rounded-full animate-bounce"
-              style="animation-delay: 0.15s"
-            />
-            <span
-              class="w-2 h-2 bg-fg-muted rounded-full animate-bounce"
-              style="animation-delay: 0.3s"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Composer -->
-    <form class="nf-card p-3 flex flex-col gap-2 mt-auto" @submit.prevent="send">
-      <div class="flex items-end gap-2">
+      <!-- Composer — the one place on the page that takes input. -->
+      <form class="nf-card p-3 space-y-2.5" @submit.prevent="send">
         <textarea
           v-model="input"
-          rows="2"
-          class="flex-1 resize-none bg-transparent text-sm px-2 py-1.5 focus:outline-none placeholder:text-fg-muted"
+          rows="3"
+          class="nf-input resize-none"
           :placeholder="t('ai.askView.placeholder')"
-          :disabled="!status?.enabled || pending"
+          :disabled="composerDisabled || pending"
           :aria-label="t('ai.askView.placeholder')"
           @keydown="onEnter"
         />
-        <Button
-          type="submit"
-          variant="primary"
-          shape="pill"
-          :loading="pending"
-          :disabled="!input.trim() || !status?.enabled"
-        >
-          <Send class="w-4 h-4" aria-hidden="true" />
-          {{ t('ai.askView.send') }}
-        </Button>
-      </div>
-      <label
-        class="flex items-center gap-2 text-xs text-fg-muted cursor-pointer select-none px-2"
-        :title="t('ai.askView.liteContextHint')"
-      >
-        <input
-          v-model="liteContext"
-          type="checkbox"
-          class="rounded border-border accent-primary-600"
-          :disabled="pending"
-        />
-        <span>{{ t('ai.askView.liteContextLabel') }}</span>
-      </label>
-    </form>
-
-    <p v-if="status && !status.enabled" class="text-xs text-fg-muted mt-2 text-center">
-      {{ t('ai.askView.disabledHint') }}
-    </p>
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <label
+            class="flex items-center gap-2 text-xs text-fg-muted cursor-pointer select-none"
+            :title="t('ai.askView.liteContextHint')"
+          >
+            <input
+              v-model="liteContext"
+              type="checkbox"
+              class="rounded border-border-strong accent-primary-600"
+              :disabled="pending"
+            />
+            <span>{{ t('ai.askView.liteContextLabel') }}</span>
+          </label>
+          <div class="flex items-center gap-3 ml-auto">
+            <span class="text-xs text-fg-subtle hidden sm:inline">
+              {{ t('ai.askView.composerHint') }}
+            </span>
+            <Button
+              type="submit"
+              variant="primary"
+              :loading="pending"
+              :disabled="!input.trim() || composerDisabled"
+            >
+              <Send class="w-4 h-4" aria-hidden="true" />
+              {{ t('ai.askView.send') }}
+            </Button>
+          </div>
+        </div>
+      </form>
+    </section>
 
     <!-- History drawer: shows the persisted conversation list on demand
          (PageHeader "Historique" button). Re-uses the project Modal so
@@ -803,53 +851,60 @@ onMounted(() => {
       size="md"
       @close="historyOpen = false"
     >
-      <p v-if="conversationsLoading" class="text-sm text-fg-muted">
+      <p v-if="conversationsLoading" class="text-base text-fg-muted">
         {{ t('common.loading') }}
       </p>
-      <p v-else-if="conversationsError" class="text-sm text-danger break-words">
-        {{ conversationsError }}
-      </p>
-      <p v-else-if="conversations.length === 0" class="text-sm text-fg-muted italic">
-        {{ t('ai.askView.historyEmpty') }}
-      </p>
+      <div v-else-if="conversationsError" class="space-y-3">
+        <p class="text-base text-danger break-words">{{ conversationsError }}</p>
+        <p class="text-sm text-fg-muted">{{ t('ai.askView.historyErrorHint') }}</p>
+        <Button variant="secondary" size="sm" @click="loadConversations">
+          {{ t('common.refresh') }}
+        </Button>
+      </div>
+      <EmptyState
+        v-else-if="conversations.length === 0"
+        :icon="History"
+        :title="t('ai.askView.historyEmpty')"
+        :description="t('ai.askView.historyEmptyHint')"
+        size="sm"
+      />
       <ul v-else class="-mx-2 max-h-[60vh] overflow-y-auto space-y-1">
-        <li v-for="c in conversations" :key="c.id">
+        <li
+          v-for="c in conversations"
+          :key="c.id"
+          :class="[
+            'group flex items-start gap-1 rounded-md pr-1',
+            c.id === activeConversationId
+              ? 'bg-primary-50 dark:bg-primary-500/15'
+              : 'hover:bg-surface-hover',
+            'transition-colors duration-150 ease-soft',
+          ]"
+        >
           <button
             type="button"
             :class="[
-              'w-full text-left px-3 py-2 rounded-md text-sm leading-snug group transition-colors',
+              'flex-1 min-w-0 text-left px-3 py-2 rounded-md text-base leading-snug',
               c.id === activeConversationId
-                ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-800 dark:text-primary-200'
-                : 'hover:bg-muted/60 text-fg',
+                ? 'text-primary-700 dark:text-primary-300 font-medium'
+                : 'text-fg',
             ]"
+            :aria-current="c.id === activeConversationId ? 'true' : undefined"
             @click="onPickConversation(c.id)"
           >
-            <div class="flex items-start justify-between gap-1.5">
-              <span class="line-clamp-2 break-words flex-1">
-                {{ c.title || c.preview || '(empty)' }}
-              </span>
-              <span
-                role="button"
-                tabindex="0"
-                class="opacity-0 group-hover:opacity-100 transition-opacity text-fg-muted hover:text-danger"
-                :aria-label="t('common.delete')"
-                @click="removeConversation(c.id, $event)"
-                @keydown.enter="removeConversation(c.id, $event)"
-              >
-                <svg viewBox="0 0 16 16" class="w-3.5 h-3.5" aria-hidden="true">
-                  <path
-                    fill="currentColor"
-                    d="M6 2.5h4a.5.5 0 0 1 .5.5V4h2.5a.5.5 0 0 1 0 1H13l-.6 8.4a1.5 1.5 0 0 1-1.5 1.4H5.1a1.5 1.5 0 0 1-1.5-1.4L3 5h-.5a.5.5 0 0 1 0-1H5V3a.5.5 0 0 1 .5-.5h.5Zm.5 1.5v0H10v0H6.5Z"
-                  />
-                </svg>
-              </span>
-            </div>
-            <p
-              v-if="c.turn_count"
-              class="text-[10px] text-fg-muted uppercase tracking-wider mt-0.5"
-            >
+            <span class="line-clamp-2 break-words block">
+              {{ c.title || c.preview || t('ai.askView.untitledConversation') }}
+            </span>
+            <span v-if="c.turn_count" class="nf-label block mt-0.5">
               {{ c.turn_count }} {{ t('ai.askView.turnsLabel') }}
-            </p>
+            </span>
+          </button>
+          <button
+            type="button"
+            class="flex-shrink-0 mt-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md text-fg-subtle opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-danger hover:bg-surface-hover transition-colors duration-150 ease-soft"
+            :aria-label="t('common.delete')"
+            @click="removeConversation(c.id, $event)"
+          >
+            <Trash2 class="w-3.5 h-3.5" aria-hidden="true" />
           </button>
         </li>
       </ul>

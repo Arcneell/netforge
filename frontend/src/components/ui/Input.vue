@@ -26,7 +26,7 @@ const attrs = useAttrs()
 
 const classes = computed(() => [
   'nf-input nf-input-control',
-  props.invalid ? 'border-danger focus:ring-danger/40 focus:border-danger' : '',
+  props.invalid ? 'nf-input-invalid' : '',
 ])
 </script>
 

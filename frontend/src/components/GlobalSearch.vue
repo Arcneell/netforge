@@ -181,30 +181,30 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
 <template>
   <Teleport to="body">
     <Transition
-      enter-active-class="transition duration-150 ease-out"
+      enter-active-class="transition-opacity duration-150 ease-soft"
       enter-from-class="opacity-0"
       enter-to-class="opacity-100"
-      leave-active-class="transition duration-100 ease-in"
+      leave-active-class="transition-opacity duration-100 ease-soft"
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[12vh] bg-black/40 backdrop-blur-sm"
+        class="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[12vh] bg-zinc-900/30 dark:bg-black/60 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
         :aria-label="t('common.search')"
         @click.self="emit('close')"
         @keydown="onKey"
       >
-        <div class="nf-card shadow-pop w-full max-w-xl flex flex-col overflow-hidden">
-          <div class="flex items-center gap-2 px-3 border-b border-border">
-            <Search class="w-4 h-4 text-fg-muted flex-shrink-0" aria-hidden="true" />
+        <div class="nf-card shadow-xl w-full max-w-xl flex flex-col overflow-hidden nf-enter">
+          <div class="flex items-center gap-2.5 px-4 border-b border-border">
+            <Search class="w-4 h-4 text-fg-subtle flex-shrink-0" aria-hidden="true" />
             <input
               ref="inputRef"
               v-model="query"
               type="search"
-              class="flex-1 bg-transparent border-0 px-1 py-3 text-sm text-fg placeholder:text-fg-muted focus:outline-none focus:ring-0"
+              class="flex-1 bg-transparent border-0 px-0 py-3.5 text-base text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-0"
               :placeholder="t('common.search') + '…'"
               autocomplete="off"
               spellcheck="false"
@@ -212,37 +212,38 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
             <button
               v-if="query"
               type="button"
-              class="p-1 rounded hover:bg-surface-hover text-fg-muted"
+              class="p-1 rounded-md hover:bg-surface-hover text-fg-subtle hover:text-fg transition-colors duration-150 ease-soft"
               :aria-label="t('common.reset')"
               @click="query = ''"
             >
               <X class="w-4 h-4" aria-hidden="true" />
             </button>
             <kbd
-              class="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-fg-muted border border-border"
+              class="hidden sm:inline-block text-2xs font-medium px-1.5 py-0.5 rounded bg-muted text-fg-subtle"
             >
               Esc
             </kbd>
           </div>
 
-          <div class="max-h-[60vh] overflow-y-auto py-1" role="listbox">
+          <div class="max-h-[60vh] overflow-y-auto py-1.5" role="listbox">
             <p
               v-if="!loading && query.trim().length < 2"
-              class="px-4 py-6 text-xs text-fg-muted text-center"
+              class="px-4 py-8 text-sm text-fg-subtle text-center"
             >
               {{ t('common.searchHint') }}
             </p>
-            <p v-else-if="loading" class="px-4 py-6 text-xs text-fg-muted text-center">
+            <p v-else-if="loading" class="px-4 py-8 text-sm text-fg-subtle text-center">
               {{ t('common.loading') }}
             </p>
-            <p v-else-if="results.length === 0" class="px-4 py-6 text-xs text-fg-muted text-center">
+            <p
+              v-else-if="results.length === 0"
+              class="px-4 py-8 text-sm text-fg-subtle text-center"
+            >
               {{ t('common.empty.title') }}
             </p>
 
             <template v-for="(group, gi) in grouped" :key="group.type">
-              <p
-                class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted"
-              >
+              <p class="nf-label px-3 pt-2 pb-1">
                 {{ t(groupLabel[group.type]) }}
               </p>
               <button
@@ -251,10 +252,10 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
                 type="button"
                 role="option"
                 :aria-selected="flatIndex(gi, ii) === activeIndex"
-                class="flex items-center gap-2 w-full px-3 py-2 text-left transition"
+                class="flex items-center gap-2.5 w-full px-4 py-2 text-left rounded-md transition-colors duration-100 ease-soft"
                 :class="
                   flatIndex(gi, ii) === activeIndex
-                    ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300'
+                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
                     : 'text-fg hover:bg-surface-hover'
                 "
                 @mouseenter="activeIndex = flatIndex(gi, ii)"
@@ -263,12 +264,13 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
                 <component
                   :is="iconFor[item.type]"
                   class="w-4 h-4 flex-shrink-0"
+                  :stroke-width="1.9"
                   aria-hidden="true"
                 />
-                <span class="text-sm font-medium truncate">{{ item.label }}</span>
+                <span class="text-base truncate">{{ item.label }}</span>
                 <span
                   v-if="item.context"
-                  class="text-xs text-fg-muted truncate ml-auto pl-2 font-mono"
+                  class="text-xs text-fg-subtle truncate ml-auto pl-2 font-mono"
                 >
                   {{ item.context }}
                 </span>
@@ -277,15 +279,15 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
           </div>
 
           <div
-            class="px-3 py-2 border-t border-border bg-muted/40 text-[11px] text-fg-muted flex items-center gap-3"
+            class="px-4 py-2.5 border-t border-border bg-bg/60 text-2xs text-fg-subtle flex items-center gap-4"
           >
-            <span class="flex items-center gap-1">
-              <kbd class="font-mono px-1 rounded bg-surface border border-border">↑</kbd>
-              <kbd class="font-mono px-1 rounded bg-surface border border-border">↓</kbd>
+            <span class="flex items-center gap-1.5">
+              <kbd class="px-1.5 py-0.5 rounded bg-muted text-fg-muted">↑</kbd>
+              <kbd class="px-1.5 py-0.5 rounded bg-muted text-fg-muted">↓</kbd>
               {{ t('shortcuts.navigate') }}
             </span>
-            <span class="flex items-center gap-1">
-              <kbd class="font-mono px-1 rounded bg-surface border border-border">↵</kbd>
+            <span class="flex items-center gap-1.5">
+              <kbd class="px-1.5 py-0.5 rounded bg-muted text-fg-muted">↵</kbd>
               {{ t('shortcuts.open') }}
             </span>
           </div>

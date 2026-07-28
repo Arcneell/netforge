@@ -2,30 +2,23 @@
   <title>NetForge — IPAM, topology, infrastructure</title>
   <defs>
     <style>
-      .wordmark { font: 700 56px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-      .tagline  { font: 600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .wordmark { font: 600 54px Inter, "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; letter-spacing: -1.6px; }
+      .tagline  { font: 500 13px Inter, "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     </style>
   </defs>
 
   <!-- Mark, scaled to 96 px. Geometry identical to assets/logo.svg + favicon
-       so the banner, the browser tab and the app sidebar all read as the
-       same icon. translate(16, 16) gives a symmetric 16-px vertical pad
-       (mark center at y=64, matching the text block's center). -->
+       so the banner, the browser tab and the app all read as the same icon. -->
   <g transform="translate(16, 16) scale(1.5)">
-    <rect width="64" height="64" rx="14" fill="#083344"/>
-    <path d="M 20 44 L 32 32 L 44 20"
-          stroke="#0891b2" stroke-width="4"
+    <rect width="64" height="64" rx="14" fill="#4F46E5"/>
+    <path d="M 21 43 L 32 32 L 43 21"
+          stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="3.5"
           stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    <circle cx="20" cy="44" r="5.5" fill="#0e7490"/>
-    <circle cx="32" cy="32" r="5.5" fill="#22d3ee"/>
-    <circle cx="44" cy="20" r="6"   fill="#ffffff"/>
+    <circle cx="21" cy="43" r="5" fill="#FFFFFF" fill-opacity="0.55"/>
+    <circle cx="32" cy="32" r="5" fill="#FFFFFF" fill-opacity="0.8"/>
+    <circle cx="43" cy="21" r="5.5" fill="#FFFFFF"/>
   </g>
 
-  <!-- Wordmark + tagline. Both pinned to x=128 and forced to the same
-       316-px width via textLength + lengthAdjust=spacing, so "NetForge"
-       and "IPAM · TOPOLOGY · INFRASTRUCTURE" end at exactly the same
-       x-coordinate (444). The wordmark gains ~30% letterspacing — modern
-       and intentional, in the registry of IBM / Tesla / Tailscale wordmarks. -->
-  <text x="128" y="70" class="wordmark" textLength="316" lengthAdjust="spacing" fill="#0e7490">NetForge</text>
-  <text x="128" y="96" class="tagline"  textLength="316" lengthAdjust="spacing" fill="#64748b">IPAM · TOPOLOGY · INFRASTRUCTURE</text>
+  <text x="128" y="66" class="wordmark" fill="#18181B">NetForge</text>
+  <text x="130" y="92" class="tagline"  fill="#62626C">IPAM, topologie et inventaire réseau</text>
 </svg>

@@ -1,8 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Copy, Plus, Pencil, Trash2, CheckCircle2, Send, RotateCcw } from 'lucide-vue-next'
+import {
+  Check,
+  Copy,
+  History,
+  KeyRound,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Send,
+  Trash2,
+  AlertTriangle,
+} from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
+import Badge from '@/components/ui/Badge.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import FormField from '@/components/ui/FormField.vue'
@@ -34,6 +46,12 @@ const copied = ref(false)
 const toDelete = ref<Webhook | null>(null)
 const deleting = ref(false)
 
+// Rotating invalidates the secret the receiver is already verifying against,
+// so it goes through the same confirm gate as a delete instead of firing on
+// the first click.
+const toRotate = ref<Webhook | null>(null)
+const rotating = ref(false)
+
 const deliveriesOpen = ref(false)
 const deliveriesFor = ref<Webhook | null>(null)
 const deliveries = ref<WebhookDelivery[]>([])
@@ -46,7 +64,7 @@ const columns = computed<DataTableColumn[]>(() => [
   { key: 'events', label: t('webhooks.fields.events'), cellClass: 'text-xs' },
   { key: 'status', label: t('webhooks.fields.status'), cellClass: 'w-32' },
   { key: 'stats', label: t('webhooks.fields.stats'), cellClass: 'w-40 text-xs' },
-  { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-40' },
+  { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-48' },
 ])
 
 const deliveryColumns = computed<DataTableColumn[]>(() => [
@@ -90,6 +108,11 @@ function openEdit(row: Webhook) {
   formError.value = null
   editorOpen.value = true
 }
+
+// Re-pointing an existing webhook silently redirects live traffic. Surface it
+// in the form, before the save, rather than as a toast afterwards.
+const urlChanged = computed(() => !!editing.value && form.value.url.trim() !== editing.value.url)
+const beingDisabled = computed(() => !form.value.enabled)
 
 function parseEvents(): string[] {
   return form.value.events
@@ -171,13 +194,19 @@ async function confirmDelete() {
   }
 }
 
-async function rotateSecret(row: Webhook) {
+async function confirmRotate() {
+  if (!toRotate.value) return
+  rotating.value = true
   try {
-    const result = await webhooksApi.rotateSecret(row.id)
+    const result = await webhooksApi.rotateSecret(toRotate.value.id)
     justCreated.value = result
+    copied.value = false
     success(t('webhooks.secretRotated'))
+    toRotate.value = null
   } catch (err) {
     toastError(describe(err))
+  } finally {
+    rotating.value = false
   }
 }
 
@@ -213,38 +242,54 @@ const editorTitle = computed(() => (editing.value ? t('webhooks.edit') : t('webh
 
 <template>
   <section>
-    <!-- Plaintext secret banner -->
+    <!-- Shown-once signing secret (fresh webhook or rotation). Amber, not
+         green: this is a deadline, not a congratulation. -->
     <div
       v-if="justCreated"
-      class="nf-card border-success/40 bg-success/5 p-4 mb-4 flex items-start gap-3"
-      role="status"
+      class="nf-card border-warning/45 bg-warning/[0.06] p-5 mb-6"
+      role="alert"
     >
-      <CheckCircle2 class="w-5 h-5 text-success flex-shrink-0 mt-0.5" aria-hidden="true" />
-      <div class="min-w-0 flex-1">
-        <p class="text-sm font-medium text-fg">{{ t('webhooks.secretTitle') }}</p>
-        <p class="text-xs text-fg-muted mt-0.5">{{ t('webhooks.secretHint') }}</p>
-        <div class="mt-2 flex items-center gap-2">
+      <div class="flex items-start gap-3">
+        <span
+          class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-warning/15 text-warning flex-shrink-0"
+        >
+          <KeyRound class="w-4 h-4" aria-hidden="true" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <p class="text-md font-semibold text-fg">{{ t('webhooks.secretTitle') }}</p>
+            <Badge tone="warning">{{ t('webhooks.shownOnce') }}</Badge>
+          </div>
+          <p class="text-sm text-fg-muted mt-1 max-w-2xl">{{ t('webhooks.secretHint') }}</p>
+
           <code
-            class="flex-1 min-w-0 truncate font-mono text-xs px-2 py-1.5 rounded border border-border bg-surface"
+            class="block mt-3 px-3 py-2.5 rounded-md border border-border-strong bg-surface font-mono text-sm text-fg break-all select-all"
           >
             {{ justCreated.secret }}
           </code>
-          <Button variant="secondary" size="sm" @click="copySecret">
-            <Copy class="w-4 h-4" aria-hidden="true" />
-            {{ copied ? t('common.copied') : t('common.copy') }}
-          </Button>
-          <Button variant="ghost" size="sm" @click="closeBanner">
-            {{ t('common.close') }}
-          </Button>
+
+          <div class="mt-3 flex items-center gap-2 flex-wrap">
+            <Button variant="primary" @click="copySecret">
+              <Check v-if="copied" class="w-4 h-4" aria-hidden="true" />
+              <Copy v-else class="w-4 h-4" aria-hidden="true" />
+              {{ copied ? t('common.copied') : t('common.copy') }}
+            </Button>
+            <Button variant="secondary" @click="closeBanner">
+              {{ t('webhooks.secretStored') }}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="flex items-start justify-between gap-3 mb-3">
-      <p class="text-xs text-fg-muted max-w-2xl inline-flex items-center gap-1.5">
-        {{ t('webhooks.subtitle') }}
-        <HelpTooltip :text="t('webhooks.help.section')" placement="bottom" />
-      </p>
+    <div class="nf-toolbar items-start justify-between">
+      <div class="min-w-0">
+        <h2 class="nf-section-title">{{ t('settings.webhooksTab') }}</h2>
+        <p class="text-sm text-fg-muted mt-1 max-w-2xl inline-flex items-start gap-1.5">
+          <span>{{ t('webhooks.subtitle') }}</span>
+          <HelpTooltip :text="t('webhooks.help.section')" placement="bottom" />
+        </p>
+      </div>
       <Button variant="primary" @click="openCreate">
         <Plus class="w-4 h-4" aria-hidden="true" />
         {{ t('webhooks.new') }}
@@ -258,65 +303,75 @@ const editorTitle = computed(() => (editing.value ? t('webhooks.edit') : t('webh
       :empty-title="t('webhooks.empty.title')"
       :empty-description="t('webhooks.empty.description')"
     >
+      <template #empty-action>
+        <Button variant="primary" @click="openCreate">
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('webhooks.new') }}
+        </Button>
+      </template>
       <template #cell-events="{ row }">
         <span class="font-mono text-xs">{{ row.events.join(', ') }}</span>
       </template>
       <template #cell-status="{ row }">
-        <span :class="row.enabled ? 'text-success' : 'text-fg-muted'">
+        <Badge :tone="row.enabled ? 'success' : 'neutral'">
           {{ row.enabled ? t('webhooks.status.enabled') : t('webhooks.status.disabled') }}
-        </span>
+        </Badge>
       </template>
       <template #cell-stats="{ row }">
-        <div class="flex flex-col">
-          <span class="text-fg-muted">
+        <div class="flex flex-col gap-0.5">
+          <span class="tabular-nums" :class="row.total_failures > 0 ? 'text-warning' : 'text-fg'">
             {{ row.total_deliveries }} / {{ row.total_failures }} {{ t('webhooks.failuresShort') }}
           </span>
-          <span v-if="row.last_delivery_at" class="text-fg-muted">
+          <span v-if="row.last_delivery_at" class="text-fg-subtle">
             {{ formatDate(row.last_delivery_at) }}
           </span>
         </div>
       </template>
       <template #cell-actions="{ row }">
-        <div class="flex justify-end gap-1">
+        <div class="flex items-center justify-end gap-1">
           <Button
             variant="ghost"
             size="sm"
-            :aria-label="t('webhooks.viewDeliveries')"
+            :aria-label="`${t('webhooks.viewDeliveries')} — ${row.name}`"
             :title="t('webhooks.viewDeliveries')"
             @click.stop="viewDeliveries(row)"
+          >
+            <History class="w-4 h-4" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            :aria-label="`${t('webhooks.sendTest')} — ${row.name}`"
+            :title="t('webhooks.sendTest')"
+            @click.stop="sendTest(row)"
           >
             <Send class="w-4 h-4" aria-hidden="true" />
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            :aria-label="t('webhooks.sendTest')"
-            :title="t('webhooks.sendTest')"
-            @click.stop="sendTest(row)"
-          >
-            <CheckCircle2 class="w-4 h-4" aria-hidden="true" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            :aria-label="t('webhooks.rotateSecret')"
-            :title="t('webhooks.rotateSecret')"
-            @click.stop="rotateSecret(row)"
-          >
-            <RotateCcw class="w-4 h-4" aria-hidden="true" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            :aria-label="t('common.edit')"
+            :aria-label="`${t('common.edit')} ${row.name}`"
+            :title="t('common.edit')"
             @click.stop="openEdit(row)"
           >
             <Pencil class="w-4 h-4" aria-hidden="true" />
           </Button>
+          <!-- Everything past this hairline breaks a working integration. -->
+          <span class="w-px h-5 bg-border" aria-hidden="true" />
           <Button
             variant="ghost"
             size="sm"
-            :aria-label="t('common.delete')"
+            :aria-label="`${t('webhooks.rotateSecret')} — ${row.name}`"
+            :title="t('webhooks.rotateSecret')"
+            @click.stop="toRotate = row"
+          >
+            <RotateCcw class="w-4 h-4 text-warning" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            :aria-label="`${t('common.delete')} ${row.name}`"
+            :title="t('common.delete')"
             @click.stop="toDelete = row"
           >
             <Trash2 class="w-4 h-4 text-danger" aria-hidden="true" />
@@ -356,7 +411,17 @@ const editorTitle = computed(() => (editing.value ? t('webhooks.edit') : t('webh
           </template>
         </FormField>
 
-        <FormField :label="t('webhooks.fields.events')" required>
+        <!-- Re-targeting a live webhook: say so before Save, not after. -->
+        <p
+          v-if="urlChanged"
+          class="-mt-2 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/[0.06] px-3 py-2.5 text-sm text-fg"
+          role="status"
+        >
+          <AlertTriangle class="w-4 h-4 text-warning flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{{ t('webhooks.urlChangedWarning') }}</span>
+        </p>
+
+        <FormField :label="t('webhooks.fields.events')" :hint="t('webhooks.eventsHint')" required>
           <template #help>
             <HelpTooltip :text="t('webhooks.help.events')" />
           </template>
@@ -369,12 +434,20 @@ const editorTitle = computed(() => (editing.value ? t('webhooks.edit') : t('webh
             />
           </template>
         </FormField>
-        <p class="text-xs text-fg-muted -mt-2">{{ t('webhooks.eventsHint') }}</p>
 
-        <label class="flex items-center gap-2 text-sm">
-          <input v-model="form.enabled" type="checkbox" class="rounded border-border" />
-          {{ t('webhooks.fields.enabled') }}
-        </label>
+        <div class="rounded-md border border-border bg-muted/40 px-3 py-2.5">
+          <label class="flex items-center gap-2 text-base font-medium text-fg">
+            <input
+              v-model="form.enabled"
+              type="checkbox"
+              class="rounded border-border-strong text-primary-600 focus:ring-0"
+            />
+            {{ t('webhooks.fields.enabled') }}
+          </label>
+          <p v-if="beingDisabled" class="text-sm text-fg-muted mt-1.5">
+            {{ t('webhooks.disabledHint') }}
+          </p>
+        </div>
       </form>
       <template #footer>
         <div class="flex justify-end gap-2">
@@ -405,12 +478,12 @@ const editorTitle = computed(() => (editing.value ? t('webhooks.edit') : t('webh
           <span class="text-fg-muted">{{ formatDate(row.created_at) }}</span>
         </template>
         <template #cell-status_code="{ row }">
-          <span :class="row.success ? 'text-success' : 'text-danger'">
+          <Badge :tone="row.success ? 'success' : 'danger'" monospace>
             {{ row.status_code || '—' }}
-          </span>
+          </Badge>
         </template>
         <template #cell-latency_ms="{ row }">
-          <span class="text-fg-muted">{{ row.latency_ms }} ms</span>
+          <span class="text-fg-muted tabular-nums">{{ row.latency_ms }} ms</span>
         </template>
         <template #cell-error="{ row }">
           <span class="text-fg-muted text-xs truncate block max-w-md">
@@ -421,9 +494,21 @@ const editorTitle = computed(() => (editing.value ? t('webhooks.edit') : t('webh
     </Modal>
 
     <ConfirmDialog
+      :open="!!toRotate"
+      :title="t('webhooks.confirmRotateTitle', { name: toRotate?.name ?? '' })"
+      :message="t('webhooks.confirmRotateMessage')"
+      :confirm-label="t('webhooks.rotateSecret')"
+      variant="danger"
+      :loading="rotating"
+      @confirm="confirmRotate"
+      @cancel="toRotate = null"
+    />
+
+    <ConfirmDialog
       :open="!!toDelete"
       :title="t('webhooks.confirmDeleteTitle', { name: toDelete?.name ?? '' })"
       :message="t('webhooks.confirmDeleteMessage')"
+      :confirm-label="t('common.delete')"
       variant="danger"
       :loading="deleting"
       @confirm="confirmDelete"

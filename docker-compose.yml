@@ -75,6 +75,11 @@ services:
       # ---- Observability ----
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-text}
+      # ---- CORS ----
+      # Empty by default: the frontend image proxies /api/ same-origin
+      # (frontend/nginx.prod.conf), so no CORS middleware is installed. Only
+      # needed if you serve the SPA from a different origin than the API.
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       # ---- AI (off by default; see .env.example for the full provider matrix) ----
       AI_ENABLED: ${AI_ENABLED:-false}
       AI_PROVIDER: ${AI_PROVIDER:-anthropic}
@@ -85,6 +90,11 @@ services:
       AI_RATE_LIMIT_CALLS: ${AI_RATE_LIMIT_CALLS:-20}
       AI_RATE_WINDOW_SECONDS: ${AI_RATE_WINDOW_SECONDS:-3600}
       AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-2048}
+      # Granular AI toggles. Both default to true and are gated by AI_ENABLED,
+      # but they must be passed through explicitly: without these lines a
+      # compliance opt-out set in .env would be silently ignored.
+      AI_DRAFTS_ENABLED: ${AI_DRAFTS_ENABLED:-true}
+      AI_SCHEDULER_ENABLED: ${AI_SCHEDULER_ENABLED:-true}
 
   frontend:
     image: ghcr.io/arcneell/netforge-frontend:${NETFORGE_VERSION:-latest}
@@ -95,16 +105,23 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "80:80"
-      - "443:443"
+      # Host 80/443 → container 8080/8443. The frontend image is
+      # nginxinc/nginx-unprivileged (non-root nginx), which cannot bind
+      # ports <1024 inside the container — the mapping restores the
+      # standard ports on the host side, so nothing changes for users,
+      # DNS or ACME http-01 challenges.
+      - "80:8080"
+      - "443:8443"
     volumes:
       # TLS material — mount your fullchain + privkey here. The image's
       # nginx config (frontend/nginx.prod.conf) expects exactly these names.
       - ./certs:/etc/nginx/certs:ro
     healthcheck:
       # Hits the plain-HTTP /healthz endpoint baked into both nginx configs
-      # (no TLS, no redirect). busybox wget ships in the nginx:alpine image.
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/healthz || exit 1"]
+      # (no TLS, no redirect) on the container-internal port 8080 — the
+      # unprivileged image listens there, not on 80. busybox wget ships in
+      # the nginx-unprivileged alpine image.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

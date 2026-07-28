@@ -1,4 +1,7 @@
-"""Subnets service — relies on the GiST exclusion constraint for overlap.
+"""Subnets service — relies on the DB for overlap protection: the GiST
+exclusion constraints cover root subnets, and the `subnets_validate_parent()`
+trigger covers child rows (containment + sibling anti-overlap — see
+migration 0017).
 
 Also hosts the utility endpoints declared in phase 4:
 
@@ -269,7 +272,8 @@ async def create_subnet(db: AsyncSession, payload: SubnetCreate) -> Subnet:
     subnet = Subnet(**data)
     db.add(subnet)
     with catch_integrity_errors():
-        # GiST exclusion → 409 SUBNET_OVERLAP via errors.catch_integrity_errors.
+        # Root overlap (GiST exclusion) and sibling overlap (trigger,
+        # migration 0017) both → 409 SUBNET_OVERLAP via catch_integrity_errors.
         await db.commit()
     await db.refresh(subnet)
     return subnet

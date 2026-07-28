@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Copy, Plus, Trash2, CheckCircle2 } from 'lucide-vue-next'
+import { Copy, Plus, Trash2, KeyRound, Check } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
+import Badge from '@/components/ui/Badge.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import FormField from '@/components/ui/FormField.vue'
@@ -160,48 +161,67 @@ async function confirmRevoke() {
   }
 }
 
-function statusFor(token: ApiToken): { key: string; tone: string } {
-  if (token.revoked_at) return { key: 'apiTokens.status.revoked', tone: 'text-danger' }
+type BadgeTone = 'success' | 'warning' | 'danger'
+
+function statusFor(token: ApiToken): { key: string; tone: BadgeTone } {
+  if (token.revoked_at) return { key: 'apiTokens.status.revoked', tone: 'danger' }
   if (token.expires_at && new Date(token.expires_at) < new Date())
-    return { key: 'apiTokens.status.expired', tone: 'text-warning' }
-  return { key: 'apiTokens.status.active', tone: 'text-success' }
+    return { key: 'apiTokens.status.expired', tone: 'warning' }
+  return { key: 'apiTokens.status.active', tone: 'success' }
 }
 </script>
 
 <template>
   <section>
-    <!-- Plaintext banner — visible right after a successful create -->
+    <!-- Shown-once secret. Amber, not green: the point of this panel is not
+         "well done", it is "act now or lose it". `role="alert"` so a screen
+         reader announces it the moment the token comes back. -->
     <div
       v-if="justCreated"
-      class="nf-card border-success/40 bg-success/5 p-4 mb-4 flex items-start gap-3"
-      role="status"
+      class="nf-card border-warning/45 bg-warning/[0.06] p-5 mb-6"
+      role="alert"
     >
-      <CheckCircle2 class="w-5 h-5 text-success flex-shrink-0 mt-0.5" aria-hidden="true" />
-      <div class="min-w-0 flex-1">
-        <p class="text-sm font-medium text-fg">{{ t('apiTokens.plaintextTitle') }}</p>
-        <p class="text-xs text-fg-muted mt-0.5">{{ t('apiTokens.plaintextHint') }}</p>
-        <div class="mt-2 flex items-center gap-2">
+      <div class="flex items-start gap-3">
+        <span
+          class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-warning/15 text-warning flex-shrink-0"
+        >
+          <KeyRound class="w-4 h-4" aria-hidden="true" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <p class="text-md font-semibold text-fg">{{ t('apiTokens.plaintextTitle') }}</p>
+            <Badge tone="warning">{{ t('apiTokens.shownOnce') }}</Badge>
+          </div>
+          <p class="text-sm text-fg-muted mt-1 max-w-2xl">{{ t('apiTokens.plaintextHint') }}</p>
+
           <code
-            class="flex-1 min-w-0 truncate font-mono text-xs px-2 py-1.5 rounded border border-border bg-surface"
+            class="block mt-3 px-3 py-2.5 rounded-md border border-border-strong bg-surface font-mono text-sm text-fg break-all select-all"
           >
             {{ justCreated.token }}
           </code>
-          <Button variant="secondary" size="sm" @click="copyPlaintext">
-            <Copy class="w-4 h-4" aria-hidden="true" />
-            {{ copied ? t('common.copied') : t('common.copy') }}
-          </Button>
-          <Button variant="ghost" size="sm" @click="closePlaintextBanner">
-            {{ t('common.close') }}
-          </Button>
+
+          <div class="mt-3 flex items-center gap-2 flex-wrap">
+            <Button variant="primary" @click="copyPlaintext">
+              <Check v-if="copied" class="w-4 h-4" aria-hidden="true" />
+              <Copy v-else class="w-4 h-4" aria-hidden="true" />
+              {{ copied ? t('common.copied') : t('common.copy') }}
+            </Button>
+            <Button variant="secondary" @click="closePlaintextBanner">
+              {{ t('apiTokens.plaintextStored') }}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="flex items-start justify-between gap-3 mb-3">
-      <p class="text-xs text-fg-muted max-w-2xl inline-flex items-center gap-1.5">
-        {{ t('apiTokens.subtitle') }}
-        <HelpTooltip :text="t('apiTokens.help.section')" placement="bottom" />
-      </p>
+    <div class="nf-toolbar items-start justify-between">
+      <div class="min-w-0">
+        <h2 class="nf-section-title">{{ t('settings.tokensTab') }}</h2>
+        <p class="text-sm text-fg-muted mt-1 max-w-2xl inline-flex items-start gap-1.5">
+          <span>{{ t('apiTokens.subtitle') }}</span>
+          <HelpTooltip :text="t('apiTokens.help.section')" placement="bottom" />
+        </p>
+      </div>
       <Button variant="primary" @click="openCreate">
         <Plus class="w-4 h-4" aria-hidden="true" />
         {{ t('apiTokens.new') }}
@@ -215,6 +235,12 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
       :empty-title="t('apiTokens.empty.title')"
       :empty-description="t('apiTokens.empty.description')"
     >
+      <template #empty-action>
+        <Button variant="primary" @click="openCreate">
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('apiTokens.new') }}
+        </Button>
+      </template>
       <template #cell-created_at="{ row }">
         <span class="text-fg-muted">{{ formatDate(row.created_at) }}</span>
       </template>
@@ -224,15 +250,18 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
         </span>
       </template>
       <template #cell-status="{ row }">
-        <span :class="statusFor(row).tone">{{ t(statusFor(row).key) }}</span>
+        <Badge :tone="statusFor(row).tone">{{ t(statusFor(row).key) }}</Badge>
       </template>
       <template #cell-actions="{ row }">
         <div class="flex justify-end">
+          <!-- Revoking is irreversible and instantly breaks whatever is using
+               the token; the confirm dialog spells that out before the click. -->
           <Button
             v-if="!row.revoked_at"
             variant="ghost"
             size="sm"
-            :aria-label="t('apiTokens.revoke')"
+            :aria-label="`${t('apiTokens.revoke')} ${row.name}`"
+            :title="t('apiTokens.revoke')"
             @click.stop="tokenToRevoke = row"
           >
             <Trash2 class="w-4 h-4 text-danger" aria-hidden="true" />
@@ -243,7 +272,12 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
 
     <Modal :open="createOpen" :title="t('apiTokens.new')" size="md" @close="createOpen = false">
       <form class="flex flex-col gap-4" @submit="submitCreate">
-        <FormField :label="t('apiTokens.fields.name')" :error="createError" required>
+        <FormField
+          :label="t('apiTokens.fields.name')"
+          :error="createError"
+          :hint="t('apiTokens.nameHint')"
+          required
+        >
           <template #default="{ id, invalid }">
             <Input
               :id="id"
@@ -255,9 +289,8 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
             />
           </template>
         </FormField>
-        <p class="text-xs text-fg-muted -mt-2">{{ t('apiTokens.nameHint') }}</p>
 
-        <FormField :label="t('apiTokens.fields.expiresAt')">
+        <FormField :label="t('apiTokens.fields.expiresAt')" :hint="t('apiTokens.expiresAtHint')">
           <template #help>
             <HelpTooltip :text="t('apiTokens.help.expiry')" />
           </template>
@@ -265,7 +298,12 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
             <Input :id="id" v-model="newExpiresAt" type="datetime-local" autocomplete="off" />
           </template>
         </FormField>
-        <p class="text-xs text-fg-muted -mt-2">{{ t('apiTokens.expiresAtHint') }}</p>
+
+        <p
+          class="text-sm text-fg-muted rounded-md border border-border bg-muted/50 px-3 py-2.5 leading-relaxed"
+        >
+          {{ t('apiTokens.plaintextTitle') }}
+        </p>
       </form>
       <template #footer>
         <div class="flex justify-end gap-2">
@@ -283,6 +321,7 @@ function statusFor(token: ApiToken): { key: string; tone: string } {
       :open="!!tokenToRevoke"
       :title="t('apiTokens.confirmRevokeTitle', { name: tokenToRevoke?.name ?? '' })"
       :message="t('apiTokens.confirmRevokeMessage')"
+      :confirm-label="t('apiTokens.revoke')"
       variant="danger"
       :loading="revoking"
       @confirm="confirmRevoke"

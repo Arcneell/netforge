@@ -10,20 +10,20 @@ const { t } = useI18n()
 
 <template>
   <Modal :open="open" :title="t('shortcuts.title')" size="md" @close="$emit('close')">
-    <p class="text-xs text-fg-muted mb-3">{{ t('shortcuts.subtitle') }}</p>
-    <ul class="space-y-1.5">
+    <p class="text-base text-fg-muted mb-4">{{ t('shortcuts.subtitle') }}</p>
+    <ul class="-mx-2">
       <li
         v-for="s in SHORTCUTS"
         :key="s.display"
-        class="flex items-center justify-between py-1 px-2 rounded hover:bg-surface-hover gap-3"
+        class="flex items-center justify-between gap-4 py-2 px-2 rounded-md hover:bg-surface-hover transition-colors duration-150 ease-soft"
       >
-        <span class="text-sm text-fg">{{ t(s.descriptionKey) }}</span>
+        <span class="text-base text-fg">{{ t(s.descriptionKey) }}</span>
         <span class="flex items-center gap-1 flex-shrink-0">
           <template v-for="(part, i) in s.display.split(' ')" :key="i">
-            <span v-if="part === '/'" class="text-xs text-fg-muted">/</span>
+            <span v-if="part === '/'" class="text-xs text-fg-subtle">/</span>
             <kbd
               v-else
-              class="font-mono text-xs px-1.5 py-0.5 rounded bg-muted border border-border text-fg whitespace-nowrap"
+              class="text-2xs font-medium px-1.5 py-1 rounded bg-muted text-fg-muted whitespace-nowrap"
             >
               {{ part }}
             </kbd>

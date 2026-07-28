@@ -94,3 +94,10 @@ jobs:
           # Cache layers across runs to keep the build under ~2 minutes.
           cache-from: type=gha,scope=${{ matrix.component.name }}
           cache-to: type=gha,scope=${{ matrix.component.name }},mode=max
+          # Supply-chain attestations, attached to the pushed image on GHCR.
+          # Both inputs exist since build-push-action v4 (the SHA pinned
+          # above is v7.2.0): `provenance` records how/where the image was
+          # built (SLSA), `sbom` attaches a Software Bill of Materials so
+          # scanners can audit image contents without pulling layers apart.
+          provenance: true
+          sbom: true

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { AlertTriangle } from 'lucide-vue-next'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -8,7 +9,7 @@ import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
-import { roomsApi, sitesApi } from '@/api'
+import { fetchAllPages, roomsApi, sitesApi } from '@/api'
 import type { Room, RoomCreate, RoomUpdate, Site } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 
@@ -42,8 +43,7 @@ watch(
     form.description = props.room?.description ?? ''
     errors.site_id = errors.code = null
     submitError.value = null
-    const r = await sitesApi.list({ page_size: 200 })
-    sites.value = r.items
+    sites.value = await fetchAllPages((p) => sitesApi.list(p))
   },
 )
 
@@ -105,7 +105,9 @@ async function onSubmit(e: Event) {
     size="md"
     @close="emit('close')"
   >
-    <form class="grid grid-cols-2 gap-4" @submit="onSubmit">
+    <!-- Same grid rhythm as every other editor: 1 column below `sm`, 2 above,
+         1rem gutter, full-width rows via `sm:col-span-2`. -->
+    <form class="grid grid-cols-1 sm:grid-cols-2 gap-4" @submit="onSubmit">
       <FormField :label="t('room.fields.site')" :error="errors.site_id" required>
         <template #default="{ id }">
           <Select
@@ -130,17 +132,23 @@ async function onSubmit(e: Event) {
           />
         </template>
       </FormField>
-      <FormField class="col-span-2" :label="t('room.fields.description')">
+      <FormField class="sm:col-span-2" :label="t('room.fields.description')">
         <template #default="{ id }">
           <Textarea :id="id" v-model="form.description" :rows="2" />
         </template>
       </FormField>
-      <p v-if="submitError" class="col-span-2 text-sm text-danger" role="alert">
-        {{ submitError }}
+
+      <p
+        v-if="submitError"
+        class="sm:col-span-2 flex items-start gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+        role="alert"
+      >
+        <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>{{ submitError }}</span>
       </p>
     </form>
     <template #footer>
-      <div class="flex justify-end gap-2">
+      <div class="flex items-center justify-end gap-2">
         <Button variant="secondary" :disabled="saving" @click="emit('close')">
           {{ t('common.cancel') }}
         </Button>

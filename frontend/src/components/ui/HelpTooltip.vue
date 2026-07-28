@@ -9,7 +9,7 @@ import { HelpCircle } from 'lucide-vue-next'
  * interaction away.
  *
  * Usage:
- *   <HelpTooltip :text="t('subnet.cidrHint')" />
+ *   <HelpTooltip :text="t('subnet.help.cidr')" />
  *
  * Long-form content (paragraphs) is supported via the default slot:
  *   <HelpTooltip>
@@ -258,9 +258,11 @@ const bubbleTransform = computed(() => {
           :id="tooltipId"
           role="tooltip"
           :class="[
-            'fixed z-50 w-64 max-w-[16rem] p-2.5 rounded-md shadow-lg',
-            'bg-zinc-900 text-zinc-50 dark:bg-zinc-800 dark:text-zinc-100',
-            'text-xs leading-relaxed font-normal whitespace-normal text-left',
+            'fixed z-50 w-64 max-w-[16rem] p-3 rounded-lg shadow-lg',
+            // Dark chip on light, a bordered surface on dark — a near-black
+            // bubble on a near-black page would disappear.
+            'bg-zinc-900 text-zinc-100 dark:bg-surface dark:text-fg dark:border dark:border-border',
+            'text-sm leading-relaxed font-normal whitespace-normal text-left',
             'pointer-events-none',
           ]"
           :style="{

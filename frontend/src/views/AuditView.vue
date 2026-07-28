@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Download, Eye } from 'lucide-vue-next'
+import { Download, Eye, PlusCircle, PencilLine, Trash2, ListFilter } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -10,10 +10,11 @@ import Badge from '@/components/ui/Badge.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Select from '@/components/ui/Select.vue'
+import Segmented, { type SegmentedOption } from '@/components/ui/Segmented.vue'
 import AuditDiff from '@/components/AuditDiff.vue'
 import { auditApi } from '@/api'
 import type { AuditAction, AuditLog } from '@/api'
-import { formatDate, formatRelativeTime } from '@/utils/formatters'
+import { formatDate, formatNumber, formatRelativeTime } from '@/utils/formatters'
 
 const { t } = useI18n()
 
@@ -39,12 +40,21 @@ const entityOptions = computed(() => [
   { value: 'port', label: t('port.label') },
 ])
 
-const actionOptions = computed(() => [
+// The action filter is a four-way switch, not a dropdown: there are only
+// three actions and the operator flips between them constantly.
+const actionSegments = computed<SegmentedOption<AuditAction | ''>[]>(() => [
   { value: '', label: t('common.all') },
-  { value: 'create', label: t('audit.actions.create') },
-  { value: 'update', label: t('audit.actions.update') },
-  { value: 'delete', label: t('audit.actions.delete') },
+  { value: 'create', label: t('audit.actions.create'), icon: PlusCircle },
+  { value: 'update', label: t('audit.actions.update'), icon: PencilLine },
+  { value: 'delete', label: t('audit.actions.delete'), icon: Trash2 },
 ])
+
+const hasFilters = computed(() => !!entityFilter.value || !!actionFilter.value)
+
+function resetFilters() {
+  entityFilter.value = ''
+  actionFilter.value = ''
+}
 
 // Sequence guard: a stale response from an earlier filter combination
 // must NOT overwrite the fresh visible rows when the user toggles
@@ -86,8 +96,8 @@ const actionTone: Record<AuditAction, 'success' | 'primary' | 'danger'> = {
 // originally-mounted language until the user re-enters the page.
 const columns = computed<DataTableColumn[]>(() => [
   { key: 'created_at', label: t('audit.fields.when'), cellClass: 'w-44 whitespace-nowrap' },
-  { key: 'action', label: t('audit.fields.action'), cellClass: 'w-24' },
-  { key: 'entity', label: t('audit.fields.entity'), cellClass: 'w-28' },
+  { key: 'action', label: t('audit.fields.action'), cellClass: 'w-28' },
+  { key: 'entity', label: t('audit.fields.entity'), cellClass: 'w-32' },
   {
     key: 'entity_id',
     label: t('audit.fields.entityId'),
@@ -112,7 +122,7 @@ function exportCsv() {
 </script>
 
 <template>
-  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('nav.audit')" :subtitle="t('audit.subtitle')">
       <template #help>
         <HelpTooltip :text="t('audit.help')" placement="bottom" />
@@ -125,8 +135,17 @@ function exportCsv() {
       </template>
     </PageHeader>
 
-    <div class="flex flex-wrap items-center gap-2 mb-4">
-      <div class="w-48">
+    <!-- Every filter in one bar, with the result count and the escape hatch
+         parked on the right so the row reads left-to-right: narrow, then how
+         much is left, then undo. -->
+    <div class="nf-toolbar" role="group" :aria-label="t('audit.filtersAria')">
+      <Segmented
+        :model-value="actionFilter"
+        :options="actionSegments"
+        :aria-label="t('audit.fields.action')"
+        @update:model-value="(v) => (actionFilter = v)"
+      />
+      <div class="w-full sm:w-52">
         <Select
           :model-value="entityFilter"
           :options="entityOptions"
@@ -134,13 +153,13 @@ function exportCsv() {
           @update:model-value="(v) => (entityFilter = String(v))"
         />
       </div>
-      <div class="w-44">
-        <Select
-          :model-value="actionFilter"
-          :options="actionOptions"
-          :aria-label="t('audit.fields.action')"
-          @update:model-value="(v) => (actionFilter = v as AuditAction | '')"
-        />
+      <div class="ml-auto flex items-center gap-2">
+        <span class="text-xs text-fg-muted tabular-nums" aria-live="polite">
+          {{ t('audit.resultCount', { count: formatNumber(total) }) }}
+        </span>
+        <Button v-if="hasFilters" variant="ghost" size="sm" @click="resetFilters">
+          {{ t('common.reset') }}
+        </Button>
       </div>
     </div>
 
@@ -148,19 +167,28 @@ function exportCsv() {
       :columns="columns"
       :rows="items"
       :loading="loading"
-      :empty-title="t('nav.audit')"
-      :empty-description="t('dashboard.recent.empty')"
+      :empty-title="t('audit.emptyTitle')"
+      :empty-description="t('audit.emptyDescription')"
       clickable
       @row-click="(r) => (selected = r)"
     >
+      <template v-if="hasFilters" #empty-action>
+        <Button variant="secondary" size="sm" @click="resetFilters">
+          <ListFilter class="w-4 h-4" aria-hidden="true" />
+          {{ t('common.reset') }}
+        </Button>
+      </template>
       <template #cell-created_at="{ row }">
-        <div class="flex flex-col">
+        <div class="flex flex-col leading-tight">
           <span class="text-fg">{{ formatRelativeTime(row.created_at) }}</span>
-          <span class="text-[10px] text-fg-muted font-mono">{{ formatDate(row.created_at) }}</span>
+          <span class="text-2xs text-fg-subtle font-mono">{{ formatDate(row.created_at) }}</span>
         </div>
       </template>
       <template #cell-action="{ row }">
         <Badge :tone="actionTone[row.action]">{{ t(`audit.actions.${row.action}`) }}</Badge>
+      </template>
+      <template #cell-entity="{ row }">
+        <span class="font-mono text-sm text-fg">{{ row.entity }}</span>
       </template>
       <template #cell-entity_id="{ row }">
         <span class="text-fg-muted">{{ row.entity_id ?? '—' }}</span>
@@ -204,31 +232,40 @@ function exportCsv() {
       size="xl"
       @close="selected = null"
     >
-      <div v-if="selected" class="space-y-4">
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div>
-            <p class="text-fg-muted">{{ t('audit.fields.when') }}</p>
-            <p class="text-fg font-mono">{{ formatDate(selected.created_at) }}</p>
-          </div>
-          <div>
-            <p class="text-fg-muted">{{ t('audit.fields.user') }}</p>
-            <p class="text-fg font-mono">#{{ selected.user_id ?? '—' }}</p>
-          </div>
-          <div>
-            <p class="text-fg-muted">{{ t('audit.fields.ip') }}</p>
-            <p class="text-fg font-mono break-all">{{ selected.ip_address || '—' }}</p>
-          </div>
-          <div>
-            <p class="text-fg-muted">{{ t('audit.fields.userAgent') }}</p>
-            <p class="text-fg text-[11px] break-all">{{ selected.user_agent || '—' }}</p>
-          </div>
-        </div>
-        <div>
-          <p class="text-xs font-medium text-fg-muted uppercase tracking-wide mb-2">
-            {{ t('audit.fields.changes') }}
-          </p>
+      <div v-if="selected" class="space-y-5">
+        <section>
+          <p class="nf-label mb-2">{{ t('audit.metaTitle') }}</p>
+          <dl
+            class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 p-3 rounded-lg bg-muted/60 border border-border"
+          >
+            <div class="min-w-0">
+              <dt class="text-xs text-fg-muted">{{ t('audit.fields.when') }}</dt>
+              <dd class="text-sm text-fg font-mono mt-0.5">
+                {{ formatDate(selected.created_at) }}
+              </dd>
+            </div>
+            <div class="min-w-0">
+              <dt class="text-xs text-fg-muted">{{ t('audit.fields.user') }}</dt>
+              <dd class="text-sm text-fg font-mono mt-0.5">#{{ selected.user_id ?? '—' }}</dd>
+            </div>
+            <div class="min-w-0">
+              <dt class="text-xs text-fg-muted">{{ t('audit.fields.ip') }}</dt>
+              <dd class="text-sm text-fg font-mono break-all mt-0.5">
+                {{ selected.ip_address || '—' }}
+              </dd>
+            </div>
+            <div class="min-w-0">
+              <dt class="text-xs text-fg-muted">{{ t('audit.fields.userAgent') }}</dt>
+              <dd class="text-2xs text-fg-muted break-all mt-0.5">
+                {{ selected.user_agent || '—' }}
+              </dd>
+            </div>
+          </dl>
+        </section>
+        <section>
+          <p class="nf-label mb-2">{{ t('audit.fields.changes') }}</p>
           <AuditDiff :changes="selected.changes" :action="selected.action" />
-        </div>
+        </section>
       </div>
     </Modal>
   </div>

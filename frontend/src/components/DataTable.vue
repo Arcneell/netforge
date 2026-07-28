@@ -83,12 +83,12 @@ const detailCols = computed<DataTableColumn[]>(() =>
     <div class="relative overflow-x-auto hidden md:block">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-border/70 dark:border-border/40">
+          <tr>
             <th
               v-for="col in columns"
               :key="col.key"
               :class="[
-                'px-5 py-3 text-[11px] font-semibold text-fg-muted uppercase tracking-wider',
+                'px-5 py-2.5 text-xs font-medium text-fg-muted border-b border-border',
                 alignClass(col.align),
                 col.hideOnSm ? 'hidden md:table-cell' : '',
               ]"
@@ -103,7 +103,7 @@ const detailCols = computed<DataTableColumn[]>(() =>
             <tr
               v-for="i in skeletonRows"
               :key="`sk-${i}`"
-              class="border-b border-border/50 dark:border-border/30 last:border-0"
+              class="border-b border-border last:border-0"
               :aria-busy="true"
             >
               <td
@@ -142,9 +142,9 @@ const detailCols = computed<DataTableColumn[]>(() =>
             v-else
             :key="row.id"
             :class="[
-              'border-b border-border/50 dark:border-border/30 last:border-0 transition-colors',
+              'border-b border-border last:border-0 transition-colors duration-150 ease-soft',
               clickable
-                ? 'group/row hover:bg-surface-hover/60 cursor-pointer focus-within:bg-surface-hover/60'
+                ? 'group/row hover:bg-surface-hover cursor-pointer focus-within:bg-surface-hover'
                 : '',
             ]"
             @click="clickable && $emit('row-click', row)"
@@ -201,7 +201,7 @@ const detailCols = computed<DataTableColumn[]>(() =>
           </template>
         </EmptyState>
       </div>
-      <ul v-else class="divide-y divide-border/50 dark:divide-border/30">
+      <ul v-else class="divide-y divide-border">
         <li
           v-for="row in rows"
           :key="row.id"

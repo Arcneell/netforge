@@ -1,5 +1,5 @@
 # Dependabot config — keeps the toolchain + image base layers + workflow
-# action SHAs current. Five ecosystems track separately so a Python
+# action SHAs current. Six ecosystems track separately so a Python
 # bump doesn't show up in a "frontend dependencies" PR.
 #
 # release.yml pins third-party actions to full commit SHAs (defence
@@ -90,6 +90,22 @@ updates:
       day: monday
     commit-message:
       prefix: deps(docker-frontend)
+    labels:
+      - dependencies
+      - docker
+
+  # ---------------- Docker Compose (root stack images) ----------------
+  # The two `docker` ecosystems above only see Dockerfiles. Images pulled
+  # directly by docker-compose.yml / docker-compose.dev.yml at the repo
+  # root (postgres:16-alpine, the node dev-frontend image) were covered by
+  # nothing and had never been bumped — this ecosystem tracks them.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: deps(compose)
     labels:
       - dependencies
       - docker

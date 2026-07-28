@@ -5,16 +5,20 @@ import { useI18n } from 'vue-i18n'
 import { List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import Pagination from '@/components/Pagination.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
+import Input from '@/components/ui/Input.vue'
+import Segmented from '@/components/ui/Segmented.vue'
+import Select from '@/components/ui/Select.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 import VlanBadge from '@/components/VlanBadge.vue'
-import SubnetEditor from '@/components/editors/SubnetEditor.vue'
 import SubnetTreeRow from '@/components/SubnetTreeRow.vue'
 import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { sitesApi, subnetsApi, vlansApi } from '@/api'
+import { fetchAllPages, sitesApi, subnetsApi, vlansApi } from '@/api'
 import type { Site, Subnet, Vlan } from '@/api'
 import type { SubnetTreeNode } from '@/api/endpoints/subnets'
 import { vrfsApi } from '@/api/endpoints/vrfs'
@@ -27,7 +31,7 @@ import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 const { t } = useI18n()
 const { isAdmin } = useAuth()
 const { success } = useToast()
-const { describe } = useApiErrorMessage()
+const { notify } = useApiErrorMessage()
 const router = useRouter()
 
 const items = ref<Subnet[]>([])
@@ -46,6 +50,12 @@ const vrfs = ref<Vrf[]>([])
 //   N (>0)    → show only the subnets in VRF N
 // The tree view re-uses the same filter; it always shows a single scope at
 // a time (global by default, or a specific VRF when picked).
+//
+// The dropdown always holds a concrete value, so "no filter" travels through
+// it as a sentinel. 0 is already spoken for (global scope) and every real id
+// is positive, which leaves -1 as the only free slot. It never escapes the
+// template: the change handlers map it straight back to `undefined`.
+const FILTER_ALL = -1
 const vrfFilter = ref<number | undefined>(undefined)
 const siteFilter = ref<number | undefined>(undefined)
 const vlanFilter = ref<number | undefined>(undefined)
@@ -62,8 +72,6 @@ const tree = ref<SubnetTreeNode[]>([])
 const treeLoading = ref(false)
 const collapsed = ref<Set<number>>(new Set())
 
-const editorOpen = ref(false)
-const editing = ref<Subnet | null>(null)
 const deleteTarget = ref<Subnet | null>(null)
 const deleting = ref(false)
 
@@ -115,20 +123,28 @@ async function loadTree() {
 }
 
 async function loadVlans() {
-  // VLANs feed two things: the badge lookup map for each subnet row AND
-  // the VLAN filter chip. Pull the same page once and share. Pagination
-  // is capped at 500 — anyone with more than that is multi-tenant and
-  // already paying for an enterprise filter UI (a future PR can switch
-  // the chip to an async-search combobox).
-  const res = await vlansApi.list({ page_size: 500 })
-  vlans.value = res.items
-  vlansById.value = new Map(res.items.map((v) => [v.id, v]))
+  // VLANs feed two things: the badge lookup map for each subnet row AND the
+  // VLAN filter chip. Pull the full list once and share it.
+  //
+  // The server hard-caps `page_size` at 200 (`PageParams`,
+  // backend/app/schemas/common.py) — asking for 500 returned 422 on every
+  // load, which left the VLAN filter permanently empty and every row's VLAN
+  // badge unresolved. `fetchAllPages` walks the pages so deployments past
+  // 200 VLANs still resolve every badge. Failure is non-fatal: the list
+  // still renders without VLAN context.
+  try {
+    const items = await fetchAllPages((p) => vlansApi.list(p))
+    vlans.value = items
+    vlansById.value = new Map(items.map((v) => [v.id, v]))
+  } catch {
+    vlans.value = []
+    vlansById.value = new Map()
+  }
 }
 
 async function loadSites() {
   try {
-    const res = await sitesApi.list({ page_size: 200 })
-    sites.value = res.items
+    sites.value = await fetchAllPages((p) => sitesApi.list(p))
   } catch {
     sites.value = []
   }
@@ -214,6 +230,48 @@ function switchView(mode: 'list' | 'tree') {
   }
 }
 
+const viewOptions = computed(() => [
+  { value: 'list' as const, label: t('subnet.viewList'), icon: List },
+  { value: 'tree' as const, label: t('subnet.viewTree'), icon: Network },
+])
+
+// Filter dropdowns. Computed so the labels re-render on a locale switch —
+// same reason `columns` below is computed.
+//
+// The first entry means "don't filter"; in tree view that is the global
+// scope, which is why its label changes with the view mode. The explicit
+// `0` row stays regardless: in list view it narrows to global-scope subnets
+// only, which is a different result from "every VRF".
+const vrfFilterOptions = computed(() => [
+  {
+    value: FILTER_ALL,
+    label: viewMode.value === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal'),
+  },
+  { value: 0, label: t('subnet.vrfFilterGlobal') },
+  ...vrfs.value.map((v) => ({ value: v.id, label: v.name })),
+])
+
+const siteFilterOptions = computed(() => [
+  { value: FILTER_ALL, label: t('subnet.allSites') },
+  ...sites.value.map((s) => ({ value: s.id, label: s.code })),
+])
+
+const vlanFilterOptions = computed(() => [
+  { value: FILTER_ALL, label: t('subnet.allVlans') },
+  ...vlans.value.map((v) => ({ value: v.id, label: `${v.vlan_id} — ${v.name}` })),
+])
+
+// The tree endpoint returns a nested structure rather than a page, so the
+// honest "how many am I looking at" number is the count of real subnets in
+// it — synthetic auto-group supernets have no DB row and aren't counted.
+function countRealNodes(nodes: SubnetTreeNode[]): number {
+  return nodes.reduce((n, node) => n + (node.synthetic ? 0 : 1) + countRealNodes(node.children), 0)
+}
+
+const resultCount = computed(() =>
+  viewMode.value === 'tree' ? countRealNodes(tree.value) : total.value,
+)
+
 function toggleNode(id: number) {
   if (collapsed.value.has(id)) collapsed.value.delete(id)
   else collapsed.value.add(id)
@@ -232,14 +290,13 @@ onMounted(() => {
   loadSites()
 })
 
+// Create and edit are full pages, not modals — see components/FormPage.vue.
 function onNew() {
-  editing.value = null
-  editorOpen.value = true
+  router.push({ name: 'subnet-new' })
 }
 
 function onEdit(s: Subnet) {
-  editing.value = s
-  editorOpen.value = true
+  router.push({ name: 'subnet-edit', params: { id: s.id } })
 }
 
 function onRowClick(s: Subnet) {
@@ -255,7 +312,7 @@ async function confirmDelete() {
     deleteTarget.value = null
     load()
   } catch (err) {
-    void describe(err)
+    notify(err)
   } finally {
     deleting.value = false
   }
@@ -266,7 +323,7 @@ async function confirmDelete() {
 // frozen at the language active when the component mounted. Matches
 // the pattern PortTable.vue already uses correctly.
 const columns = computed<DataTableColumn[]>(() => [
-  { key: 'cidr', label: t('subnet.fields.cidr'), cellClass: 'font-mono' },
+  { key: 'cidr', label: t('subnet.fields.cidr') },
   { key: 'vlan_id', label: t('subnet.fields.vlan'), cellClass: 'w-40' },
   { key: 'gateway', label: t('subnet.fields.gateway'), hideOnSm: true, cellClass: 'font-mono' },
   { key: 'description', label: t('subnet.fields.description'), hideOnSm: true },
@@ -276,7 +333,7 @@ const columns = computed<DataTableColumn[]>(() => [
 </script>
 
 <template>
-  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('subnet.labelPlural')" :subtitle="t('subnet.subtitle')">
       <template #help>
         <HelpTooltip :text="t('subnet.pageHelp')" placement="bottom" />
@@ -289,69 +346,29 @@ const columns = computed<DataTableColumn[]>(() => [
       </template>
     </PageHeader>
 
-    <!-- Toolbar — one row on desktop, wraps gracefully on mobile. Order
-         left-to-right is the daily-use frequency: view toggle (rare
-         flip), then search (primary affordance), then the scope chips
-         that drill down further. The "Clear filters" link only shows
-         once any filter is active so the bar stays calm by default. -->
-    <div class="flex flex-wrap items-center gap-2 mb-4">
-      <div
-        class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface h-9"
-        role="tablist"
-      >
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="viewMode === 'list'"
-          :class="[
-            'px-3 h-full rounded text-sm font-medium transition inline-flex items-center gap-1.5',
-            viewMode === 'list'
-              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-              : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-          ]"
-          @click="switchView('list')"
-        >
-          <List class="w-3.5 h-3.5" aria-hidden="true" />
-          {{ t('subnet.viewList') }}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="viewMode === 'tree'"
-          :class="[
-            'px-3 h-full rounded text-sm font-medium transition inline-flex items-center gap-1.5',
-            viewMode === 'tree'
-              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-              : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-          ]"
-          @click="switchView('tree')"
-        >
-          <Network class="w-3.5 h-3.5" aria-hidden="true" />
-          {{ t('subnet.viewTree') }}
-        </button>
-      </div>
-
-      <!-- Search input — debounced, takes the remaining row width so it's
-           the obvious primary affordance. Uses the shared `nf-input`
-           styling for visual consistency with the rest of the editors. -->
+    <!-- Toolbar — the same shape on every list page: search first, then the
+         scope filters, then the result count and the view switch pushed to
+         the right. "Clear filters" only appears once something is filtering
+         so the bar stays calm by default. -->
+    <div class="nf-toolbar">
       <div class="relative flex-1 min-w-[14rem] max-w-sm">
         <Search
-          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-muted pointer-events-none z-10"
+          class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle pointer-events-none z-10"
           aria-hidden="true"
         />
-        <input
+        <Input
           v-model="searchInput"
           type="search"
           :placeholder="t('subnet.searchPlaceholder')"
           :aria-label="t('subnet.searchPlaceholder')"
-          class="nf-input nf-input-control pl-9 pr-9"
+          class="pl-9 pr-9"
           autocomplete="off"
           spellcheck="false"
         />
         <button
           v-if="searchInput"
           type="button"
-          class="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-fg-muted hover:bg-surface-hover hover:text-fg"
+          class="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-fg-muted hover:bg-surface-hover hover:text-fg transition-colors duration-150 ease-soft"
           :aria-label="t('common.reset')"
           @click="searchInput = ''"
         >
@@ -359,75 +376,79 @@ const columns = computed<DataTableColumn[]>(() => [
         </button>
       </div>
 
-      <!-- Scope chips. Native <select> with the shared input styling so
-           the visual weight matches the search bar. Each chip is hidden
-           when there's nothing to pick from (single-site / no-VLAN
-           deployments) instead of rendering an empty dropdown. -->
-      <select
-        :value="vrfFilter === undefined ? '' : String(vrfFilter)"
-        class="nf-input nf-input-control w-auto min-w-[8rem] cursor-pointer"
-        :aria-label="t('subnet.vrfFilter')"
-        @change="
-          (e) => {
-            const v = (e.target as HTMLSelectElement).value
-            onVrfFilterChange(v === '' ? undefined : Number(v))
-          }
-        "
-      >
-        <option value="">
-          {{ viewMode === 'list' ? t('subnet.vrfFilterAll') : t('subnet.vrfFilterGlobal') }}
-        </option>
-        <option value="0">{{ t('subnet.vrfFilterGlobal') }}</option>
-        <option v-for="v in vrfs" :key="v.id" :value="v.id">{{ v.name }}</option>
-      </select>
+      <!-- Scope filters. Each one is hidden when there's nothing to pick
+           from (single-site / no-VLAN deployments) instead of rendering an
+           empty dropdown. -->
+      <div class="min-w-[9rem]">
+        <Select
+          :model-value="vrfFilter ?? FILTER_ALL"
+          :options="vrfFilterOptions"
+          :aria-label="t('subnet.vrfFilter')"
+          @update:model-value="(v) => onVrfFilterChange(v === FILTER_ALL ? undefined : v)"
+        />
+      </div>
 
-      <select
-        v-if="sites.length > 0"
-        :value="siteFilter === undefined ? '' : String(siteFilter)"
-        class="nf-input nf-input-control w-auto min-w-[8rem] cursor-pointer"
-        :aria-label="t('subnet.fields.site')"
-        @change="
-          (e) => {
-            const v = (e.target as HTMLSelectElement).value
-            onSiteFilterChange(v === '' ? undefined : Number(v))
-          }
-        "
-      >
-        <option value="">{{ t('subnet.allSites') }}</option>
-        <option v-for="s in sites" :key="s.id" :value="s.id">{{ s.code }}</option>
-      </select>
+      <div v-if="sites.length > 0" class="min-w-[9rem]">
+        <Select
+          :model-value="siteFilter ?? FILTER_ALL"
+          :options="siteFilterOptions"
+          :aria-label="t('subnet.fields.site')"
+          @update:model-value="(v) => onSiteFilterChange(v === FILTER_ALL ? undefined : v)"
+        />
+      </div>
 
-      <select
-        v-if="vlans.length > 0"
-        :value="vlanFilter === undefined ? '' : String(vlanFilter)"
-        class="nf-input nf-input-control w-auto min-w-[8rem] cursor-pointer"
-        :aria-label="t('subnet.fields.vlan')"
-        @change="
-          (e) => {
-            const v = (e.target as HTMLSelectElement).value
-            onVlanFilterChange(v === '' ? undefined : Number(v))
-          }
-        "
-      >
-        <option value="">{{ t('subnet.allVlans') }}</option>
-        <option v-for="v in vlans" :key="v.id" :value="v.id">{{ v.vlan_id }} — {{ v.name }}</option>
-      </select>
+      <div v-if="vlans.length > 0" class="min-w-[9rem]">
+        <Select
+          :model-value="vlanFilter ?? FILTER_ALL"
+          :options="vlanFilterOptions"
+          :aria-label="t('subnet.fields.vlan')"
+          @update:model-value="(v) => onVlanFilterChange(v === FILTER_ALL ? undefined : v)"
+        />
+      </div>
 
       <Button v-if="hasActiveFilters" variant="ghost" size="sm" @click="clearFilters">
         <X class="w-3.5 h-3.5" aria-hidden="true" />
-        {{ t('subnet.clearFilters') }}
+        {{ t('common.clearFilters') }}
       </Button>
+
+      <div class="ml-auto flex items-center gap-3">
+        <span class="text-sm text-fg-muted tabular-nums whitespace-nowrap" aria-live="polite">
+          {{ t('common.resultCount', resultCount) }}
+        </span>
+        <Segmented
+          :model-value="viewMode"
+          :options="viewOptions"
+          :aria-label="t('subnet.labelPlural')"
+          @update:model-value="switchView"
+        />
+      </div>
     </div>
 
     <!-- Tree view. Read-only hierarchical view — `parent_subnet_id` is
          editable from the subnet form, not by dragging rows. -->
     <div v-if="viewMode === 'tree'" class="nf-card overflow-hidden">
-      <div v-if="treeLoading" class="p-6 text-center text-fg-muted text-sm">
-        {{ t('common.loading') }}
+      <div v-if="treeLoading" class="divide-y divide-border/50">
+        <div v-for="i in 6" :key="`sk-tree-${i}`" class="px-4 py-3.5" :aria-busy="true">
+          <Skeleton :width="`${70 - i * 6}%`" height="0.875rem" rounded="sm" />
+        </div>
       </div>
-      <div v-else-if="tree.length === 0" class="p-6 text-center text-fg-muted text-sm">
-        {{ t('subnet.treeEmpty') }}
-      </div>
+      <EmptyState
+        v-else-if="tree.length === 0"
+        :icon="Network"
+        :title="hasActiveFilters ? t('common.noMatch.title') : t('common.empty.title')"
+        :description="hasActiveFilters ? t('common.noMatch.description') : t('subnet.treeEmpty')"
+      >
+        <template #action>
+          <Button v-if="hasActiveFilters" variant="secondary" @click="clearFilters">
+            <X class="w-4 h-4" aria-hidden="true" />
+            {{ t('common.clearFilters') }}
+          </Button>
+          <Button v-else-if="isAdmin" variant="primary" @click="onNew">
+            <Plus class="w-4 h-4" aria-hidden="true" />
+            {{ t('subnet.new') }}
+          </Button>
+        </template>
+      </EmptyState>
       <ul v-else class="divide-y divide-border/50">
         <SubnetTreeRow
           v-for="(node, idx) in tree"
@@ -448,13 +469,17 @@ const columns = computed<DataTableColumn[]>(() => [
       :columns="columns"
       :rows="items"
       :loading="loading"
-      :empty-title="t('subnet.labelPlural')"
-      :empty-description="t('subnet.empty')"
+      :empty-title="hasActiveFilters ? t('common.noMatch.title') : t('common.empty.title')"
+      :empty-description="hasActiveFilters ? t('common.noMatch.description') : t('subnet.empty')"
       clickable
       @row-click="onRowClick"
     >
-      <template v-if="isAdmin" #empty-action>
-        <Button variant="primary" @click="onNew">
+      <template #empty-action>
+        <Button v-if="hasActiveFilters" variant="secondary" @click="clearFilters">
+          <X class="w-4 h-4" aria-hidden="true" />
+          {{ t('common.clearFilters') }}
+        </Button>
+        <Button v-else-if="isAdmin" variant="primary" @click="onNew">
           <Plus class="w-4 h-4" aria-hidden="true" />
           {{ t('subnet.new') }}
         </Button>
@@ -466,8 +491,17 @@ const columns = computed<DataTableColumn[]>(() => [
         />
         <Badge v-else tone="muted">—</Badge>
       </template>
+      <!-- The CIDR is the thing you click: it carries the row's identity and
+           picks up the accent on row hover so the target is unambiguous. -->
+      <template #cell-cidr="{ row }">
+        <span
+          class="font-mono text-base font-medium text-fg group-hover/row:text-primary-600 dark:group-hover/row:text-primary-400 transition-colors duration-150 ease-soft"
+        >
+          {{ row.cidr }}
+        </span>
+      </template>
       <template #cell-gateway="{ row }">
-        <span class="text-fg-muted">{{ row.gateway || '—' }}</span>
+        <span class="font-mono text-fg-muted">{{ row.gateway || '—' }}</span>
       </template>
       <template #cell-description="{ row }">
         <span class="text-fg-muted">{{ row.description || '—' }}</span>
@@ -518,7 +552,6 @@ const columns = computed<DataTableColumn[]>(() => [
       </template>
     </DataTable>
 
-    <SubnetEditor :open="editorOpen" :subnet="editing" @close="editorOpen = false" @saved="load" />
     <ConfirmDialog
       :open="!!deleteTarget"
       :title="t('common.confirmDelete.title', { label: deleteTarget?.cidr ?? '' })"

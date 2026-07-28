@@ -6,12 +6,14 @@ const router = useRouter()
 </script>
 
 <template>
-  <div class="min-h-[60vh] flex items-center justify-center px-4">
-    <div class="text-center max-w-md">
-      <p class="text-7xl font-bold text-primary-600 dark:text-primary-3000">404</p>
-      <h1 class="mt-3 text-xl font-semibold">{{ $t('errors.notFoundTitle') }}</h1>
-      <p class="mt-2 text-sm text-fg-muted">{{ $t('errors.notFoundBody') }}</p>
-      <div class="mt-6">
+  <div class="min-h-[70vh] flex items-center justify-center px-4">
+    <div class="text-center max-w-md nf-enter">
+      <p class="text-sm font-medium text-primary-600 dark:text-primary-400 tabular-nums">404</p>
+      <h1 class="mt-2 text-2xl font-semibold tracking-[-0.02em]">
+        {{ $t('errors.notFoundTitle') }}
+      </h1>
+      <p class="mt-2 text-base text-fg-muted">{{ $t('errors.notFoundBody') }}</p>
+      <div class="mt-7">
         <Button variant="primary" @click="router.replace('/')">{{ $t('common.back') }}</Button>
       </div>
     </div>

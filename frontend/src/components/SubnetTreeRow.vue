@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDown, ChevronRight, FolderTree, Network } from 'lucide-vue-next'
 import VlanBadge from '@/components/VlanBadge.vue'
+import Badge from '@/components/ui/Badge.vue'
 import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import type { SubnetTreeNode } from '@/api/endpoints/subnets'
 import type { Vlan } from '@/api'
@@ -70,9 +71,10 @@ const childAncestorOpen = computed<boolean[]>(() =>
   <li>
     <div
       :class="[
-        'relative group flex items-center min-h-[2.25rem] transition-colors',
+        'relative group flex items-center min-h-[2.25rem] rounded-md',
+        'transition-colors duration-150 ease-soft',
         isSynthetic
-          ? 'cursor-default bg-muted/30 hover:bg-muted/40'
+          ? 'cursor-default bg-muted/30 hover:bg-muted/50'
           : 'cursor-pointer hover:bg-surface-hover',
       ]"
       :style="{ paddingLeft: `${depth * INDENT_REM + 0.75}rem` }"
@@ -118,7 +120,7 @@ const childAncestorOpen = computed<boolean[]>(() =>
       <button
         v-if="hasChildren"
         type="button"
-        class="relative z-10 w-5 h-5 flex items-center justify-center rounded bg-surface border border-border text-fg-muted hover:bg-surface-hover flex-shrink-0"
+        class="relative z-10 w-5 h-5 flex items-center justify-center rounded bg-surface border border-border text-fg-muted hover:text-fg hover:border-border-strong hover:bg-surface-hover transition-colors duration-150 ease-soft flex-shrink-0"
         :aria-label="isCollapsed ? 'Expand' : 'Collapse'"
         :aria-expanded="!isCollapsed"
         @click.stop="emit('toggle', node.id)"
@@ -128,7 +130,7 @@ const childAncestorOpen = computed<boolean[]>(() =>
       </button>
       <span
         v-else
-        class="relative z-10 w-5 h-5 inline-flex items-center justify-center text-fg-muted flex-shrink-0 bg-surface rounded"
+        class="relative z-10 w-5 h-5 inline-flex items-center justify-center text-fg-subtle flex-shrink-0 bg-surface rounded"
       >
         <FolderTree v-if="isSynthetic" class="w-3 h-3" aria-hidden="true" />
         <Network v-else class="w-3 h-3" aria-hidden="true" />
@@ -137,19 +139,16 @@ const childAncestorOpen = computed<boolean[]>(() =>
       <div class="flex items-center gap-2 px-2 py-1.5 min-w-0 flex-1">
         <span
           :class="[
-            'font-mono text-sm truncate',
-            isSynthetic ? 'font-semibold italic text-fg-muted' : 'font-medium',
+            'font-mono text-base truncate',
+            isSynthetic ? 'italic text-fg-muted' : 'font-medium text-fg',
           ]"
         >
           {{ node.cidr }}
         </span>
 
-        <span
-          v-if="isSynthetic"
-          class="text-[10px] uppercase tracking-wider text-fg-muted bg-muted px-1.5 py-px rounded font-semibold flex-shrink-0"
-        >
+        <Badge v-if="isSynthetic" tone="neutral" class="flex-shrink-0">
           {{ t('subnet.tree.autoGroup') }}
-        </span>
+        </Badge>
 
         <VlanBadge v-if="vlan && !isSynthetic" :vlan="vlan" class="flex-shrink-0" />
 
@@ -162,7 +161,7 @@ const childAncestorOpen = computed<boolean[]>(() =>
 
         <span
           v-if="node.description && !isSynthetic"
-          class="text-xs text-fg-muted truncate hidden lg:inline"
+          class="text-xs text-fg-subtle truncate hidden lg:inline"
         >
           — {{ node.description }}
         </span>
@@ -174,9 +173,10 @@ const childAncestorOpen = computed<boolean[]>(() =>
             :usable="node.usable"
             class="hidden sm:inline-flex"
           />
-          <span
+          <Badge
             v-if="hasChildren"
-            class="text-[11px] text-fg-muted tabular-nums px-1.5 rounded bg-muted"
+            tone="neutral"
+            monospace
             :title="
               isSynthetic
                 ? t('subnet.tree.containedCount', { n: node.children.length })
@@ -184,7 +184,7 @@ const childAncestorOpen = computed<boolean[]>(() =>
             "
           >
             {{ node.children.length }}
-          </span>
+          </Badge>
         </span>
       </div>
     </div>

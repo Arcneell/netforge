@@ -20,6 +20,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
+import Segmented from '@/components/ui/Segmented.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import {
@@ -74,11 +75,11 @@ function exportPdf() {
   window.open('/api/ai/insights/export.pdf', '_blank', 'noopener')
 }
 
-function selectTab(t: 'advisor' | 'integrity') {
-  tab.value = t
+function selectTab(next: 'advisor' | 'integrity') {
+  tab.value = next
   // Lazy-load integrity on first visit — the deterministic check is cheap,
   // but avoids running it for users who only ever look at the LLM advisor.
-  if (t === 'integrity' && !integrityLoaded.value) {
+  if (next === 'integrity' && !integrityLoaded.value) {
     loadIntegrity()
   }
 }
@@ -149,23 +150,68 @@ const stale = computed(() => {
 
 onMounted(loadAll)
 
+const SEVERITY_ORDER = ['critical', 'warning', 'info'] as const
+
+/**
+ * Advisor insights and integrity issues carry the same shape once you strip
+ * the persistence fields, and they render identically. Normalising them into
+ * one view model means a single card template instead of two that drift.
+ */
+interface Finding {
+  key: string
+  severity: InsightSeverity
+  category: InsightCategory
+  title: string
+  description: string
+  recommendation: string
+  entities: InsightEntityRef[]
+  streak: number
+}
+
+const findings = computed<Finding[]>(() => {
+  if (tab.value === 'integrity') {
+    return integrityIssues.value.map((iss, idx) => ({
+      key: `integrity-${idx}`,
+      severity: iss.severity,
+      category: iss.category,
+      title: iss.title,
+      description: iss.description,
+      recommendation: iss.recommendation,
+      entities: iss.affected_entities ?? [],
+      streak: 0,
+    }))
+  }
+  return insights.value.map((ins) => ({
+    key: `insight-${ins.id}`,
+    severity: ins.severity,
+    category: ins.category,
+    title: ins.title,
+    description: ins.description,
+    recommendation: ins.recommendation,
+    entities: ins.affected_entities ?? [],
+    streak: ins.streak_count ?? 0,
+  }))
+})
+
 const grouped = computed(() => {
-  const buckets: Record<InsightSeverity, Insight[]> = {
-    critical: [],
-    warning: [],
-    info: [],
-  }
-  for (const i of insights.value) {
-    buckets[i.severity]?.push(i)
-  }
+  const buckets: Record<InsightSeverity, Finding[]> = { critical: [], warning: [], info: [] }
+  for (const f of findings.value) buckets[f.severity]?.push(f)
   return buckets
 })
+
+/** Only the severities that actually have findings, worst first. */
+const visibleGroups = computed(() =>
+  SEVERITY_ORDER.filter((s) => grouped.value[s].length).map((s) => ({
+    severity: s,
+    items: grouped.value[s],
+  })),
+)
 
 const counts = computed(() => ({
   critical: grouped.value.critical.length,
   warning: grouped.value.warning.length,
   info: grouped.value.info.length,
-  total: insights.value.length,
+  total: findings.value.length,
 }))
 
 const severityIcon = {
@@ -178,6 +224,20 @@ const severityTone: Record<InsightSeverity, 'danger' | 'warning' | 'primary'> = 
   critical: 'danger',
   warning: 'warning',
   info: 'primary',
+}
+
+/** Text colour per severity — the only colour spent on the findings list. */
+const severityText: Record<InsightSeverity, string> = {
+  critical: 'text-danger',
+  warning: 'text-warning',
+  info: 'text-primary-600 dark:text-primary-400',
+}
+
+/** Matching hairline used as the card's left rail. */
+const severityRail: Record<InsightSeverity, string> = {
+  critical: 'border-l-danger',
+  warning: 'border-l-warning',
+  info: 'border-l-primary-500',
 }
 
 const categoryLabelKey: Record<InsightCategory, string> = {
@@ -193,6 +253,29 @@ const categoryLabelKey: Record<InsightCategory, string> = {
 function severityLabel(s: InsightSeverity): string {
   return t(`ai.advisor.severity.${s}`)
 }
+
+const tabOptions = computed(() => [
+  { value: 'advisor' as const, label: t('ai.advisor.tab'), icon: Sparkles },
+  { value: 'integrity' as const, label: t('ai.integrity.tab'), icon: ShieldCheck },
+])
+
+/** The compact severity strip that replaced four full-height stat cards. */
+const summary = computed(() =>
+  SEVERITY_ORDER.map((s) => ({
+    severity: s,
+    label: severityLabel(s),
+    count: counts.value[s],
+  })),
+)
+
+/**
+ * Shown once there is something to summarise. A row of zeroes next to the
+ * "nothing found" empty state would be noise.
+ */
+const hasSummary = computed(() => {
+  if (counts.value.total === 0) return false
+  return tab.value === 'advisor' ? !loading.value && runId.value !== null : integrityLoaded.value
+})
 
 const entityIcon: Record<string, typeof Server> = {
   switch: RouterIcon,
@@ -223,7 +306,7 @@ function entityLabel(e: InsightEntityRef): string {
 </script>
 
 <template>
-  <div class="p-4 sm:p-8 max-w-7xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('nav.insights')" :subtitle="t('ai.advisor.subtitle')">
       <template #help>
         <HelpTooltip
@@ -244,7 +327,6 @@ function entityLabel(e: InsightEntityRef): string {
         <Button
           v-if="tab === 'advisor' && status?.enabled"
           variant="primary"
-          shape="pill"
           :loading="refreshing"
           @click="refresh"
         >
@@ -255,7 +337,6 @@ function entityLabel(e: InsightEntityRef): string {
           v-if="tab === 'integrity'"
           variant="ghost"
           size="sm"
-          shape="pill"
           :loading="integrityLoading"
           @click="loadIntegrity"
         >
@@ -265,176 +346,194 @@ function entityLabel(e: InsightEntityRef): string {
       </template>
     </PageHeader>
 
-    <!-- Tabs — switch between LLM advisor and deterministic integrity checks. -->
-    <div
-      class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface mb-4"
-      role="tablist"
-    >
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="tab === 'advisor'"
-        :class="[
-          'px-3 h-8 rounded text-sm font-medium transition flex items-center gap-1.5',
-          tab === 'advisor'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-        ]"
-        @click="selectTab('advisor')"
-      >
-        <Sparkles class="w-3.5 h-3.5" aria-hidden="true" />
-        {{ t('ai.advisor.tab') }}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="tab === 'integrity'"
-        :class="[
-          'px-3 h-8 rounded text-sm font-medium transition flex items-center gap-1.5',
-          tab === 'integrity'
-            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-            : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-        ]"
-        @click="selectTab('integrity')"
-      >
-        <ShieldCheck class="w-3.5 h-3.5" aria-hidden="true" />
-        {{ t('ai.integrity.tab') }}
-      </button>
-    </div>
-
-    <!-- ============================== ADVISOR TAB ============================== -->
-    <div v-if="tab === 'advisor'">
-      <!-- Run freshness banner — surfaces the age of the latest run and nudges
-         the operator to re-run when older than a week. -->
+    <!-- Source switch: the LLM advisor vs. the deterministic integrity pass.
+         Same control as everywhere else in the app. -->
+    <div class="nf-toolbar">
+      <Segmented
+        :model-value="tab"
+        :options="tabOptions"
+        :aria-label="t('nav.insights')"
+        @update:model-value="selectTab"
+      />
       <p
-        v-if="!loading && runCreatedAt"
-        class="text-xs text-fg-muted -mt-2 mb-6 flex items-center gap-2"
-        :class="{ 'text-warning': stale }"
+        v-if="tab === 'advisor' && !loading && runCreatedAt"
+        class="text-xs flex items-center gap-1.5"
+        :class="stale ? 'text-warning' : 'text-fg-muted'"
       >
-        <RefreshCw class="w-3 h-3" aria-hidden="true" />
+        <RefreshCw class="w-3 h-3 flex-shrink-0" aria-hidden="true" />
         <span>{{ t('ai.advisor.runAge', { age: ageLabel(runCreatedAt) }) }}</span>
         <span v-if="stale" class="font-medium">· {{ t('ai.advisor.staleHint') }}</span>
       </p>
+      <p v-else-if="tab === 'integrity'" class="text-xs text-fg-muted">
+        {{ t('ai.integrity.description') }}
+      </p>
+    </div>
 
-      <!-- Stat strip — same iOS Today-widget feel as Dashboard -->
-      <section v-if="!loading && runId !== null" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-        <div class="nf-card p-4">
-          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('ai.advisor.severity.critical') }}
-          </p>
-          <p class="text-3xl font-semibold tabular-nums text-danger mt-1">{{ counts.critical }}</p>
-        </div>
-        <div class="nf-card p-4">
-          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('ai.advisor.severity.warning') }}
-          </p>
-          <p class="text-3xl font-semibold tabular-nums text-warning mt-1">{{ counts.warning }}</p>
-        </div>
-        <div class="nf-card p-4">
-          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('ai.advisor.severity.info') }}
-          </p>
-          <p class="text-3xl font-semibold tabular-nums text-primary-600 mt-1">{{ counts.info }}</p>
-        </div>
-        <div class="nf-card p-4">
-          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
-            {{ t('ai.advisor.total') }}
-          </p>
-          <p class="text-3xl font-semibold tabular-nums text-fg mt-1">{{ counts.total }}</p>
-        </div>
-      </section>
+    <!-- Compact severity strip. The findings below are the page; this is a
+         one-line read of how bad it is, not four hero numbers. -->
+    <section
+      v-if="hasSummary"
+      class="nf-card px-4 py-3 mb-6 flex flex-wrap items-center gap-x-7 gap-y-3"
+      :aria-label="t('ai.advisor.summaryLabel')"
+    >
+      <div v-for="s in summary" :key="s.severity" class="flex items-center gap-2">
+        <component
+          :is="severityIcon[s.severity]"
+          class="w-4 h-4 flex-shrink-0"
+          :class="severityText[s.severity]"
+          :stroke-width="1.9"
+          aria-hidden="true"
+        />
+        <span
+          class="text-lg font-semibold tabular-nums leading-none"
+          :class="severityText[s.severity]"
+        >
+          {{ s.count }}
+        </span>
+        <span class="text-sm text-fg-muted">{{ s.label }}</span>
+      </div>
+      <div class="sm:ml-auto flex items-center gap-2">
+        <span class="text-lg font-semibold tabular-nums leading-none text-fg">
+          {{ counts.total }}
+        </span>
+        <span class="text-sm text-fg-muted">{{ t('ai.advisor.total') }}</span>
+      </div>
+    </section>
 
-      <!-- Loading -->
-      <div v-if="loading" class="space-y-3" aria-busy="true">
-        <div v-for="i in 3" :key="i" class="nf-card p-5 space-y-2">
-          <Skeleton width="40%" height="1rem" />
+    <!-- ============================== FINDINGS ============================== -->
+    <section>
+      <!-- Loading (advisor first paint, or integrity's first pass) -->
+      <div
+        v-if="tab === 'advisor' ? loading : integrityLoading && !integrityIssues.length"
+        class="space-y-3"
+        aria-busy="true"
+      >
+        <div v-for="i in 3" :key="i" class="nf-card p-5 space-y-2.5">
+          <Skeleton width="30%" height="1rem" />
           <Skeleton width="80%" height="0.75rem" />
           <Skeleton width="60%" height="0.75rem" />
         </div>
       </div>
 
-      <!-- Empty: never run -->
+      <!-- Advisor never run -->
       <EmptyState
-        v-else-if="runId === null"
+        v-else-if="tab === 'advisor' && runId === null"
         :icon="Sparkles"
         :title="t('ai.advisor.emptyTitle')"
-        :description="t('ai.advisor.emptyDescription')"
+        :description="
+          status?.enabled ? t('ai.advisor.emptyDescription') : t('ai.advisor.disabledDescription')
+        "
       >
         <template v-if="status?.enabled" #action>
-          <Button variant="primary" shape="pill" :loading="refreshing" @click="refresh">
+          <Button variant="primary" :loading="refreshing" @click="refresh">
             <RefreshCw class="w-4 h-4" aria-hidden="true" />
             {{ t('ai.advisor.runFirst') }}
           </Button>
         </template>
       </EmptyState>
 
-      <!-- Empty: clean infra (no insights returned) -->
+      <!-- Advisor ran, nothing to report -->
       <EmptyState
-        v-else-if="counts.total === 0"
+        v-else-if="tab === 'advisor' && counts.total === 0"
         :icon="Lightbulb"
         :title="t('ai.advisor.cleanTitle')"
         :description="t('ai.advisor.cleanDescription')"
+      >
+        <template v-if="status?.enabled" #action>
+          <Button variant="secondary" :loading="refreshing" @click="refresh">
+            <RefreshCw class="w-4 h-4" aria-hidden="true" />
+            {{ t('ai.advisor.refresh') }}
+          </Button>
+        </template>
+      </EmptyState>
+
+      <!-- Integrity clean -->
+      <EmptyState
+        v-else-if="tab === 'integrity' && integrityLoaded && counts.total === 0"
+        :icon="ShieldCheck"
+        :title="t('ai.integrity.cleanTitle')"
+        :description="t('ai.integrity.cleanDescription')"
       />
 
-      <!-- Insight list grouped by severity -->
-      <template v-else>
-        <section
-          v-for="severity in ['critical', 'warning', 'info'] as InsightSeverity[]"
-          :key="severity"
-        >
-          <div v-if="grouped[severity].length" class="mb-8">
-            <h2 class="text-xl font-semibold tracking-tight mb-3 flex items-center gap-2">
-              <component
-                :is="severityIcon[severity]"
-                class="w-5 h-5"
-                :class="{
-                  'text-danger': severity === 'critical',
-                  'text-warning': severity === 'warning',
-                  'text-primary-600': severity === 'info',
-                }"
-                aria-hidden="true"
-              />
-              {{ severityLabel(severity) }}
-              <span class="text-sm font-normal text-fg-muted tabular-nums">
-                · {{ grouped[severity].length }}
-              </span>
-            </h2>
-            <ul class="space-y-3">
-              <li v-for="ins in grouped[severity]" :key="ins.id" class="nf-card p-5">
-                <div class="flex items-start justify-between gap-3 flex-wrap mb-2">
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <Badge :tone="severityTone[ins.severity]">
-                        {{ severityLabel(ins.severity) }}
-                      </Badge>
-                      <Badge tone="muted">{{ t(categoryLabelKey[ins.category] ?? '') }}</Badge>
-                      <Badge
-                        v-if="ins.streak_count && ins.streak_count >= 2"
-                        tone="danger"
-                        :title="t('ai.advisor.streakTooltip', { n: ins.streak_count })"
-                      >
-                        {{ t('ai.advisor.recurringBadge', { n: ins.streak_count }) }}
-                      </Badge>
-                    </div>
-                    <h3 class="text-base font-semibold tracking-tight mt-2">{{ ins.title }}</h3>
-                  </div>
-                </div>
-                <p class="text-sm text-fg-muted leading-relaxed mt-1">{{ ins.description }}</p>
-                <p
-                  v-if="ins.recommendation"
-                  class="text-sm text-fg mt-3 p-3 rounded-lg bg-muted/60 border-l-2 border-primary-500"
+      <!-- Integrity not started yet (load failed, or the lazy fetch is queued) -->
+      <EmptyState
+        v-else-if="tab === 'integrity' && !integrityLoaded"
+        :icon="ShieldCheck"
+        :title="t('ai.integrity.tab')"
+        :description="t('ai.integrity.notRunDescription')"
+      >
+        <template #action>
+          <Button variant="primary" :loading="integrityLoading" @click="loadIntegrity">
+            <RefreshCw class="w-4 h-4" aria-hidden="true" />
+            {{ t('ai.integrity.run') }}
+          </Button>
+        </template>
+      </EmptyState>
+
+      <!-- The list. Grouped by severity, worst first. -->
+      <div v-else class="space-y-8">
+        <div v-for="group in visibleGroups" :key="group.severity">
+          <h2 class="nf-section-title flex items-center gap-2 mb-3">
+            <component
+              :is="severityIcon[group.severity]"
+              class="w-4 h-4 flex-shrink-0"
+              :class="severityText[group.severity]"
+              :stroke-width="1.9"
+              aria-hidden="true"
+            />
+            {{ severityLabel(group.severity) }}
+            <span class="text-sm font-normal text-fg-subtle tabular-nums">
+              {{ group.items.length }}
+            </span>
+          </h2>
+
+          <ul class="space-y-3">
+            <li
+              v-for="f in group.items"
+              :key="f.key"
+              class="nf-card border-l-[3px] p-5"
+              :class="severityRail[f.severity]"
+            >
+              <!-- 1. What kind of problem this is -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <Badge :tone="severityTone[f.severity]">{{ severityLabel(f.severity) }}</Badge>
+                <Badge tone="muted">{{ t(categoryLabelKey[f.category] ?? '') }}</Badge>
+                <Badge
+                  v-if="f.streak >= 2"
+                  tone="danger"
+                  :title="t('ai.advisor.streakTooltip', { n: f.streak })"
                 >
-                  <span class="font-medium text-primary-700 dark:text-primary-300 mr-1">
-                    {{ t('ai.advisor.recommendation') }}:
-                  </span>
-                  {{ ins.recommendation }}
+                  {{ t('ai.advisor.recurringBadge', { n: f.streak }) }}
+                </Badge>
+              </div>
+
+              <!-- 2. The finding itself -->
+              <h3 class="text-md font-semibold text-fg tracking-[-0.01em] mt-2.5">
+                {{ f.title }}
+              </h3>
+              <p class="text-base text-fg-muted leading-relaxed mt-1 max-w-[80ch]">
+                {{ f.description }}
+              </p>
+
+              <!-- 3. What to do about it -->
+              <div
+                v-if="f.recommendation"
+                class="mt-3.5 rounded-md bg-muted/60 border border-border px-3.5 py-3"
+              >
+                <p class="nf-label uppercase tracking-wide">
+                  {{ t('ai.advisor.recommendation') }}
                 </p>
-                <div
-                  v-if="ins.affected_entities && ins.affected_entities.length"
-                  class="mt-3 flex flex-wrap gap-1.5"
-                >
+                <p class="text-base text-fg leading-relaxed mt-1 max-w-[80ch]">
+                  {{ f.recommendation }}
+                </p>
+              </div>
+
+              <!-- 4. Where to go next -->
+              <div v-if="f.entities.length" class="mt-3.5">
+                <p class="nf-label mb-1.5">{{ t('ai.advisor.affectedTitle') }}</p>
+                <div class="flex flex-wrap gap-1.5">
                   <RouterLink
-                    v-for="(e, idx) in ins.affected_entities"
+                    v-for="(e, idx) in f.entities"
                     :key="`${e.type}-${e.id}-${idx}`"
                     v-slot="{ href, navigate }"
                     :to="entityRoute(e) ?? ''"
@@ -443,94 +542,28 @@ function entityLabel(e: InsightEntityRef): string {
                     <a
                       :href="entityRoute(e) ? href : undefined"
                       :class="[
-                        'nf-pill bg-muted/70',
+                        'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-xs font-medium',
+                        'transition-colors duration-150 ease-soft',
                         entityRoute(e)
-                          ? 'hover:bg-primary-50 hover:text-primary-700 cursor-pointer'
-                          : 'cursor-default text-fg-muted',
+                          ? 'border-border bg-surface text-fg hover:border-primary-500 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer'
+                          : 'border-transparent bg-muted text-fg-subtle cursor-default',
                       ]"
                       @click="entityRoute(e) ? navigate($event) : null"
                     >
                       <component
                         :is="entityIcon[e.type] ?? Server"
-                        class="w-3 h-3"
+                        class="w-3 h-3 flex-shrink-0"
                         aria-hidden="true"
                       />
                       {{ entityLabel(e) }}
                     </a>
                   </RouterLink>
                 </div>
-              </li>
-            </ul>
-          </div>
-        </section>
-      </template>
-    </div>
-
-    <!-- ============================ INTEGRITY TAB ============================ -->
-    <div v-else-if="tab === 'integrity'">
-      <p class="text-xs text-fg-muted -mt-2 mb-6 leading-relaxed">
-        {{ t('ai.integrity.description') }}
-      </p>
-
-      <div v-if="integrityLoading && !integrityIssues.length" class="space-y-3" aria-busy="true">
-        <div v-for="i in 3" :key="i" class="nf-card p-5 space-y-2">
-          <Skeleton width="40%" height="1rem" />
-          <Skeleton width="80%" height="0.75rem" />
+              </div>
+            </li>
+          </ul>
         </div>
       </div>
-
-      <EmptyState
-        v-else-if="integrityLoaded && integrityIssues.length === 0"
-        :icon="ShieldCheck"
-        :title="t('ai.integrity.cleanTitle')"
-        :description="t('ai.integrity.cleanDescription')"
-      />
-
-      <ul v-else-if="integrityIssues.length" class="space-y-3">
-        <li v-for="(iss, idx) in integrityIssues" :key="idx" class="nf-card p-5">
-          <div class="flex items-center gap-2 flex-wrap">
-            <Badge :tone="severityTone[iss.severity]">{{ severityLabel(iss.severity) }}</Badge>
-            <Badge tone="muted">{{ t(categoryLabelKey[iss.category] ?? '') }}</Badge>
-          </div>
-          <h3 class="text-base font-semibold tracking-tight mt-2">{{ iss.title }}</h3>
-          <p class="text-sm text-fg-muted leading-relaxed mt-1">{{ iss.description }}</p>
-          <p
-            v-if="iss.recommendation"
-            class="text-sm text-fg mt-3 p-3 rounded-lg bg-muted/60 border-l-2 border-primary-500"
-          >
-            <span class="font-medium text-primary-700 dark:text-primary-300 mr-1">
-              {{ t('ai.advisor.recommendation') }}:
-            </span>
-            {{ iss.recommendation }}
-          </p>
-          <div
-            v-if="iss.affected_entities && iss.affected_entities.length"
-            class="mt-3 flex flex-wrap gap-1.5"
-          >
-            <RouterLink
-              v-for="(e, eIdx) in iss.affected_entities"
-              :key="`${e.type}-${e.id}-${eIdx}`"
-              v-slot="{ href, navigate }"
-              :to="entityRoute(e) ?? ''"
-              custom
-            >
-              <a
-                :href="entityRoute(e) ? href : undefined"
-                :class="[
-                  'nf-pill bg-muted/70',
-                  entityRoute(e)
-                    ? 'hover:bg-primary-50 hover:text-primary-700 cursor-pointer'
-                    : 'cursor-default text-fg-muted',
-                ]"
-                @click="entityRoute(e) ? navigate($event) : null"
-              >
-                <component :is="entityIcon[e.type] ?? Server" class="w-3 h-3" aria-hidden="true" />
-                {{ entityLabel(e) }}
-              </a>
-            </RouterLink>
-          </div>
-        </li>
-      </ul>
-    </div>
+    </section>
   </div>
 </template>

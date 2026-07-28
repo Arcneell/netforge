@@ -89,6 +89,14 @@ from app.services.ai.usage import build_usage_report
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
+# Client-facing detail for unexpected 502s. The real exception (type,
+# message, traceback) is always logged server-side via logger.exception —
+# echoing `f"{type(exc).__name__}: {exc}"` to the client leaked internals
+# (connection strings, file paths, provider error payloads).
+_GENERIC_502_DETAIL = (
+    "AI request failed unexpectedly — details are in the server logs."
+)
+
 
 def _require_ai_enabled() -> None:
     settings = get_settings()
@@ -196,10 +204,13 @@ async def scan_links(
     except AIProviderError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     except Exception as exc:
+        # Full traceback goes to the server log; the client only gets a
+        # generic message — exception reprs can leak internals (DSNs,
+        # file paths, provider payloads).
         logger.exception("suggest-links scan crashed")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_GENERIC_502_DETAIL,
         ) from exc
 
     return ScanReportRead(**report.__dict__)
@@ -328,7 +339,7 @@ async def refresh_insights(
         logger.exception("advisor run crashed")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_GENERIC_502_DETAIL,
         ) from exc
 
     return AdvisorReportRead(**report.__dict__)
@@ -398,7 +409,7 @@ async def ask_ai(
         logger.exception("nl-query crashed")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_GENERIC_502_DETAIL,
         ) from exc
 
     if payload.conversation_id is not None:
@@ -538,7 +549,7 @@ async def suggest_csv_mapping(
         logger.exception("csv-mapping crashed")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_GENERIC_502_DETAIL,
         ) from exc
 
     return CsvMappingResponse(
@@ -601,6 +612,25 @@ async def upsert_schedule(
     from sqlalchemy import select
 
     from app.models.ai import AIRunKind, AISchedule, InsightSeverity
+    from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url_async
+
+    # Validate the webhook URL at write time (scheme http(s), host present,
+    # not a private / loopback / metadata target). The dispatch path pins
+    # and re-checks anyway, but failing HERE gives the admin a visible 422
+    # instead of a silent refusal buried in the scheduler logs when the
+    # notification eventually fires.
+    webhook_url = (payload.webhook_url or "").strip() or None
+    if webhook_url is not None:
+        try:
+            await check_outbound_url_async(
+                webhook_url,
+                allow_private=get_settings().webhook_allow_private_targets,
+            )
+        except UnsafeOutboundURL as exc:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"webhook_url rejected: {exc}",
+            ) from exc
 
     kind_enum = AIRunKind(kind)
     row = (
@@ -611,7 +641,7 @@ async def upsert_schedule(
         db.add(row)
     row.enabled = payload.enabled
     row.interval_minutes = payload.interval_minutes
-    row.webhook_url = (payload.webhook_url or "").strip() or None
+    row.webhook_url = webhook_url
     row.webhook_severity_threshold = InsightSeverity(payload.webhook_severity_threshold)
     await db.commit()
     await db.refresh(row)
@@ -665,7 +695,7 @@ async def create_draft(
         logger.exception("draft_action crashed")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_GENERIC_502_DETAIL,
         ) from exc
     return ActionDraftRead.model_validate(draft)
 
@@ -743,12 +773,12 @@ async def apply_draft_route(
         else:
             code, friendly = "INTEGRITY_VIOLATION", "Data integrity violation."
         http_error(status.HTTP_409_CONFLICT, code, friendly, details={"raw": raw[:500]})
-    except Exception as exc:
+    except Exception:
         logger.exception("draft apply crashed (draft_id=%s)", draft_id)
         http_error(
             status.HTTP_502_BAD_GATEWAY,
             "AI_APPLY_FAILED",
-            f"{type(exc).__name__}: {exc}",
+            _GENERIC_502_DETAIL,
         )
     return ActionDraftRead.model_validate(draft)
 

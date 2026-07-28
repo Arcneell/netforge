@@ -9,11 +9,15 @@ const props = withDefaults(
   defineProps<{
     open: boolean
     title?: string
+    /** Accessible name for title-less modals. Ignored when `title` is set
+     * (the visible heading labels the dialog via `aria-labelledby`). */
+    ariaLabel?: string
     closable?: boolean
     size?: 'sm' | 'md' | 'lg' | 'xl'
   }>(),
   {
     title: undefined,
+    ariaLabel: undefined,
     closable: true,
     size: 'md',
   },
@@ -132,8 +136,8 @@ watch(
   },
   // `immediate: true` so a modal mounted with `open` already true (the
   // typical `v-if="editing"` + `:open="!!editing"` pattern across the
-  // editors — IpEditor, SubnetEditor, VlanEditor, etc.) still gets
-  // pushed onto the stack on first render. Without this, the topmost-
+  // remaining modal editors — SiteEditor, RoomEditor, LinkEditor) still
+  // gets pushed onto the stack on first render. Without this, the topmost-
   // modal guard returns early for Escape/Tab and the keyboard close +
   // focus trap silently break for every "open on mount" path (Codex
   // P2 on #98).
@@ -153,57 +157,57 @@ watch(
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-zinc-950/30 dark:bg-zinc-950/60 backdrop-blur-md"
+        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-zinc-900/25 dark:bg-black/60"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="title ? titleId : undefined"
-        :aria-label="title ? undefined : $t('common.confirm')"
+        :aria-label="title ? undefined : (ariaLabel ?? $t('common.confirm'))"
         @click.self="closable && $emit('close')"
       >
         <Transition
-          enter-active-class="transition duration-200 ease-ios-spring"
-          enter-from-class="opacity-0 translate-y-4 sm:translate-y-2 scale-[0.96]"
-          enter-to-class="opacity-100 translate-y-0 scale-100"
-          leave-active-class="transition duration-150 ease-in"
+          enter-active-class="transition duration-150 ease-soft"
+          enter-from-class="opacity-0 translate-y-3 sm:translate-y-0 sm:scale-[0.98]"
+          enter-to-class="opacity-100 translate-y-0 sm:scale-100"
+          leave-active-class="transition duration-100 ease-soft"
           leave-from-class="opacity-100 translate-y-0"
-          leave-to-class="opacity-0 translate-y-4 sm:translate-y-2"
+          leave-to-class="opacity-0 translate-y-3 sm:translate-y-0"
         >
           <div
             v-if="open"
             ref="dialogRef"
             tabindex="-1"
             :class="[
-              // iOS sheet on mobile (full-width, rounded only at the top),
-              // floating card on desktop with bigger radius and richer shadow.
-              'bg-surface w-full focus:outline-none shadow-pop',
+              // Sheet on mobile (full width, rounded at the top only), a
+              // floating dialog on desktop.
+              'bg-surface w-full focus:outline-none shadow-xl',
               'rounded-t-2xl sm:rounded-xl',
-              'border-t border-x sm:border border-border/70 dark:border-border/40',
+              'border-t border-x sm:border border-border',
               sizeClass[size],
             ]"
           >
             <header
               v-if="title || closable"
-              class="flex items-center justify-between px-6 pt-5 pb-4"
+              class="flex items-start justify-between gap-4 px-6 pt-5 pb-1"
             >
-              <h2 :id="titleId" class="text-base font-semibold text-fg tracking-tight">
+              <h2 :id="titleId" class="text-lg font-semibold text-fg tracking-[-0.01em]">
                 {{ title }}
               </h2>
               <button
                 v-if="closable"
                 type="button"
-                class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-muted/60 hover:bg-muted text-fg-muted hover:text-fg transition-colors"
+                class="-mr-1.5 -mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-md text-fg-subtle hover:bg-surface-hover hover:text-fg transition-colors duration-150 ease-soft"
                 :aria-label="$t('common.close')"
                 @click="$emit('close')"
               >
-                <X class="w-3.5 h-3.5" />
+                <X class="w-4 h-4" />
               </button>
             </header>
-            <div class="px-6 pb-6">
+            <div class="px-6 py-5">
               <slot />
             </div>
             <footer
               v-if="$slots.footer"
-              class="px-6 py-4 border-t border-border/70 dark:border-border/40 bg-muted/30 rounded-b-2xl sm:rounded-b-xl"
+              class="px-6 py-4 border-t border-border bg-bg/60 rounded-b-2xl sm:rounded-b-xl"
             >
               <slot name="footer" />
             </footer>

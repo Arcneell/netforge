@@ -16,7 +16,7 @@ const icons = {
 } as const
 
 const kindClasses: Record<ToastKind, string> = {
-  info: 'text-primary-600 bg-primary-50 dark:bg-primary-900/30',
+  info: 'text-primary-600 bg-primary-50 dark:text-primary-300 dark:bg-primary-500/15',
   success: 'text-success bg-success/10',
   warning: 'text-warning bg-warning/10',
   error: 'text-danger bg-danger/10',
@@ -56,12 +56,13 @@ const assertiveToasts = computed(() =>
          under `flex-col-reverse`) for warnings + errors. -->
     <div role="region" aria-live="assertive" aria-label="Alerts" class="flex flex-col gap-2">
       <TransitionGroup
-        enter-active-class="transition duration-150 ease-out"
-        enter-from-class="opacity-0 translate-x-2"
-        enter-to-class="opacity-100 translate-x-0"
-        leave-active-class="transition duration-100 ease-in absolute"
+        enter-active-class="transition duration-200 ease-soft"
+        enter-from-class="opacity-0 translate-y-2 scale-[0.98]"
+        enter-to-class="opacity-100 translate-y-0 scale-100"
+        leave-active-class="transition duration-150 ease-soft absolute"
         leave-from-class="opacity-100"
-        leave-to-class="opacity-0 translate-x-2"
+        leave-to-class="opacity-0 translate-x-3"
+        move-class="transition-transform duration-200 ease-soft"
       >
         <div
           v-for="t in assertiveToasts"
@@ -92,12 +93,13 @@ const assertiveToasts = computed(() =>
          one under `flex-col-reverse`) for info + success toasts. -->
     <div role="region" aria-live="polite" aria-label="Notifications" class="flex flex-col gap-2">
       <TransitionGroup
-        enter-active-class="transition duration-150 ease-out"
-        enter-from-class="opacity-0 translate-x-2"
-        enter-to-class="opacity-100 translate-x-0"
-        leave-active-class="transition duration-100 ease-in absolute"
+        enter-active-class="transition duration-200 ease-soft"
+        enter-from-class="opacity-0 translate-y-2 scale-[0.98]"
+        enter-to-class="opacity-100 translate-y-0 scale-100"
+        leave-active-class="transition duration-150 ease-soft absolute"
         leave-from-class="opacity-100"
-        leave-to-class="opacity-0 translate-x-2"
+        leave-to-class="opacity-0 translate-x-3"
+        move-class="transition-transform duration-200 ease-soft"
       >
         <div
           v-for="t in politeToasts"

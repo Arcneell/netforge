@@ -8,7 +8,6 @@ import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
 import Button from '@/components/ui/Button.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
-import SwitchEditor from '@/components/editors/SwitchEditor.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { switchesApi } from '@/api'
 import type { Switch } from '@/api'
@@ -19,7 +18,7 @@ import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 const { t } = useI18n()
 const { isAdmin } = useAuth()
 const { success } = useToast()
-const { describe } = useApiErrorMessage()
+const { notify } = useApiErrorMessage()
 const router = useRouter()
 
 const items = ref<Switch[]>([])
@@ -28,8 +27,6 @@ const page = ref(1)
 const pageSize = 50
 const loading = ref(false)
 
-const editorOpen = ref(false)
-const editing = ref<Switch | null>(null)
 const deleteTarget = ref<Switch | null>(null)
 const deleting = ref(false)
 
@@ -46,13 +43,12 @@ async function load() {
 
 onMounted(load)
 
+// Create and edit are full pages, not modals — see components/FormPage.vue.
 function onNew() {
-  editing.value = null
-  editorOpen.value = true
+  router.push({ name: 'switch-new' })
 }
 function onEdit(s: Switch) {
-  editing.value = s
-  editorOpen.value = true
+  router.push({ name: 'switch-edit', params: { id: s.id } })
 }
 function onRowClick(s: Switch) {
   router.push(`/switches/${s.id}`)
@@ -66,7 +62,7 @@ async function confirmDelete() {
     deleteTarget.value = null
     load()
   } catch (err) {
-    void describe(err)
+    notify(err)
   } finally {
     deleting.value = false
   }
@@ -74,7 +70,7 @@ async function confirmDelete() {
 
 // Wrap in computed so column labels follow the i18n locale.
 const columns = computed<DataTableColumn[]>(() => [
-  { key: 'name', label: t('switch.fields.name'), cellClass: 'font-medium' },
+  { key: 'name', label: t('switch.fields.name') },
   { key: 'vendor', label: t('switch.fields.vendor'), hideOnSm: true },
   { key: 'model', label: t('switch.fields.model'), hideOnSm: true },
   { key: 'management_ip', label: t('switch.fields.managementIp'), cellClass: 'font-mono' },
@@ -84,7 +80,7 @@ const columns = computed<DataTableColumn[]>(() => [
 </script>
 
 <template>
-  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('switch.labelPlural')" :subtitle="t('switch.subtitle')">
       <template #help>
         <HelpTooltip :text="t('switch.pageHelp')" placement="bottom" />
@@ -97,11 +93,20 @@ const columns = computed<DataTableColumn[]>(() => [
       </template>
     </PageHeader>
 
+    <!-- Same toolbar slot as the other list pages. `/switches` exposes no
+         search param, so the bar carries only the honest result count —
+         filtering the current page client-side would lie about the total. -->
+    <div class="nf-toolbar">
+      <span class="ml-auto text-sm text-fg-muted tabular-nums whitespace-nowrap" aria-live="polite">
+        {{ t('common.resultCount', total) }}
+      </span>
+    </div>
+
     <DataTable
       :columns="columns"
       :rows="items"
       :loading="loading"
-      :empty-title="t('switch.labelPlural')"
+      :empty-title="t('common.empty.title')"
       :empty-description="t('switch.empty')"
       clickable
       @row-click="onRowClick"
@@ -112,6 +117,15 @@ const columns = computed<DataTableColumn[]>(() => [
           {{ t('switch.new') }}
         </Button>
       </template>
+      <!-- The name is the thing you click: it carries the row's identity and
+           picks up the accent on row hover so the target is unambiguous. -->
+      <template #cell-name="{ row }">
+        <span
+          class="font-medium text-fg group-hover/row:text-primary-600 dark:group-hover/row:text-primary-400 transition-colors duration-150 ease-soft"
+        >
+          {{ row.name }}
+        </span>
+      </template>
       <template #cell-vendor="{ row }">
         <span class="text-fg-muted">{{ row.vendor || '—' }}</span>
       </template>
@@ -119,7 +133,11 @@ const columns = computed<DataTableColumn[]>(() => [
         <span class="text-fg-muted">{{ row.model || '—' }}</span>
       </template>
       <template #cell-management_ip="{ row }">
-        <span class="text-fg-muted">{{ row.management_ip || '—' }}</span>
+        <span v-if="row.management_ip" class="text-fg-muted">{{ row.management_ip }}</span>
+        <span v-else class="text-fg-subtle">—</span>
+      </template>
+      <template #cell-port_count="{ row }">
+        <span class="tabular-nums text-fg-muted">{{ row.port_count }}</span>
       </template>
       <template #cell-actions="{ row }">
         <div class="flex justify-end gap-1">
@@ -159,12 +177,6 @@ const columns = computed<DataTableColumn[]>(() => [
       </template>
     </DataTable>
 
-    <SwitchEditor
-      :open="editorOpen"
-      :switch-item="editing"
-      @close="editorOpen = false"
-      @saved="load"
-    />
     <ConfirmDialog
       :open="!!deleteTarget"
       :title="t('common.confirmDelete.title', { label: deleteTarget?.name ?? '' })"

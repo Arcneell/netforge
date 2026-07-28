@@ -124,19 +124,25 @@ const isSingleSided = computed(() => onlyCreate.value || onlyDelete.value)
   <div v-if="diffs.length === 0" class="text-sm text-fg-muted italic">
     {{ t('audit.noChanges') }}
   </div>
-  <div v-else class="space-y-2">
+
+  <!-- One card holding every changed field, hairline-separated. Reading a diff
+       is a scan down a single column of field names, not a stack of six
+       floating cards. -->
+  <div v-else class="nf-card overflow-hidden">
     <div
-      v-for="d in diffs"
+      v-for="(d, i) in diffs"
       :key="d.field"
-      class="nf-card overflow-hidden"
-      :class="isSingleSided ? '' : ''"
+      :class="i > 0 ? 'border-t border-border' : ''"
+      class="min-w-0"
     >
       <!-- Field name header -->
-      <div class="px-3 py-1.5 bg-muted/60 border-b border-border flex items-center justify-between">
-        <span class="font-mono text-xs text-fg">{{ d.field }}</span>
+      <div class="px-3 py-1.5 bg-muted flex items-center gap-2">
+        <span class="font-mono text-xs text-fg break-all">{{ d.field }}</span>
       </div>
 
-      <!-- Diff body. Two columns + arrow on >= md, stacked under that. -->
+      <!-- Diff body. Two columns + arrow on >= md, stacked under that.
+           Both sides are tinted with the status tokens at low alpha so the
+           payload text keeps its contrast on the dark theme. -->
       <div
         class="grid gap-0 divide-y md:divide-y-0 md:divide-x divide-border"
         :class="
@@ -148,27 +154,29 @@ const isSingleSided = computed(() => onlyCreate.value || onlyDelete.value)
           v-if="d.hasBefore || !isSingleSided"
           class="p-3 min-w-0"
           :class="
-            d.hasBefore ? 'bg-danger/5 dark:bg-danger/10 border-l-2 border-danger/40' : 'bg-surface'
+            d.hasBefore
+              ? 'bg-danger/5 dark:bg-danger/10 border-l-2 border-danger/50'
+              : 'bg-surface border-l-2 border-transparent'
           "
         >
           <p
-            class="text-[10px] uppercase tracking-wide mb-1"
-            :class="d.hasBefore ? 'text-danger/80' : 'text-fg-muted'"
+            class="nf-label mb-1.5 uppercase tracking-wide"
+            :class="d.hasBefore ? 'text-danger' : 'text-fg-subtle'"
           >
             {{ t('audit.before') }}
           </p>
           <pre
             v-if="d.hasBefore"
-            class="font-mono text-xs text-fg whitespace-pre-wrap break-words m-0"
+            class="font-mono text-xs text-fg whitespace-pre-wrap break-words m-0 max-h-64 overflow-auto"
             >{{ fmt(d.before) }}</pre
           >
-          <span v-else class="text-fg-muted text-xs italic">—</span>
+          <span v-else class="text-fg-subtle text-xs italic">—</span>
         </div>
 
         <!-- Arrow -->
         <div
           v-if="!isSingleSided"
-          class="hidden md:flex items-center justify-center px-2 bg-surface text-fg-muted"
+          class="hidden md:flex items-center justify-center px-2 bg-surface text-fg-subtle"
           aria-hidden="true"
         >
           <ArrowRight class="w-4 h-4" />
@@ -180,22 +188,22 @@ const isSingleSided = computed(() => onlyCreate.value || onlyDelete.value)
           class="p-3 min-w-0"
           :class="
             d.hasAfter
-              ? 'bg-success/5 dark:bg-success/10 border-l-2 border-success/40'
-              : 'bg-surface'
+              ? 'bg-success/5 dark:bg-success/10 border-l-2 border-success/50'
+              : 'bg-surface border-l-2 border-transparent'
           "
         >
           <p
-            class="text-[10px] uppercase tracking-wide mb-1"
-            :class="d.hasAfter ? 'text-success/90' : 'text-fg-muted'"
+            class="nf-label mb-1.5 uppercase tracking-wide"
+            :class="d.hasAfter ? 'text-success' : 'text-fg-subtle'"
           >
             {{ t('audit.after') }}
           </p>
           <pre
             v-if="d.hasAfter"
-            class="font-mono text-xs text-fg whitespace-pre-wrap break-words m-0"
+            class="font-mono text-xs text-fg whitespace-pre-wrap break-words m-0 max-h-64 overflow-auto"
             >{{ fmt(d.after) }}</pre
           >
-          <span v-else class="text-fg-muted text-xs italic">—</span>
+          <span v-else class="text-fg-subtle text-xs italic">—</span>
         </div>
       </div>
     </div>

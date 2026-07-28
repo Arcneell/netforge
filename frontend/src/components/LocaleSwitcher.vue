@@ -22,10 +22,10 @@ function next() {
     type="button"
     :aria-label="$t('locale.label')"
     :title="$t('locale.label')"
-    class="inline-flex items-center gap-2 px-2.5 h-8 rounded-md border border-border bg-surface text-sm text-fg-muted hover:text-fg hover:bg-surface-hover transition"
+    class="inline-flex items-center gap-1.5 px-2 h-8 rounded-md text-fg-muted hover:text-fg hover:bg-surface-hover transition-colors duration-150 ease-soft"
     @click="next"
   >
-    <Languages class="w-4 h-4" aria-hidden="true" />
-    <span class="font-medium uppercase tracking-wide text-xs">{{ current }}</span>
+    <Languages class="w-4 h-4" :stroke-width="1.9" aria-hidden="true" />
+    <span class="text-xs font-medium uppercase">{{ current }}</span>
   </button>
 </template>

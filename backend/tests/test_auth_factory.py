@@ -200,6 +200,59 @@ def test_make_provider_dev_accepts_loopback_public_urls() -> None:
         assert isinstance(make_provider(settings, OAuth()), DevAuthProvider), url
 
 
+def test_make_provider_refuses_placeholder_signing_key_in_production() -> None:
+    """SESSION_COOKIE_SECURE=true is the production signal; booting with
+    the shipped placeholder SESSION_SIGNING_KEY means the OAuth-state
+    cookie is signed with a key everyone knows. Refuse to boot."""
+    settings = Settings(
+        auth_provider="github",
+        github_client_id="id",
+        github_client_secret="secret",
+        session_cookie_secure=True,
+        session_signing_key="dev-signing-key-change-me",
+    )
+    with pytest.raises(RuntimeError, match="SESSION_SIGNING_KEY"):
+        make_provider(settings, OAuth())
+
+
+def test_make_provider_refuses_change_me_signing_key_in_production() -> None:
+    settings = Settings(
+        auth_provider="github",
+        github_client_id="id",
+        github_client_secret="secret",
+        session_cookie_secure=True,
+        session_signing_key="change-me",
+    )
+    with pytest.raises(RuntimeError, match="SESSION_SIGNING_KEY"):
+        make_provider(settings, OAuth())
+
+
+def test_make_provider_accepts_real_signing_key_in_production() -> None:
+    settings = Settings(
+        auth_provider="github",
+        github_client_id="id",
+        github_client_secret="secret",
+        session_cookie_secure=True,
+        session_signing_key="c0ffee" * 12,  # any operator-generated value
+    )
+    provider = make_provider(settings, OAuth())
+    assert isinstance(provider, GitHubProvider)
+
+
+def test_make_provider_allows_placeholder_signing_key_in_dev() -> None:
+    """Local HTTP dev (secure=false) keeps working out-of-the-box with the
+    default key — the guard only bites in production mode."""
+    settings = Settings(
+        auth_provider="github",
+        github_client_id="id",
+        github_client_secret="secret",
+        session_cookie_secure=False,
+        session_signing_key="dev-signing-key-change-me",
+    )
+    provider = make_provider(settings, OAuth())
+    assert isinstance(provider, GitHubProvider)
+
+
 def test_make_provider_dev_refuses_wildcard_bind_public_url() -> None:
     """0.0.0.0 is NOT a loopback — it's the wildcard bind that means
     "every interface" and is the misconfiguration that exposes the

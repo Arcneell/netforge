@@ -29,7 +29,9 @@ services:
     ports:
       # Bind to loopback only — the dev defaults (POSTGRES_PASSWORD=dev)
       # are weak by design and must never be reachable from the LAN.
-      - "127.0.0.1:5432:5432"
+      # Host port is overridable: a Postgres already installed on the host
+      # owns 5432 and the bind would fail. Set POSTGRES_HOST_PORT=5433 in .env.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
@@ -59,6 +61,13 @@ services:
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-openid email profile}
+      # ---- Sessions / rate limiting ----
+      # Same defaults as the backend's own, but forwarded so a local .env can
+      # actually shorten sessions or tighten limits while testing.
+      SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-28800}
+      RATE_LIMIT_WRITES_PER_WINDOW: ${RATE_LIMIT_WRITES_PER_WINDOW:-60}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
       # PUBLIC_URL drives OAuth/OIDC redirect URIs. When the SPA proxies /api/*,
       # the browser-visible host is the Vite dev server (5173), so callbacks
       # must come back through there to land on the SPA after auth.
@@ -78,6 +87,10 @@ services:
       AI_RATE_LIMIT_CALLS: ${AI_RATE_LIMIT_CALLS:-20}
       AI_RATE_WINDOW_SECONDS: ${AI_RATE_WINDOW_SECONDS:-3600}
       AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-2048}
+      # Granular AI toggles — see the note in docker-compose.yml: these have to
+      # be listed explicitly or a .env opt-out never reaches the backend.
+      AI_DRAFTS_ENABLED: ${AI_DRAFTS_ENABLED:-true}
+      AI_SCHEDULER_ENABLED: ${AI_SCHEDULER_ENABLED:-true}
     ports:
       # Bind to loopback only. The default AUTH_PROVIDER=dev signs anyone
       # hitting /api/auth/login in as admin, no credentials needed — a
@@ -90,7 +103,9 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   frontend:
-    image: node:20-alpine
+    # Node 22 = active LTS, same major as the CI matrix and the production
+    # build stage (frontend/Dockerfile) — Node 20 hit EOL April 2026.
+    image: node:22-alpine
     restart: unless-stopped
     working_dir: /app
     depends_on:

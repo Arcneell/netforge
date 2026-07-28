@@ -1,0 +1,29 @@
+# Build-context exclusions for frontend/Dockerfile.
+#
+# The single critical entry here is `.env*`: Vite inlines every VITE_* value
+# it can read at build time straight into the shipped JS bundle. Without this
+# file, a developer's local `.env.local` (API URLs, provider toggles, anything
+# prefixed VITE_) silently leaks into the production image built on that host.
+# The rest keeps the context small and the builds host-independent.
+
+# Dependencies + build output — rebuilt inside the image; host copies are
+# OS-specific (Windows-built native deps must never reach the Linux build).
+node_modules
+dist
+
+# Env files — see the leak warning above. No exceptions: the image needs
+# no env file at build time (CI builds prove it).
+.env
+.env.*
+
+# E2E suite + test artefacts — irrelevant to the production bundle.
+# `.playwright-auth.json` holds a live session cookie and must never be
+# baked into an image.
+e2e
+playwright-report
+test-results
+coverage
+.playwright-auth.json
+
+# Local noise
+*.log

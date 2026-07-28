@@ -66,7 +66,9 @@ class Session(Base):
 
     __tablename__ = "sessions"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # opaque random token
+    # SHA-256 hex digest (64 chars) of the opaque cookie token — the raw
+    # token is never persisted (see app/auth/sessions.py).
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,

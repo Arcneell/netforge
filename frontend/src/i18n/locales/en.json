@@ -4,6 +4,7 @@
     "tagline": "Network infrastructure, made simple."
   },
   "common": {
+    "wip": "In progress",
     "loading": "Loading…",
     "save": "Save",
     "cancel": "Cancel",
@@ -41,6 +42,12 @@
     "empty": {
       "title": "Nothing here yet",
       "description": "Once you add data it will show up in this list."
+    },
+    "resultCount": "No results | 1 result | {count} results",
+    "clearFilters": "Clear filters",
+    "noMatch": {
+      "title": "No matches",
+      "description": "Nothing matches the current search and filters. Try a broader term, or clear the filters to see everything again."
     },
     "pagination": {
       "range": "{start}–{end} of {total}",
@@ -84,7 +91,7 @@
     "UNKNOWN": "Something went wrong."
   },
   "nav": {
-    "dashboard": "Dashboard",
+    "dashboard": "Overview",
     "subnets": "Subnets",
     "vlans": "VLANs",
     "switches": "Switches",
@@ -97,9 +104,19 @@
     "audit": "Audit log",
     "snapshots": "Snapshot diff",
     "settings": "Settings",
+    "assistant": "Assistant",
+    "data": "Data",
     "sections": {
       "network": "Network",
       "administration": "Administration"
+    }
+  },
+  "workspace": {
+    "assistant": {
+      "subtitle": "AI analysis, questions and proposed changes across your inventory."
+    },
+    "data": {
+      "subtitle": "Import, export and trace every change to the inventory."
     }
   },
   "theme": {
@@ -195,6 +212,7 @@
     "new": "New site",
     "edit": "Edit site",
     "empty": "No sites yet — create one to start tracking inventory.",
+    "emptyTitle": "No sites yet",
     "help": {
       "code": "Short identifier (e.g. PAR-DC1). Letters, numbers, dashes and underscores only — used as a prefix everywhere in exports and IPAM."
     }
@@ -210,6 +228,8 @@
     "new": "New room",
     "edit": "Edit room",
     "empty": "No rooms yet.",
+    "emptyTitle": "No rooms yet",
+    "emptyHint": "Create a site first, then add the rooms that hold its switches and patch panels.",
     "help": {
       "code": "Short room code (e.g. MDF-01, R-101). Must be unique within the site."
     }
@@ -217,6 +237,13 @@
   "vlan": {
     "label": "VLAN",
     "labelPlural": "VLANs",
+    "formSubtitle": "A VLAN segments the network. Its id must be unique across the infrastructure.",
+    "section": {
+      "identity": "Identity",
+      "identityHelp": "The 802.1Q id and the name this VLAN will carry everywhere in NetForge.",
+      "appearance": "Visual marker",
+      "appearanceHelp": "The colour is how you spot this VLAN at a glance in lists and on ports."
+    },
     "subtitle": "VLANs and their colours.",
     "fields": {
       "vlanId": "VLAN ID",
@@ -235,6 +262,15 @@
   "subnet": {
     "label": "Subnet",
     "labelPlural": "Subnets",
+    "formSubtitle": "A subnet is a range of addresses attached to a site. The CIDR can't be changed once created.",
+    "section": {
+      "addressing": "Addressing",
+      "addressingHelp": "The range, its gateway and where it is declared.",
+      "scope": "Scope",
+      "scopeHelp": "Routing space and hierarchical placement. Leave these alone on most installs.",
+      "dhcp": "DHCP",
+      "dhcpHelp": "Carves a DHCP pool out of the range. Those addresses are excluded from manual assignment."
+    },
     "subtitle": "Your IP ranges and how full they are.",
     "fields": {
       "cidr": "CIDR",
@@ -323,6 +359,13 @@
   "ip": {
     "label": "IP",
     "labelPlural": "IPs",
+    "formSubtitle": "An address recorded inside a subnet. The address can't be changed once created.",
+    "section": {
+      "identity": "Address",
+      "identityHelp": "The address to record and its status in the plan.",
+      "attribution": "Attribution",
+      "attributionHelp": "Who this address belongs to: hostname, MAC and the inventory device."
+    },
     "fields": {
       "address": "Address",
       "hostname": "Hostname",
@@ -354,6 +397,17 @@
   "device": {
     "label": "Device",
     "labelPlural": "Devices",
+    "formSubtitle": "Anything that consumes an IP but isn't a switch — servers, printers, phones, access points.",
+    "section": {
+      "identity": "Identity",
+      "identityHelp": "What this device is called, what kind of device it is and where it sits.",
+      "hardware": "Hardware",
+      "hardwareHelp": "Vendor references used to identify the physical unit.",
+      "lifecycle": "Lifecycle",
+      "lifecycleHelp": "Warranty and end-of-support dates. The advisor uses them to flag ageing equipment.",
+      "notes": "Notes",
+      "notesHelp": "Free-form context for whoever reads this record next."
+    },
     "subtitle": "Everything that isn't a switch.",
     "fields": {
       "name": "Name",
@@ -370,6 +424,7 @@
     "new": "New device",
     "edit": "Edit device",
     "empty": "No devices yet.",
+    "emptyHint": "No devices yet — register your servers, printers, phones, cameras and access points so every IP has an owner.",
     "eolHint": "Vendor end-of-support date — the advisor will surface devices approaching EOL.",
     "help": {
       "type": "Device category. Used for filtering, dashboard stats and the topology icons.",
@@ -393,6 +448,19 @@
   "switch": {
     "label": "Switch",
     "labelPlural": "Switches",
+    "formSubtitle": "A managed switch. Its ports are generated automatically from the port count, which is fixed after creation.",
+    "section": {
+      "identity": "Identity",
+      "identityHelp": "The name this switch answers to everywhere in NetForge, and the address you reach it on.",
+      "hardware": "Hardware",
+      "hardwareHelp": "The physical unit: vendor references, firmware, port count and SNMP access.",
+      "placement": "Placement",
+      "placementHelp": "Where the chassis physically lives, for on-site inventory.",
+      "lifecycle": "Lifecycle",
+      "lifecycleHelp": "Warranty and end-of-support dates. The advisor uses them to flag ageing equipment.",
+      "notes": "Notes",
+      "notesHelp": "Free-form context for whoever reads this record next."
+    },
     "subtitle": "Switches, their ports and links.",
     "fields": {
       "name": "Name",
@@ -436,6 +504,14 @@
   "port": {
     "label": "Port",
     "labelPlural": "Ports",
+    "formSubtitle": "Ports are created with their switch, so only their configuration is editable here.",
+    "section": {
+      "config": "Configuration",
+      "configHelp": "How the port behaves on the wire: its VLAN mode, untagged VLAN and administrative state.",
+      "taggedHelp": "Saved immediately through their own endpoints — adding or removing one does not wait for the Save button.",
+      "connection": "Connection",
+      "connectionHelp": "What is plugged in at the other end, plus anything worth writing down about this port."
+    },
     "fields": {
       "number": "#",
       "label": "Label",
@@ -498,7 +574,12 @@
     "before": "Before",
     "after": "After",
     "noChanges": "No field changes recorded.",
-    "help": "Every write is logged with the author, timestamp, origin IP and full field-level diff. Kept indefinitely — use this to investigate \"who changed what, and when\"."
+    "help": "Every write is logged with the author, timestamp, origin IP and full field-level diff. Kept indefinitely — use this to investigate \"who changed what, and when\".",
+    "filtersAria": "Audit log filters",
+    "resultCount": "{count} entries",
+    "emptyTitle": "No audit entries",
+    "emptyDescription": "No write matches these filters. Reset them to see the whole log again.",
+    "metaTitle": "Context"
   },
   "snapshots": {
     "compare": {
@@ -527,7 +608,17 @@
       "colFields": "Fields changed",
       "helpFrom": "Start of the window. Date and time in your local timezone — converted to UTC before sending.",
       "helpEntity": "Restrict the comparison to a single entity type. Leave on All for an overview across the whole inventory.",
-      "helpRun": "Walks the audit log between the two dates and lists every entity that was created, updated, deleted or briefly created-then-deleted (transient)."
+      "helpRun": "Walks the audit log between the two dates and lists every entity that was created, updated, deleted or briefly created-then-deleted (transient).",
+      "presetsLabel": "Quick range",
+      "preset24h": "24 h",
+      "preset7d": "7 days",
+      "preset30d": "30 days",
+      "helpTo": "End of the window. Date and time in your local timezone — converted to UTC.",
+      "rangeInvalid": "The end date is before the start date.",
+      "changesTitle": "Changed entities",
+      "changesCount": "{count} entities",
+      "widenRange": "Widen to 30 days",
+      "colTotal": "Total"
     }
   },
   "settings": {
@@ -537,7 +628,10 @@
     "tokensTab": "API tokens",
     "aiTab": "AI",
     "webhooksTab": "Webhooks",
-    "vrfsTab": "VRFs"
+    "vrfsTab": "VRFs",
+    "tabsLabel": "Settings sections",
+    "sitesDescription": "Physical locations. Every room, switch and subnet is filed under a site.",
+    "roomsDescription": "Rooms inside a site — where switches and patch panels physically live."
   },
   "webhooks": {
     "subtitle": "Notify your own systems when inventory changes.",
@@ -566,6 +660,12 @@
     "deliveriesTitle": "Deliveries — {name}",
     "confirmDeleteTitle": "Delete webhook \"{name}\"?",
     "confirmDeleteMessage": "The receiver will stop getting events immediately. Past delivery history is also removed.",
+    "confirmRotateTitle": "Rotate the signing secret for \"{name}\"?",
+    "confirmRotateMessage": "The current secret stops working immediately. Every delivery is signed with the new one, so your receiver will reject events until you update it.",
+    "urlChangedWarning": "You are changing the target URL. From the moment you save, deliveries go to the new address and the previous receiver gets nothing.",
+    "disabledHint": "While disabled this webhook receives nothing, and events fired in the meantime are not replayed.",
+    "secretStored": "I have stored it",
+    "shownOnce": "Shown once",
     "errors": {
       "eventsRequired": "Provide at least one event pattern."
     },
@@ -637,6 +737,8 @@
     "revokedToast": "Token revoked.",
     "plaintextTitle": "Copy your token now — it will never be shown again.",
     "plaintextHint": "Store it in a secret manager. If you lose it, you'll have to generate a new one.",
+    "plaintextStored": "I have stored it",
+    "shownOnce": "Shown once",
     "confirmRevokeTitle": "Revoke token \"{name}\"?",
     "confirmRevokeMessage": "Any script using this token loses access immediately. This action cannot be undone.",
     "fields": {
@@ -659,6 +761,12 @@
   },
   "topology": {
     "subtitle": "Visual map of your switches and how they're cabled.",
+    "wip": {
+      "title": "The map is being rebuilt",
+      "body": "The old graph view is paused while we design a clearer one. Your links and ports are untouched and still readable from the pages below.",
+      "viaSwitches": "Open a switch to see its ports and what is plugged into them.",
+      "viaDevices": "Find a device and the port that serves it."
+    },
     "layout": "Layout",
     "layouts": {
       "dagre": "Hierarchical",
@@ -812,7 +920,10 @@
           "file": "File",
           "entity": "Detected entity"
         }
-      }
+      },
+      "filesTitle": "Files to import",
+      "emptyTitle": "No file selected",
+      "emptyDescription": "Drop your CSVs above — the entity type is detected from the headers."
     },
     "report": {
       "title": "Last import report",
@@ -831,17 +942,42 @@
         "column": "Column",
         "value": "Value",
         "error": "Error"
-      }
+      },
+      "errorsHint": "Fix these lines in your CSV, then re-run the dry-run.",
+      "errorsFilter": "Filter errors…",
+      "errorsNoMatch": "No error matches this filter.",
+      "nextStepApply": "Next step: untick the dry-run and re-run to write to the database.",
+      "nextStepFix": "Next step: fix the rows listed below, then re-run the validation.",
+      "nextStepDone": "Import applied — the data is now visible in the inventory."
     },
     "errors": {
       "tooLarge": "File exceeds the 10 MiB upload limit.",
       "notCsv": "Only .csv files are accepted.",
       "bulkNotCsvOrZip": "Only .csv or .zip files are accepted.",
       "tooManyFiles": "Limit reached: at most {max} files in one batch."
+    },
+    "fileHint": "CSV only · 10 MiB max",
+    "fileBrowse": "Browse files",
+    "fileDropNow": "Release to drop the file",
+    "fileReady": "Ready",
+    "steps": {
+      "aria": "Import steps",
+      "selectTitle": "Choose the file",
+      "selectHint": "Drop a CSV — or a ZIP in bulk mode.",
+      "validateTitle": "Dry-run",
+      "validateHint": "NetForge reads every row without writing anything.",
+      "reviewTitle": "Review the report",
+      "reviewHint": "Check the counters and the rows that failed.",
+      "applyTitle": "Apply",
+      "applyHint": "Untick the dry-run and re-run to write.",
+      "done": "Done",
+      "current": "Current step",
+      "todo": "Upcoming"
     }
   },
   "ai": {
     "suggestLinks": {
+      "confidenceLabel": "Confidence",
       "cta": "AI suggestions",
       "title": "AI link suggestions",
       "heading": "Find missing links",
@@ -856,6 +992,13 @@
     "acceptedToast": "Link created from the AI suggestion.",
     "scanDoneToast": "{persisted} new suggestion(s) added out of {raw} returned.",
     "askView": {
+      "disabledTitle": "AI assistant disabled",
+      "thinking": "The assistant is writing its answer…",
+      "composerHint": "Enter to send · Shift+Enter for a new line",
+      "sourcesTitle": "Cited records",
+      "historyErrorHint": "History could not be loaded. Retry, or carry on without it — your current conversation is unaffected.",
+      "historyEmptyHint": "Ask a question and the conversation will be saved here automatically.",
+      "untitledConversation": "Untitled conversation",
       "title": "Ask AI",
       "subtitle": "Ask questions about your inventory in plain English.",
       "you": "You",
@@ -881,6 +1024,9 @@
       "help": "The assistant reads your live inventory to answer. Your questions and the data sent are tracked in Settings → AI usage. Don't include credentials or external secrets in your prompts."
     },
     "advisor": {
+      "summaryLabel": "Findings by severity",
+      "affectedTitle": "Affected records",
+      "disabledDescription": "The AI assistant is disabled. Enable it in Settings → AI to run an analysis.",
       "recurringBadge": "Recurring ×{n}",
       "streakTooltip": "This finding has appeared in {n} consecutive runs — a fix or an explicit acknowledgement is overdue.",
       "tab": "AI advisor",
@@ -918,6 +1064,8 @@
       "help": "The AI scans your inventory looking for single points of failure, capacity overruns, security weaknesses, segmentation gaps and naming inconsistencies. Each finding suggests a fix."
     },
     "integrity": {
+      "run": "Run checks",
+      "notRunDescription": "The checks haven't run yet. Run them to verify your inventory is consistent.",
       "tab": "Data integrity",
       "description": "Inventory consistency checks.",
       "cleanTitle": "Everything is clean",
@@ -925,6 +1073,15 @@
       "help": "Deterministic, AI-free checks: orphaned references, broken constraints, contradictory states. Pure database queries — no provider call, no cost."
     },
     "drafts": {
+      "listTitle": "Drafts",
+      "payloadTitle": "Proposed change",
+      "rawPayload": "Show raw JSON",
+      "decisionHint": "Apply writes to the inventory straight away. Reject archives the draft and changes nothing.",
+      "appliedResourceLabel": "Created resource",
+      "failedHint": "Nothing was written. Fix the request, then prepare a new draft.",
+      "confirmApplyTitle": "Apply this draft?",
+      "confirmApplyMessage": "NetForge will run “{intent}” against your inventory using the values below.",
+      "confirmApplyWarning": "Irreversible: NetForge cannot undo an applied draft. You would have to delete the resource by hand.",
       "title": "Drafted actions",
       "subtitle": "Describe what you want — the AI prepares it for you to review.",
       "composerLabel": "Request",
@@ -969,7 +1126,9 @@
       "intervalDays": "{n} d",
       "neverRun": "Never ran",
       "lastRunAt": "Last run: {at}",
-      "savedToast": "Schedule saved."
+      "savedToast": "Schedule saved.",
+      "disabledHint": "Disabled — this scan never runs and no webhook is sent.",
+      "webhookTargetHint": "Changing this address redirects every future notification. Leave it blank to stop notifying entirely."
     },
     "csvMapping": {
       "openButton": "Mapping helper",
@@ -1032,6 +1191,14 @@
       "byKind": "By feature",
       "byProvider": "By provider",
       "disclaimer": "Cost derived from 2026-05 public list rates (Anthropic, OpenAI, Google). Real billing may differ (cache, batch, region).",
+      "costCurrency": "USD",
+      "tokensUnit": "tokens",
+      "callsUnit": "calls",
+      "latencyUnit": "ms",
+      "tokensBreakdown": "{in} prompt · {out} completion",
+      "sparklineLabel": "Calls per day",
+      "errorTitle": "Usage data unavailable",
+      "errorDescription": "The report could not be loaded. Check that the backend is reachable, then try again.",
       "kinds": {
         "suggestLinks": "Link suggestions",
         "advisor": "Infra advisor",

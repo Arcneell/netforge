@@ -1,11 +1,15 @@
 name: ci
 
-# Pull-request + main-push gate. Keeps merges green: lint + unit tests for the
-# backend, lint + typecheck + build for the frontend. No DB needed — backend
-# tests use AsyncMock; integration coverage lives in Playwright (separate).
+# Pull-request + main-push gate. Keeps merges green:
+#   - backend:      lint + unit tests (AsyncMock, no DB) + coverage report
+#   - frontend:     i18n parity + unit tests w/ coverage + lint + prod build
+#   - integration:  backend tests against a real Postgres 16 service
+#   - e2e:          Playwright critical flows against a live backend + Vite
+#   - docker-build: both production images build cleanly (no push)
+#   - audit:        dependency vulnerability scan
 #
-# Both jobs run in parallel; the workflow status is the and of the two so a
-# branch needs both before being mergeable.
+# All jobs run in parallel; the workflow status is the and of them all, so a
+# branch needs every job green before being mergeable.
 
 on:
   pull_request:
@@ -48,10 +52,12 @@ jobs:
       - name: Ruff lint
         run: ruff check app tests
 
-      - name: Pytest
+      - name: Pytest (with coverage report)
         # The AI tests rely only on mocked SDKs / mocked DB sessions, so the
-        # job stays fully self-contained.
-        run: pytest -q
+        # job stays fully self-contained. Coverage is measured and printed in
+        # the log (pytest-cov) but NOT enforced yet — no threshold fails the
+        # job; add `--cov-fail-under` once a baseline is agreed.
+        run: pytest -q --cov=app --cov-report=term
 
   frontend:
     runs-on: ubuntu-latest
@@ -74,8 +80,10 @@ jobs:
       - name: i18n parity (en/fr keys in sync, no empty values)
         run: npm run i18n:check
 
-      - name: Unit tests (Vitest)
-        run: npm run test:unit
+      - name: Unit tests (Vitest, with coverage report)
+        # Runs the same Vitest suite as `test:unit` plus a coverage summary
+        # in the log. Measurement only for now — no threshold blocks the job.
+        run: npm run test:coverage
 
       - name: ESLint (check only — no --fix)
         # The repo's `npm run lint` script ships `--fix`, which is fine
@@ -85,10 +93,191 @@ jobs:
       - name: Production build (runs vue-tsc + vite build)
         run: npm run build
 
+  # Backend integration tests against a real Postgres 16 — the unit job above
+  # stays mock-only and DB-free on purpose; this one exercises the SQL that
+  # mocks can't (GiST exclusion, triggers, INET/CIDR operators). The tests
+  # apply `alembic upgrade head` themselves on the URL below, so no migration
+  # step is needed here.
+  integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: netforge
+          POSTGRES_USER: netforge
+          POSTGRES_PASSWORD: netforge
+        ports:
+          - 5432:5432
+        # Service containers have no compose-style healthcheck block; the
+        # equivalent goes through raw `docker create` options so the job
+        # only starts once Postgres accepts connections.
+        options: >-
+          --health-cmd "pg_isready -U netforge -d netforge"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend deps (editable + dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Integration tests (real Postgres)
+        env:
+          # The integration suite keys off this variable: it points at the
+          # service container published on localhost above and is the URL
+          # the tests run `alembic upgrade head` against.
+          NETFORGE_INTEGRATION_DB_URL: postgresql+asyncpg://netforge:netforge@localhost:5432/netforge
+        run: pytest -q tests/integration
+
+  # Playwright E2E on the critical flows (add IP, create switch, topology).
+  # Mirrors the documented dev stack (frontend/e2e/README.md) but host-run
+  # for speed and cacheability: Postgres as a service container, the backend
+  # as a background uvicorn with AUTH_PROVIDER=dev (passwordless local admin
+  # — loopback-only here, same guard as docker-compose.dev.yml), and the SPA
+  # as a background Vite dev server proxying /api to the backend.
+  # PLAYWRIGHT_CHANNEL=chromium overrides the config's msedge default (a
+  # Windows-Defender workaround that has no purpose on a Linux runner).
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: netforge
+          POSTGRES_USER: netforge
+          POSTGRES_PASSWORD: netforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U netforge -d netforge"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend deps
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Apply migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://netforge:netforge@localhost:5432/netforge
+        run: alembic upgrade head
+
+      - name: Start backend (background uvicorn)
+        working-directory: backend
+        # nohup + full redirection so the step's stdout/stderr pipes close
+        # and the step finishes; the process itself survives across steps
+        # within the job. PUBLIC_URL points at the Vite origin (5173) —
+        # the dev auth provider requires a loopback PUBLIC_URL and OAuth-
+        # style callbacks must land back on the SPA.
+        env:
+          DATABASE_URL: postgresql+asyncpg://netforge:netforge@localhost:5432/netforge
+          AUTH_PROVIDER: dev
+          PUBLIC_URL: http://localhost:5173
+          CORS_ORIGINS: http://localhost:5173
+        run: nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        # --with-deps pulls the system libraries Chromium needs on a bare
+        # ubuntu runner. Only chromium — the suite runs a single browser.
+        run: npx playwright install --with-deps chromium
+
+      - name: Start Vite dev server (background)
+        working-directory: frontend
+        # The dev server proxies /api/* to VITE_BACKEND_URL (vite.config.ts),
+        # exactly like the docker-compose.dev.yml stack.
+        env:
+          VITE_BACKEND_URL: http://localhost:8000
+        run: nohup npm run dev > /tmp/vite.log 2>&1 &
+
+      - name: Wait for backend + frontend readiness
+        run: |
+          curl -fsS --retry 30 --retry-delay 2 --retry-all-errors http://localhost:8000/api/health
+          curl -fsS --retry 30 --retry-delay 2 --retry-all-errors http://localhost:5173/
+
+      - name: Playwright E2E (critical flows)
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+          E2E_BASE_URL: http://localhost:5173
+        run: npx playwright test
+
+      - name: Upload traces / screenshots on failure
+        # The CI reporter is github+list (no HTML report), so the useful
+        # debugging artefacts live in test-results/ (traces, screenshots,
+        # videos on retry/failure). Server logs help diagnose 5xx flows.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            frontend/test-results/
+            /tmp/uvicorn.log
+            /tmp/vite.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Build both production images on every PR — no push, no registry login,
+  # no GHCR credentials. Catches Dockerfile breakage (base-image tag typos,
+  # `npm ci` lockfile drift, files newly excluded by .dockerignore) before
+  # merge instead of at release time, where the same build failing blocks
+  # the release pipeline.
+  docker-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+          - { name: backend, context: ./backend }
+          - { name: frontend, context: ./frontend }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: docker build ${{ matrix.component.name }} (no push)
+        run: docker build --tag netforge-${{ matrix.component.name }}:ci ${{ matrix.component.context }}
+
   # Dependency vulnerability scan. Kept in its own job so a transitive
   # advisory shows up as a distinct red check rather than masquerading as a
   # lint/build failure. Runs on every PR and on main pushes alongside the
-  # other two jobs.
+  # other jobs.
   audit:
     runs-on: ubuntu-latest
     steps:
@@ -104,22 +293,33 @@ jobs:
         # environment we audit below.
         run: pipx install pip-audit
 
-      - name: Build an isolated backend runtime environment
+      - name: Check the lockfile is in sync with pyproject.toml
         working-directory: backend
+        # requirements.lock.txt is what the Docker image installs
+        # (--require-hashes) and what pip-audit audits below. A drifted
+        # lockfile would make both of those look at the wrong dependency set.
         run: |
-          python -m venv .audit-venv
-          .audit-venv/bin/pip install --upgrade pip
-          .audit-venv/bin/pip install -e .
+          pipx install pip-tools
+          # Seed the check file with the committed pins: pip-compile keeps
+          # existing pins that still satisfy pyproject.toml, so this only
+          # flags real drift (edited deps), not every new upstream release.
+          cp requirements.lock.txt requirements.lock.check.txt
+          pip-compile --quiet --generate-hashes --strip-extras \
+            --output-file=requirements.lock.check.txt pyproject.toml
+          # Compare ignoring comment lines (header records the output filename).
+          diff -u <(grep -v '^ *#' requirements.lock.txt) \
+                  <(grep -v '^ *#' requirements.lock.check.txt) || {
+            echo "::error::backend/requirements.lock.txt is out of date — regenerate it (see backend/Dockerfile header)"; exit 1; }
 
       - name: pip-audit (backend runtime deps only)
         working-directory: backend
-        # --path audits ONLY the runtime deps installed in the isolated venv,
-        # so an advisory in pip-audit's own dependency tree (never shipped in
-        # the backend image) can no longer fail this gate. Add
-        # `--ignore-vuln <GHSA/PYSEC id>` + justification for findings with no
-        # fix available.
+        # Audits the lockfile — the exact pinned set shipped in the backend
+        # image — without installing anything, so an advisory in pip-audit's
+        # own dependency tree (never shipped in the backend image) cannot
+        # fail this gate. Add `--ignore-vuln <GHSA/PYSEC id>` + justification
+        # for findings with no fix available.
         run: |
-          pip-audit --desc --path "$(.audit-venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+          pip-audit --desc -r requirements.lock.txt
 
       - name: Set up Node 22
         uses: actions/setup-node@v6
@@ -132,6 +332,10 @@ jobs:
         working-directory: frontend
         # --audit-level=high so only High/Critical advisories fail the gate;
         # lower-severity noise is reported but non-blocking.
+        # --omit=dev scopes the gate to what actually ships in the bundle:
+        # devDependency chains (eslint, vitest, vue-tsc…) never reach
+        # production and their fixes routinely require major bumps — they
+        # are still surfaced by dependabot, just not as a merge blocker.
         run: |
           npm ci
-          npm audit --audit-level=high
+          npm audit --omit=dev --audit-level=high

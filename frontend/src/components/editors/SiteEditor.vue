@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { AlertTriangle } from 'lucide-vue-next'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -99,7 +100,10 @@ async function onSubmit(e: Event) {
     size="md"
     @close="emit('close')"
   >
-    <form class="grid grid-cols-2 gap-4" @submit="onSubmit">
+    <!-- One rhythm for every editor: single column on a phone, two from `sm`
+         up, a uniform 1rem gutter, and full-width rows opting in with
+         `sm:col-span-2`. -->
+    <form class="grid grid-cols-1 sm:grid-cols-2 gap-4" @submit="onSubmit">
       <FormField :label="t('site.fields.code')" :error="errors.code" required>
         <template #help>
           <HelpTooltip :text="t('site.help.code')" />
@@ -127,17 +131,26 @@ async function onSubmit(e: Event) {
           />
         </template>
       </FormField>
-      <FormField class="col-span-2" :label="t('site.fields.address')">
+      <FormField class="sm:col-span-2" :label="t('site.fields.address')">
         <template #default="{ id }">
           <Textarea :id="id" v-model="form.address" :rows="2" />
         </template>
       </FormField>
-      <p v-if="submitError" class="col-span-2 text-sm text-danger" role="alert">
-        {{ submitError }}
+
+      <!-- Form-level failure (the API said no). Field-level problems always
+           render inside their own FormField, so this block is the single
+           place a submit error can appear. -->
+      <p
+        v-if="submitError"
+        class="sm:col-span-2 flex items-start gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+        role="alert"
+      >
+        <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>{{ submitError }}</span>
       </p>
     </form>
     <template #footer>
-      <div class="flex justify-end gap-2">
+      <div class="flex items-center justify-end gap-2">
         <Button variant="secondary" :disabled="saving" @click="emit('close')">
           {{ t('common.cancel') }}
         </Button>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2, Search } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, Search, X } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -10,7 +11,6 @@ import Badge from '@/components/ui/Badge.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
 import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
-import DeviceEditor from '@/components/editors/DeviceEditor.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { devicesApi } from '@/api'
 import type { Device, DeviceType } from '@/api'
@@ -22,7 +22,8 @@ import { useDebounce } from '@/composables/useDebounce'
 const { t } = useI18n()
 const { isAdmin } = useAuth()
 const { success } = useToast()
-const { describe } = useApiErrorMessage()
+const { notify } = useApiErrorMessage()
+const router = useRouter()
 
 const items = ref<Device[]>([])
 const total = ref(0)
@@ -34,8 +35,6 @@ const query = ref('')
 const typeFilter = ref<DeviceType | ''>('')
 const debouncedQuery = useDebounce(query, 300)
 
-const editorOpen = ref(false)
-const editing = ref<Device | null>(null)
 const deleteTarget = ref<Device | null>(null)
 const deleting = ref(false)
 
@@ -68,6 +67,17 @@ watch([debouncedQuery, typeFilter], () => {
   load()
 })
 
+const hasActiveFilters = computed(() => query.value.trim().length > 0 || typeFilter.value !== '')
+
+function clearFilters() {
+  query.value = ''
+  // Settle the debounce immediately so the watcher that follows reads the
+  // empty query instead of the 300ms-stale one and re-issues the request
+  // with the previous term still attached.
+  debouncedQuery.flush()
+  typeFilter.value = ''
+}
+
 const typeOptions = computed(() => [
   { value: '', label: t('common.all') },
   ...(
@@ -85,13 +95,12 @@ const typeOptions = computed(() => [
   ).map((tp) => ({ value: tp, label: t(`device.types.${tp}`) })),
 ])
 
+// Create and edit are full pages, not modals — see components/FormPage.vue.
 function onNew() {
-  editing.value = null
-  editorOpen.value = true
+  router.push({ name: 'device-new' })
 }
 function onEdit(d: Device) {
-  editing.value = d
-  editorOpen.value = true
+  router.push({ name: 'device-edit', params: { id: d.id } })
 }
 async function confirmDelete() {
   if (!deleteTarget.value) return
@@ -102,7 +111,7 @@ async function confirmDelete() {
     deleteTarget.value = null
     load()
   } catch (err) {
-    void describe(err)
+    notify(err)
   } finally {
     deleting.value = false
   }
@@ -111,7 +120,7 @@ async function confirmDelete() {
 // Wrap in computed so column labels follow the i18n locale (otherwise
 // the header row stays in the language active when the view mounted).
 const columns = computed<DataTableColumn[]>(() => [
-  { key: 'name', label: t('device.fields.name'), cellClass: 'font-medium' },
+  { key: 'name', label: t('device.fields.name') },
   { key: 'type', label: t('device.fields.type'), cellClass: 'w-28' },
   { key: 'vendor', label: t('device.fields.vendor'), hideOnSm: true },
   { key: 'model', label: t('device.fields.model'), hideOnSm: true },
@@ -121,7 +130,7 @@ const columns = computed<DataTableColumn[]>(() => [
 </script>
 
 <template>
-  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('device.labelPlural')" :subtitle="t('device.subtitle')">
       <template #help>
         <HelpTooltip :text="t('device.pageHelp')" placement="bottom" />
@@ -134,20 +143,34 @@ const columns = computed<DataTableColumn[]>(() => [
       </template>
     </PageHeader>
 
-    <div class="flex flex-wrap items-center gap-2 mb-4">
-      <div class="relative flex-1 min-w-[12rem] max-w-sm">
+    <!-- Same toolbar shape as the other list pages: search first, then the
+         filters, then the result count pushed right. -->
+    <div class="nf-toolbar">
+      <div class="relative flex-1 min-w-[14rem] max-w-sm">
         <Search
-          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-muted pointer-events-none"
+          class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle pointer-events-none z-10"
           aria-hidden="true"
         />
         <Input
           v-model="query"
+          type="search"
           :placeholder="t('common.search')"
-          class="pl-8"
           :aria-label="t('common.search')"
+          class="pl-9 pr-9"
           autocomplete="off"
+          spellcheck="false"
         />
+        <button
+          v-if="query"
+          type="button"
+          class="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-6 h-6 rounded text-fg-muted hover:bg-surface-hover hover:text-fg transition-colors duration-150 ease-soft"
+          :aria-label="t('common.reset')"
+          @click="query = ''"
+        >
+          <X class="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
       </div>
+
       <div class="w-44">
         <Select
           :model-value="typeFilter"
@@ -156,20 +179,38 @@ const columns = computed<DataTableColumn[]>(() => [
           @update:model-value="(v) => (typeFilter = v as DeviceType | '')"
         />
       </div>
+
+      <Button v-if="hasActiveFilters" variant="ghost" size="sm" @click="clearFilters">
+        <X class="w-3.5 h-3.5" aria-hidden="true" />
+        {{ t('common.clearFilters') }}
+      </Button>
+
+      <span class="ml-auto text-sm text-fg-muted tabular-nums whitespace-nowrap" aria-live="polite">
+        {{ t('common.resultCount', total) }}
+      </span>
     </div>
 
     <DataTable
       :columns="columns"
       :rows="items"
       :loading="loading"
-      :empty-title="t('device.labelPlural')"
-      :empty-description="t('device.empty')"
+      :empty-title="hasActiveFilters ? t('common.noMatch.title') : t('common.empty.title')"
+      :empty-description="
+        hasActiveFilters ? t('common.noMatch.description') : t('device.emptyHint')
+      "
     >
-      <template v-if="isAdmin" #empty-action>
-        <Button variant="primary" @click="onNew">
+      <template #empty-action>
+        <Button v-if="hasActiveFilters" variant="secondary" @click="clearFilters">
+          <X class="w-4 h-4" aria-hidden="true" />
+          {{ t('common.clearFilters') }}
+        </Button>
+        <Button v-else-if="isAdmin" variant="primary" @click="onNew">
           <Plus class="w-4 h-4" aria-hidden="true" />
           {{ t('device.new') }}
         </Button>
+      </template>
+      <template #cell-name="{ row }">
+        <span class="font-medium text-fg">{{ row.name }}</span>
       </template>
       <template #cell-type="{ row }">
         <Badge tone="neutral">{{ t(`device.types.${row.type}`) }}</Badge>
@@ -221,7 +262,6 @@ const columns = computed<DataTableColumn[]>(() => [
       </template>
     </DataTable>
 
-    <DeviceEditor :open="editorOpen" :device="editing" @close="editorOpen = false" @saved="load" />
     <ConfirmDialog
       :open="!!deleteTarget"
       :title="t('common.confirmDelete.title', { label: deleteTarget?.name ?? '' })"
