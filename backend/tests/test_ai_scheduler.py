@@ -151,6 +151,32 @@ async def test_maybe_notify_skips_when_no_url() -> None:
     await scheduler._maybe_notify(db, schedule=sched, new_run_id=10, previous_run_id=None)
 
 
+@pytest.mark.asyncio
+async def test_run_log_cleanup_is_throttled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The retention sweep runs at most once per interval — the loop wakes
+    every minute and must not scan `ai_run_logs` each tick."""
+    from sqlalchemy.sql.dml import Delete
+
+    monkeypatch.setattr(scheduler, "_last_run_log_cleanup_at", None)
+    db = AsyncMock()
+
+    await scheduler._maybe_cleanup_run_logs(db)
+    deletes = [c.args[0] for c in db.execute.await_args_list if isinstance(c.args[0], Delete)]
+    assert len(deletes) == 1
+    db.commit.assert_awaited()
+    # The DELETE must exclude the latest successful advisor run (its
+    # infra_insights rows CASCADE away with it) — pinned via the compiled
+    # SQL, which carries the NOT IN subquery on ai_run_logs.
+    compiled = str(deletes[0].compile())
+    assert "NOT IN" in compiled.upper()
+    assert "created_at" in compiled
+
+    # Second pass inside the throttle window: no further DELETE.
+    db2 = AsyncMock()
+    await scheduler._maybe_cleanup_run_logs(db2)
+    db2.execute.assert_not_awaited()
+
+
 def _mock_db_with_query_results(by_run_id: dict[int, list]) -> AsyncMock:
     """Return an AsyncMock whose `execute(...)` returns the insight rows the
     `_maybe_notify` helper expects, keyed by the run_id condition baked into

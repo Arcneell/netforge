@@ -54,11 +54,13 @@ async def callback(
 ) -> Response:
     info = await provider.authenticate(request)
     user = await upsert_user_from_provider(db, provider.name, info, settings)
-    session = await create_session(db, user, request, settings)
+    # `create_session` stores only the SHA-256 digest of the token; the
+    # plaintext returned here goes into the cookie and is never persisted.
+    _session, session_token = await create_session(db, user, request, settings)
 
     # Send the user back to the SPA root; the SPA fetches /api/auth/me next.
     response = RedirectResponse(url="/", status_code=302)
-    set_session_cookie(response, session.id, settings)
+    set_session_cookie(response, session_token, settings)
     return response
 
 

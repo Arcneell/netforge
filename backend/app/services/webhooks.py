@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models.webhook import Webhook, WebhookDelivery
-from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url_async
+from app.utils.ssrf import UnsafeOutboundURL, safe_post
 
 logger = logging.getLogger("netforge.webhooks")
 
@@ -281,8 +281,18 @@ async def _dispatch_events(events: list[WebhookEvent]) -> None:
 
 async def _deliver_one(
     webhook_id: int, url: str, secret: str, ev: WebhookEvent
-) -> None:
-    """Send one POST, write the delivery row + update aggregates. Never raises."""
+) -> WebhookDelivery:
+    """Send one POST, write the delivery row + update aggregates. Never raises.
+
+    Returns the `WebhookDelivery` row describing the attempt. When
+    persisting the row fails, the returned object is transient (`id` is
+    None) but still carries the attempt's outcome — `send_test_event`
+    relies on that to answer the `/test` endpoint without re-querying.
+
+    One attempt per event, no retry: webhooks here are best-effort change
+    notifications (see the module docstring), so a failed POST is recorded
+    in the delivery log for the operator instead of being retried.
+    """
     payload = ev.to_payload()
     body = json.dumps(payload, default=str, separators=(",", ":")).encode("utf-8")
     signature = sign_body(secret, body)
@@ -297,47 +307,47 @@ async def _deliver_one(
     status_code = 0
     error: str | None = None
     started = time.monotonic()
-    # SSRF guard — refuse to dispatch to private / loopback / metadata
-    # IPs unless the operator has explicitly opted in. Without this, an
-    # admin (or any holder of an admin API token) can point a webhook
-    # at http://postgres:5432, http://169.254.169.254/..., or the
-    # backend's own /api/, and the first 200 bytes of the response leak
-    # into WebhookDelivery.error.
+    # `safe_post` bundles the SSRF guard with DNS pinning: it resolves the
+    # hostname once, refuses private / loopback / metadata targets (unless
+    # the operator opted in) and connects to the vetted IP — so a rebinding
+    # DNS server can't swap in an internal address between validation and
+    # connection. Without this, an admin (or any holder of an admin API
+    # token) can point a webhook at http://postgres:5432,
+    # http://169.254.169.254/..., or the backend's own /api/, and the first
+    # 200 bytes of the response leak into WebhookDelivery.error.
     try:
-        await check_outbound_url_async(
-            url, allow_private=get_settings().webhook_allow_private_targets
+        resp = await safe_post(
+            url,
+            content=body,
+            headers=headers,
+            timeout=_DISPATCH_TIMEOUT_S,
+            allow_private=get_settings().webhook_allow_private_targets,
         )
+        status_code = resp.status_code
+        if status_code >= 400:
+            error = f"HTTP {status_code}: {resp.text[:200]}"
     except UnsafeOutboundURL as exc:
         error = f"UnsafeOutboundURL: {exc}"
-
-    if error is None:
-        try:
-            async with httpx.AsyncClient(timeout=_DISPATCH_TIMEOUT_S) as client:
-                resp = await client.post(url, content=body, headers=headers)
-                status_code = resp.status_code
-                if status_code >= 400:
-                    error = f"HTTP {status_code}: {resp.text[:200]}"
-        except httpx.TimeoutException:
-            error = f"timeout after {_DISPATCH_TIMEOUT_S}s"
-        except Exception as exc:
-            # Log + persist any transport failure (DNS, connection refused, ...).
-            error = f"{type(exc).__name__}: {exc}"
+    except httpx.TimeoutException:
+        error = f"timeout after {_DISPATCH_TIMEOUT_S}s"
+    except Exception as exc:
+        # Log + persist any transport failure (DNS, connection refused, ...).
+        error = f"{type(exc).__name__}: {exc}"
     latency_ms = int((time.monotonic() - started) * 1000)
     success = 200 <= status_code < 300 and error is None
 
+    delivery = WebhookDelivery(
+        webhook_id=webhook_id,
+        event=ev.event_name,
+        payload=payload,
+        status_code=status_code,
+        success=success,
+        error=error,
+        latency_ms=latency_ms,
+    )
     try:
         async with SessionLocal() as db:
-            db.add(
-                WebhookDelivery(
-                    webhook_id=webhook_id,
-                    event=ev.event_name,
-                    payload=payload,
-                    status_code=status_code,
-                    success=success,
-                    error=error,
-                    latency_ms=latency_ms,
-                )
-            )
+            db.add(delivery)
             await db.execute(
                 update(Webhook)
                 .where(Webhook.id == webhook_id)
@@ -350,9 +360,12 @@ async def _deliver_one(
                 )
             )
             await db.commit()
+            await db.refresh(delivery)
     except Exception:
-        # Delivery row failed to persist — log and move on.
+        # Delivery row failed to persist — log and move on. The transient
+        # object still describes the attempt for the caller.
         logger.exception("failed to persist webhook delivery row")
+    return delivery
 
 
 async def _maybe_cleanup_old_deliveries(db: AsyncSession) -> None:
@@ -379,14 +392,12 @@ async def send_test_event(webhook: Webhook) -> WebhookDelivery:
         after={"hello": "from netforge"},
         user_id=None,
     )
-    await _deliver_one(webhook.id, webhook.url, webhook.secret, test_event)
-    # Read back the row we just inserted so the API can return it.
-    async with SessionLocal() as db:
-        result = await db.execute(
-            select(WebhookDelivery)
-            .where(WebhookDelivery.webhook_id == webhook.id)
-            .order_by(WebhookDelivery.id.desc())
-            .limit(1)
-        )
-        row = result.scalar_one()
-    return row
+    delivery = await _deliver_one(webhook.id, webhook.url, webhook.secret, test_event)
+    if delivery.id is None:
+        # Persisting the row failed (transient DB error) — the POST itself
+        # may still have gone out, so answer with the attempt's outcome
+        # instead of crashing the endpoint with a 500. `id=0` marks the
+        # synthetic, never-persisted row for the response model.
+        delivery.id = 0
+        delivery.created_at = datetime.now(UTC)
+    return delivery

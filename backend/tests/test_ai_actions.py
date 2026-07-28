@@ -258,9 +258,10 @@ async def test_apply_route_maps_integrity_error_to_409(monkeypatch: pytest.Monke
 
 @pytest.mark.asyncio
 async def test_apply_route_maps_unexpected_exception_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Anything that isn't LookupError / ValueError / IntegrityError now
-    returns a 502 with the exception type in the detail — the operator
-    sees what crashed instead of a bare 'Request failed with status 502'."""
+    """Anything that isn't LookupError / ValueError / IntegrityError returns
+    a 502 with the stable AI_APPLY_FAILED code and a GENERIC message — the
+    exception repr goes to the server log only, because it can leak
+    internals (DSNs, file paths, provider payloads) to the client."""
     from fastapi import HTTPException
 
     from app.routers import ai as ai_route
@@ -277,5 +278,8 @@ async def test_apply_route_maps_unexpected_exception_to_502(monkeypatch: pytest.
     with pytest.raises(HTTPException) as exc:
         await ai_route.apply_draft_route(draft_id=1, user=user, db=db)
     assert exc.value.status_code == 502
-    assert "RuntimeError" in str(exc.value.detail)
-    assert "connection lost" in str(exc.value.detail)
+    detail = str(exc.value.detail)
+    assert "AI_APPLY_FAILED" in detail
+    # No exception internals in the client-facing payload.
+    assert "RuntimeError" not in detail
+    assert "connection lost" not in detail

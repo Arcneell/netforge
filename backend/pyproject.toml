@@ -13,11 +13,11 @@ dependencies = [
     "alembic>=1.14",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-    "authlib>=1.3.2",
+    # >=1.6.4 pulls the JWS/JWT fixes from the 1.6 series.
+    "authlib>=1.6.4",
     "httpx>=0.28",
     "python-multipart>=0.0.18",
     "itsdangerous>=2.2",
-    "slowapi>=0.1.9",
     # AI integration — three providers, all optional at runtime. The factory
     # only imports the one matching AI_PROVIDER so a deployment can leave the
     # unused SDKs uninstalled if it really wants to slim the image.
@@ -34,9 +34,14 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=6",
     "httpx>=0.28",
     "ruff>=0.8",
     "mypy>=1.13",
+    # tests/test_compose_env_passthrough.py parses the compose files. Present
+    # transitively via uvicorn[standard], declared here so the guard does not
+    # break if that transitive dep ever goes away.
+    "pyyaml>=6",
 ]
 
 [build-system]

@@ -25,14 +25,14 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import SessionLocal  # alias kept locally below for readability
 from app.models.ai import (
     AIRunKind,
+    AIRunLog,
     AISchedule,
     InfraInsight,
     InsightSeverity,
@@ -55,6 +55,13 @@ _SEVERITY_RANK = {
 
 # Module-level handle so `stop_scheduler` can cancel cleanly on shutdown.
 _TASK: asyncio.Task | None = None
+
+# Rolling retention for `ai_run_logs`, mirroring the 30-day window that
+# `services/webhooks.py` applies to `webhook_deliveries`. The cleanup is
+# throttled so the minute-tick loop doesn't scan the table on every pass.
+_RUN_LOG_RETENTION = timedelta(days=30)
+_RUN_LOG_CLEANUP_INTERVAL = timedelta(hours=6)
+_last_run_log_cleanup_at: datetime | None = None
 
 
 def is_due(schedule: AISchedule, now: datetime) -> bool:
@@ -268,25 +275,67 @@ async def _send_webhook(url: str, payload: dict[str, Any]) -> None:
         return
     # SSRF guard — see app/utils/ssrf.py for the rationale. The scheduler
     # path uses the same admin-supplied URL surface as the webhooks
-    # router so the same protection applies.
+    # router so the same protection applies. `safe_post` resolves the
+    # hostname once, validates the IPs and pins the connection to a vetted
+    # address so a rebinding DNS server can't redirect the POST to an
+    # internal target between validation and connection.
     from app.config import get_settings
-    from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url_async
-
-    try:
-        await check_outbound_url_async(
-            url, allow_private=get_settings().webhook_allow_private_targets
-        )
-    except UnsafeOutboundURL as exc:
-        logger.warning("AI webhook refused (SSRF guard): %s", exc)
-        return
+    from app.utils.ssrf import UnsafeOutboundURL, safe_post
 
     body = _format_for_chat_provider(url, payload)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=body)
-            resp.raise_for_status()
+        resp = await safe_post(
+            url,
+            json=body,
+            timeout=10.0,
+            allow_private=get_settings().webhook_allow_private_targets,
+        )
+        resp.raise_for_status()
+    except UnsafeOutboundURL as exc:
+        logger.warning("AI webhook refused (SSRF guard): %s", exc)
     except Exception:
         logger.exception("webhook post failed url=%s", url)
+
+
+async def _maybe_cleanup_run_logs(db: AsyncSession) -> None:
+    """Trim `ai_run_logs` rows older than the retention window.
+
+    Anchored in the scheduler loop because it's the only long-lived
+    background context the AI stack has — the same reason the webhook
+    dispatcher hosts the `webhook_deliveries` purge. Limitation: with
+    `AI_SCHEDULER_ENABLED=false` the purge never runs; acceptable because
+    without the scheduler the table only grows through manual admin calls,
+    which are rate-limited to a trickle.
+
+    The most recent successful advisor run is always kept regardless of
+    age: `infra_insights` rows CASCADE-delete with their run, and the
+    insights page + PDF export serve exactly that run's rows. Everything
+    older loses its (superseded) insights along with the log row, and the
+    `link_suggestions` / `ai_schedules` FKs are SET NULL so nothing else
+    breaks.
+    """
+    global _last_run_log_cleanup_at
+    now = datetime.now(UTC)
+    if (
+        _last_run_log_cleanup_at is not None
+        and now - _last_run_log_cleanup_at < _RUN_LOG_CLEANUP_INTERVAL
+    ):
+        return
+    _last_run_log_cleanup_at = now
+    cutoff = now - _RUN_LOG_RETENTION
+    keep_latest_advisor = (
+        select(AIRunLog.id)
+        .where(AIRunLog.kind == AIRunKind.advisor, AIRunLog.success.is_(True))
+        .order_by(AIRunLog.created_at.desc())
+        .limit(1)
+    ).scalar_subquery()
+    await db.execute(
+        delete(AIRunLog).where(
+            AIRunLog.created_at < cutoff,
+            AIRunLog.id.not_in(keep_latest_advisor),
+        )
+    )
+    await db.commit()
 
 
 async def _loop() -> None:
@@ -298,6 +347,7 @@ async def _loop() -> None:
                 due = await _list_due(db, datetime.now(UTC))
                 for schedule in due:
                     await _run_one(db, schedule)
+                await _maybe_cleanup_run_logs(db)
         except asyncio.CancelledError:
             raise
         except Exception:

@@ -376,6 +376,11 @@ class AIScheduleUpsert(BaseModel):
 
     enabled: bool = False
     interval_minutes: int = Field(ge=15, le=10080, default=1440)
+    # Kept as a plain string here because the meaningful validation (http(s)
+    # scheme + SSRF target check, which needs DNS) is async — the router's
+    # upsert handler runs `check_outbound_url_async` and answers 422 on a
+    # refused URL, so bad targets fail loudly at save time instead of
+    # silently at dispatch time.
     webhook_url: str | None = Field(default=None, max_length=2000)
     webhook_severity_threshold: str = Field(
         default="warning", pattern="^(info|warning|critical)$"

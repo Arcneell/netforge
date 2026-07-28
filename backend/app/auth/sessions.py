@@ -3,10 +3,17 @@
 The session cookie holds an opaque random token. The actual session data lives
 in the `sessions` table — that gives us instant revocation (logout, force-out,
 account disable) which JWTs do not.
+
+Storage rule (same trick as `services/api_tokens.py`): the DB never stores the
+cookie value itself, only its SHA-256 hex digest as the primary key. A leaked
+DB dump (or an over-broad read grant) therefore can't be replayed as a login —
+the digest is useless without its preimage, and every lookup/delete hashes the
+incoming cookie value before touching the table.
 """
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -26,15 +33,35 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def hash_session_id(session_id: str) -> str:
+    """SHA-256 hex digest of the cookie token — 64 chars, fits the
+    `sessions.id` String(64) column. Mirrors `api_tokens._hash`."""
+    return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+
+
 async def create_session(
     db: AsyncSession,
     user: User,
     request: Request,
     settings: Settings,
-) -> Session:
-    """Create a fresh session for `user` and persist it."""
+) -> tuple[Session, str]:
+    """Create a fresh session for `user` and persist it.
+
+    Returns ``(session, token)`` — same contract as
+    `api_tokens.create_token`: the row stores only the SHA-256 digest of
+    the token, and the plaintext `token` (the future cookie value) is
+    returned exactly once for the caller to hand to `set_session_cookie`.
+    """
+    # Opportunistic purge: expired rows are dead weight (lookups filter on
+    # `expires_at` anyway) and nothing else deletes them, so the table
+    # would grow forever. Logins are rare enough that sweeping here costs
+    # nothing — same lazy-cleanup idea as the `webhook_deliveries` purge
+    # in `services/webhooks.py`, without needing a background task.
+    await db.execute(delete(Session).where(Session.expires_at <= _utcnow()))
+
+    token = secrets.token_urlsafe(32)
     sess = Session(
-        id=secrets.token_urlsafe(32),
+        id=hash_session_id(token),
         user_id=user.id,
         expires_at=_utcnow() + timedelta(seconds=settings.session_max_age_seconds),
         # Use the same trust order as the audit log (X-Real-IP first,
@@ -47,14 +74,18 @@ async def create_session(
     db.add(sess)
     await db.commit()
     await db.refresh(sess)
-    return sess
+    return sess, token
 
 
 async def get_active_session(db: AsyncSession, session_id: str) -> Session | None:
-    """Return the session if it exists AND is not expired."""
+    """Return the session if it exists AND is not expired.
+
+    `session_id` is the raw cookie value; it is hashed before the lookup
+    because the table stores digests only.
+    """
     result = await db.execute(
         select(Session).where(
-            Session.id == session_id,
+            Session.id == hash_session_id(session_id),
             Session.expires_at > _utcnow(),
         )
     )
@@ -75,7 +106,8 @@ async def touch_session(
 
 
 async def delete_session(db: AsyncSession, session_id: str) -> None:
-    await db.execute(delete(Session).where(Session.id == session_id))
+    """Delete by raw cookie value — hashed to match the stored digest."""
+    await db.execute(delete(Session).where(Session.id == hash_session_id(session_id)))
     await db.commit()
 
 
