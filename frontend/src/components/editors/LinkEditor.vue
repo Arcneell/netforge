@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { AlertTriangle } from 'lucide-vue-next'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -8,7 +9,7 @@ import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import FormField from '@/components/ui/FormField.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
-import { linksApi, portsApi, switchesApi } from '@/api'
+import { fetchAllPages, linksApi, portsApi, switchesApi } from '@/api'
 import type { Link, LinkType, Port, Switch } from '@/api'
 import { cablesApi } from '@/api/endpoints/cables'
 import type { Cable } from '@/api/endpoints/cables'
@@ -152,8 +153,7 @@ watch(
     // the parent didn't pass one in.
     if (!props.switches || props.switches.length === 0) {
       try {
-        const res = await switchesApi.list({ page_size: 200 })
-        localSwitches.value = res.items
+        localSwitches.value = await fetchAllPages((p) => switchesApi.list(p))
       } catch {
         // Surfaced through the submit-time error anyway.
       }
@@ -284,8 +284,7 @@ async function loadPortsForSide(side: 'a' | 'b', switchName: string) {
   if (!sw) return
   loading.value = true
   try {
-    const res = await portsApi.listForSwitch(sw.id, { page_size: 200 })
-    target.value = res.items
+    target.value = await fetchAllPages((p) => portsApi.listForSwitch(sw.id, p))
   } catch (err) {
     submitError.value = describe(err)
   } finally {
@@ -390,144 +389,150 @@ async function onSubmit(e: Event) {
     size="lg"
     @close="emit('close')"
   >
-    <form class="flex flex-col gap-4" @submit="onSubmit">
+    <!-- Same grid rhythm as every other editor: 1 column below `sm`, 2 above,
+         1rem gutter, full-width rows via `sm:col-span-2`. The two endpoint
+         panels are the two columns. -->
+    <form class="grid grid-cols-1 sm:grid-cols-2 gap-4" @submit="onSubmit">
       <!-- Endpoints: editable on create, read-only on edit -->
       <template v-if="!isEdit">
-        <p class="text-xs text-fg-muted -mb-2 flex items-center gap-1">
-          <span>{{ t('link.help.endpoints') }}</span>
+        <p class="sm:col-span-2 text-sm text-fg-muted">
+          {{ t('link.help.endpoints') }}
         </p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <fieldset class="rounded-md border border-border p-3 space-y-3">
-            <legend class="text-xs uppercase tracking-wide text-fg-muted px-1">
-              {{ t('link.endpointA') }}
-            </legend>
-            <FormField :label="t('switch.label')" :error="errors.switch_a" required>
-              <template #default="{ id, invalid }">
-                <Select
-                  :id="id"
-                  :model-value="form.switch_a"
-                  :options="switchOptions"
-                  :aria-invalid="invalid"
-                  @update:model-value="(v) => (form.switch_a = String(v))"
-                />
-              </template>
-            </FormField>
-            <FormField :label="t('port.label')" :error="errors.port_a" required>
-              <template #default="{ id, invalid }">
-                <Select
-                  :id="id"
-                  :model-value="form.port_a ?? 0"
-                  :options="portOptions(portsA)"
-                  :disabled="!form.switch_a || loadingPortsA"
-                  :aria-invalid="invalid"
-                  @update:model-value="(v) => (form.port_a = Number(v) || null)"
-                />
-              </template>
-            </FormField>
-          </fieldset>
+        <fieldset class="rounded-md border border-border bg-muted/30 p-3 space-y-4">
+          <legend class="nf-label px-1">
+            {{ t('link.endpointA') }}
+          </legend>
+          <FormField :label="t('switch.label')" :error="errors.switch_a" required>
+            <template #default="{ id, invalid }">
+              <Select
+                :id="id"
+                :model-value="form.switch_a"
+                :options="switchOptions"
+                :aria-invalid="invalid"
+                @update:model-value="(v) => (form.switch_a = String(v))"
+              />
+            </template>
+          </FormField>
+          <FormField :label="t('port.label')" :error="errors.port_a" required>
+            <template #default="{ id, invalid }">
+              <Select
+                :id="id"
+                :model-value="form.port_a ?? 0"
+                :options="portOptions(portsA)"
+                :disabled="!form.switch_a || loadingPortsA"
+                :aria-invalid="invalid"
+                @update:model-value="(v) => (form.port_a = Number(v) || null)"
+              />
+            </template>
+          </FormField>
+        </fieldset>
 
-          <fieldset class="rounded-md border border-border p-3 space-y-3">
-            <legend class="text-xs uppercase tracking-wide text-fg-muted px-1">
-              {{ t('link.endpointB') }}
-            </legend>
-            <FormField :label="t('switch.label')" :error="errors.switch_b" required>
-              <template #default="{ id, invalid }">
-                <Select
-                  :id="id"
-                  :model-value="form.switch_b"
-                  :options="switchOptions"
-                  :aria-invalid="invalid"
-                  @update:model-value="(v) => (form.switch_b = String(v))"
-                />
-              </template>
-            </FormField>
-            <FormField :label="t('port.label')" :error="errors.port_b" required>
-              <template #default="{ id, invalid }">
-                <Select
-                  :id="id"
-                  :model-value="form.port_b ?? 0"
-                  :options="portOptions(portsB)"
-                  :disabled="!form.switch_b || loadingPortsB"
-                  :aria-invalid="invalid"
-                  @update:model-value="(v) => (form.port_b = Number(v) || null)"
-                />
-              </template>
-            </FormField>
-          </fieldset>
-        </div>
+        <fieldset class="rounded-md border border-border bg-muted/30 p-3 space-y-4">
+          <legend class="nf-label px-1">
+            {{ t('link.endpointB') }}
+          </legend>
+          <FormField :label="t('switch.label')" :error="errors.switch_b" required>
+            <template #default="{ id, invalid }">
+              <Select
+                :id="id"
+                :model-value="form.switch_b"
+                :options="switchOptions"
+                :aria-invalid="invalid"
+                @update:model-value="(v) => (form.switch_b = String(v))"
+              />
+            </template>
+          </FormField>
+          <FormField :label="t('port.label')" :error="errors.port_b" required>
+            <template #default="{ id, invalid }">
+              <Select
+                :id="id"
+                :model-value="form.port_b ?? 0"
+                :options="portOptions(portsB)"
+                :disabled="!form.switch_b || loadingPortsB"
+                :aria-invalid="invalid"
+                @update:model-value="(v) => (form.port_b = Number(v) || null)"
+              />
+            </template>
+          </FormField>
+        </fieldset>
       </template>
 
       <template v-else>
-        <!-- Edit mode: endpoints are immutable -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <div class="rounded-md border border-border p-3 bg-muted/40">
-            <p class="text-xs uppercase tracking-wide text-fg-muted">
-              {{ t('link.endpointA') }}
-            </p>
-            <p class="font-mono text-fg mt-1">{{ endpointALabel || '—' }}</p>
-          </div>
-          <div class="rounded-md border border-border p-3 bg-muted/40">
-            <p class="text-xs uppercase tracking-wide text-fg-muted">
-              {{ t('link.endpointB') }}
-            </p>
-            <p class="font-mono text-fg mt-1">{{ endpointBLabel || '—' }}</p>
-          </div>
+        <!-- Edit mode: endpoints are immutable, so they read as values, not
+             controls — same two-column footprint as the create panels. -->
+        <div class="rounded-md border border-border bg-muted/30 p-3">
+          <p class="nf-label">
+            {{ t('link.endpointA') }}
+          </p>
+          <p class="font-mono text-base text-fg mt-1 break-words">{{ endpointALabel || '—' }}</p>
         </div>
-        <p class="text-xs text-fg-muted -mt-2">{{ t('link.endpointsImmutableHint') }}</p>
+        <div class="rounded-md border border-border bg-muted/30 p-3">
+          <p class="nf-label">
+            {{ t('link.endpointB') }}
+          </p>
+          <p class="font-mono text-base text-fg mt-1 break-words">{{ endpointBLabel || '—' }}</p>
+        </div>
+        <p class="sm:col-span-2 -mt-2 text-xs text-fg-muted">
+          {{ t('link.endpointsImmutableHint') }}
+        </p>
       </template>
 
       <!-- Shared metadata -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <FormField :label="t('link.fields.type')" required>
-          <template #help>
-            <HelpTooltip :text="t('link.help.type')" />
-          </template>
-          <template #default="{ id }">
-            <Select
-              :id="id"
-              :model-value="form.link_type"
-              :options="linkTypeOptions"
-              @update:model-value="(v) => (form.link_type = v as LinkType)"
-            />
-          </template>
-        </FormField>
-        <FormField :label="t('link.fields.speed')" :error="errors.speed_mbps">
-          <template #help>
-            <HelpTooltip :text="t('link.help.speed')" />
-          </template>
-          <template #default="{ id, invalid }">
-            <Input
-              :id="id"
-              v-model.number="form.speed_mbps"
-              type="number"
-              min="1"
-              :invalid="invalid"
-              placeholder="1000"
-              autocomplete="off"
-            />
-          </template>
-        </FormField>
-      </div>
-
-      <FormField :label="t('link.fields.description')">
+      <FormField :label="t('link.fields.type')" required>
+        <template #help>
+          <HelpTooltip :text="t('link.help.type')" />
+        </template>
         <template #default="{ id }">
-          <Textarea :id="id" v-model="form.description" :rows="2" placeholder="" />
+          <Select
+            :id="id"
+            :model-value="form.link_type"
+            :options="linkTypeOptions"
+            @update:model-value="(v) => (form.link_type = v as LinkType)"
+          />
+        </template>
+      </FormField>
+      <FormField :label="t('link.fields.speed')" :error="errors.speed_mbps">
+        <template #help>
+          <HelpTooltip :text="t('link.help.speed')" />
+        </template>
+        <template #default="{ id, invalid }">
+          <Input
+            :id="id"
+            v-model.number="form.speed_mbps"
+            type="number"
+            min="1"
+            :invalid="invalid"
+            placeholder="1000"
+            class="font-mono"
+            autocomplete="off"
+          />
         </template>
       </FormField>
 
-      <p v-if="submitError" class="text-sm text-danger" role="alert">{{ submitError }}</p>
+      <FormField class="sm:col-span-2" :label="t('link.fields.description')">
+        <template #default="{ id }">
+          <Textarea :id="id" v-model="form.description" :rows="2" />
+        </template>
+      </FormField>
+
+      <p
+        v-if="submitError"
+        class="sm:col-span-2 flex items-start gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+        role="alert"
+      >
+        <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>{{ submitError }}</span>
+      </p>
     </form>
 
     <!-- Cable metadata — edit mode only. Independent persistence (separate
          endpoints, doesn't block the link save). -->
-    <fieldset v-if="isEdit" class="mt-4 rounded-md border border-border p-3 space-y-3">
-      <legend
-        class="text-xs uppercase tracking-wide text-fg-muted px-1 inline-flex items-center gap-1"
-      >
+    <fieldset v-if="isEdit" class="mt-4 rounded-md border border-border bg-muted/30 p-3 space-y-4">
+      <legend class="nf-label px-1 inline-flex items-center gap-1">
         <span>{{ t('cable.label') }}</span>
         <HelpTooltip :text="t('cable.help.section')" />
       </legend>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField :label="t('cable.fields.label')">
           <template #default="{ id }">
             <Input :id="id" v-model="cableForm.label" maxlength="120" autocomplete="off" />
@@ -565,7 +570,13 @@ async function onSubmit(e: Event) {
         </FormField>
         <FormField :label="t('cable.fields.serial')">
           <template #default="{ id }">
-            <Input :id="id" v-model="cableForm.serial" maxlength="120" autocomplete="off" />
+            <Input
+              :id="id"
+              v-model="cableForm.serial"
+              maxlength="120"
+              class="font-mono"
+              autocomplete="off"
+            />
           </template>
         </FormField>
         <FormField :label="t('cable.fields.installedOn')">
@@ -590,8 +601,17 @@ async function onSubmit(e: Event) {
           <Textarea :id="id" v-model="cableForm.notes" :rows="2" />
         </template>
       </FormField>
-      <p v-if="cableError" class="text-sm text-danger" role="alert">{{ cableError }}</p>
-      <div class="flex justify-end gap-2">
+      <p
+        v-if="cableError"
+        class="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+        role="alert"
+      >
+        <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>{{ cableError }}</span>
+      </p>
+      <!-- The cable persists through its own endpoints, so it carries its own
+           pair of actions — deliberately `sm`, subordinate to the dialog's. -->
+      <div class="flex items-center justify-end gap-2">
         <Button v-if="cable" variant="ghost" size="sm" :disabled="cableSaving" @click="deleteCable">
           {{ t('cable.delete') }}
         </Button>
@@ -602,7 +622,7 @@ async function onSubmit(e: Event) {
     </fieldset>
 
     <template #footer>
-      <div class="flex justify-end gap-2">
+      <div class="flex items-center justify-end gap-2">
         <Button variant="secondary" :disabled="saving" @click="emit('close')">
           {{ t('common.cancel') }}
         </Button>

@@ -23,13 +23,13 @@ useGlobalShortcuts({
     <div class="flex-1 flex flex-col min-w-0">
       <AppTopbar @open-search="searchOpen = true" />
       <main class="flex-1 overflow-y-auto">
+        <!-- Leaving is a quick fade; arriving is handled by `.nf-stagger` on
+             each page root, which sequences the page's own sections. Doing
+             both here would stack two animations on the same frames. -->
         <RouterView v-slot="{ Component }">
           <Transition
             mode="out-in"
-            enter-active-class="transition duration-150 ease-out"
-            enter-from-class="opacity-0 translate-y-1"
-            enter-to-class="opacity-100 translate-y-0"
-            leave-active-class="transition duration-75 ease-in"
+            leave-active-class="transition-opacity duration-75 ease-soft"
             leave-from-class="opacity-100"
             leave-to-class="opacity-0"
           >

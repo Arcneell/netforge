@@ -4,6 +4,7 @@
     "tagline": "L'infrastructure réseau, en toute simplicité."
   },
   "common": {
+    "wip": "En travaux",
     "loading": "Chargement…",
     "save": "Enregistrer",
     "cancel": "Annuler",
@@ -41,6 +42,12 @@
     "empty": {
       "title": "Aucune donnée pour le moment",
       "description": "Les éléments ajoutés apparaîtront ici."
+    },
+    "resultCount": "Aucun résultat | 1 résultat | {count} résultats",
+    "clearFilters": "Effacer les filtres",
+    "noMatch": {
+      "title": "Aucun résultat",
+      "description": "Rien ne correspond à la recherche et aux filtres actuels. Élargissez la recherche ou effacez les filtres pour tout revoir."
     },
     "pagination": {
       "range": "{start}–{end} sur {total}",
@@ -84,7 +91,7 @@
     "UNKNOWN": "Une erreur est survenue."
   },
   "nav": {
-    "dashboard": "Tableau de bord",
+    "dashboard": "Vue d'ensemble",
     "subnets": "Sous-réseaux",
     "vlans": "VLAN",
     "switches": "Commutateurs",
@@ -97,9 +104,19 @@
     "audit": "Journal d'audit",
     "snapshots": "Diff d'inventaire",
     "settings": "Paramètres",
+    "assistant": "Assistant",
+    "data": "Données",
     "sections": {
       "network": "Réseau",
       "administration": "Administration"
+    }
+  },
+  "workspace": {
+    "assistant": {
+      "subtitle": "Analyses, questions et actions proposées par l'IA sur votre inventaire."
+    },
+    "data": {
+      "subtitle": "Importer, exporter et retracer chaque changement de l'inventaire."
     }
   },
   "theme": {
@@ -195,6 +212,7 @@
     "new": "Nouveau site",
     "edit": "Modifier le site",
     "empty": "Aucun site — créez-en un pour commencer.",
+    "emptyTitle": "Aucun site",
     "help": {
       "code": "Identifiant court (ex. PAR-DC1). Lettres, chiffres, tirets et underscores uniquement — sert de préfixe partout dans les exports et l'IPAM."
     }
@@ -210,6 +228,8 @@
     "new": "Nouvelle salle",
     "edit": "Modifier la salle",
     "empty": "Aucune salle pour le moment.",
+    "emptyTitle": "Aucune salle",
+    "emptyHint": "Créez d'abord un site, puis ajoutez les salles qui hébergent ses switches et ses baies de brassage.",
     "help": {
       "code": "Code court de la salle (ex. MDF-01, R-101). Doit être unique au sein du site."
     }
@@ -217,6 +237,13 @@
   "vlan": {
     "label": "VLAN",
     "labelPlural": "VLAN",
+    "formSubtitle": "Un VLAN segmente le réseau. Son identifiant doit être unique sur l'infrastructure.",
+    "section": {
+      "identity": "Identité",
+      "identityHelp": "L'identifiant 802.1Q et le nom sous lequel ce VLAN apparaîtra partout dans NetForge.",
+      "appearance": "Repère visuel",
+      "appearanceHelp": "La couleur sert à repérer le VLAN d'un coup d'œil dans les listes et sur les ports."
+    },
     "subtitle": "Les VLAN et leurs couleurs.",
     "fields": {
       "vlanId": "ID VLAN",
@@ -235,6 +262,15 @@
   "subnet": {
     "label": "Sous-réseau",
     "labelPlural": "Sous-réseaux",
+    "formSubtitle": "Un sous-réseau est une plage d'adresses rattachée à un site. Le CIDR n'est plus modifiable après création.",
+    "section": {
+      "addressing": "Adressage",
+      "addressingHelp": "La plage, sa passerelle et l'endroit où elle est déclarée.",
+      "scope": "Portée",
+      "scopeHelp": "Espace de routage et rattachement hiérarchique. À laisser tel quel dans la plupart des installations.",
+      "dhcp": "DHCP",
+      "dhcpHelp": "Délimite un pool DHCP à l'intérieur de la plage. Ces adresses sont exclues des assignations manuelles."
+    },
     "subtitle": "Vos plages d'IP et leur taux de remplissage.",
     "fields": {
       "cidr": "CIDR",
@@ -323,6 +359,13 @@
   "ip": {
     "label": "IP",
     "labelPlural": "IP",
+    "formSubtitle": "Une adresse enregistrée dans un sous-réseau. L'adresse n'est plus modifiable après création.",
+    "section": {
+      "identity": "Adresse",
+      "identityHelp": "L'adresse à enregistrer et son statut dans le plan d'adressage.",
+      "attribution": "Attribution",
+      "attributionHelp": "À qui appartient cette adresse : nom d'hôte, MAC et équipement de l'inventaire."
+    },
     "fields": {
       "address": "Adresse",
       "hostname": "Nom d'hôte",
@@ -354,6 +397,17 @@
   "device": {
     "label": "Équipement",
     "labelPlural": "Équipements",
+    "formSubtitle": "Tout ce qui consomme une IP sans être un commutateur : serveurs, imprimantes, téléphones, bornes Wi-Fi.",
+    "section": {
+      "identity": "Identité",
+      "identityHelp": "Le nom de l'équipement, sa catégorie et l'endroit où il se trouve.",
+      "hardware": "Matériel",
+      "hardwareHelp": "Les références constructeur qui identifient l'unité physique.",
+      "lifecycle": "Cycle de vie",
+      "lifecycleHelp": "Dates de garantie et de fin de support. L'advisor s'en sert pour signaler le matériel vieillissant.",
+      "notes": "Notes",
+      "notesHelp": "Contexte libre pour la prochaine personne qui lira cette fiche."
+    },
     "subtitle": "Tout ce qui n'est pas un commutateur.",
     "fields": {
       "name": "Nom",
@@ -370,6 +424,7 @@
     "new": "Nouvel équipement",
     "edit": "Modifier l'équipement",
     "empty": "Aucun équipement pour le moment.",
+    "emptyHint": "Aucun équipement — enregistrez vos serveurs, imprimantes, téléphones, caméras et points d'accès pour que chaque IP ait un propriétaire.",
     "eolHint": "Date d'arrêt de support constructeur — l'advisor signalera les équipements approchant cette date.",
     "help": {
       "type": "Catégorie d'équipement. Sert au filtrage, aux stats du tableau de bord et aux icônes dans la topologie.",
@@ -393,6 +448,19 @@
   "switch": {
     "label": "Commutateur",
     "labelPlural": "Commutateurs",
+    "formSubtitle": "Un commutateur managé. Ses ports sont générés automatiquement à partir du nombre de ports, figé après création.",
+    "section": {
+      "identity": "Identité",
+      "identityHelp": "Le nom sous lequel ce commutateur apparaît partout dans NetForge, et l'adresse pour l'atteindre.",
+      "hardware": "Matériel",
+      "hardwareHelp": "L'unité physique : références constructeur, firmware, nombre de ports et accès SNMP.",
+      "placement": "Emplacement",
+      "placementHelp": "Où se trouve physiquement le châssis, pour l'inventaire sur site.",
+      "lifecycle": "Cycle de vie",
+      "lifecycleHelp": "Dates de garantie et de fin de support. L'advisor s'en sert pour signaler le matériel vieillissant.",
+      "notes": "Notes",
+      "notesHelp": "Contexte libre pour la prochaine personne qui lira cette fiche."
+    },
     "subtitle": "Vos commutateurs, leurs ports et leurs liens.",
     "fields": {
       "name": "Nom",
@@ -436,6 +504,14 @@
   "port": {
     "label": "Port",
     "labelPlural": "Ports",
+    "formSubtitle": "Les ports sont créés avec leur commutateur : seule leur configuration est modifiable ici.",
+    "section": {
+      "config": "Configuration",
+      "configHelp": "Le comportement du port sur le câble : mode VLAN, VLAN non tagué et état administratif.",
+      "taggedHelp": "Enregistrés immédiatement via leurs propres endpoints — un ajout ou un retrait n'attend pas le bouton Enregistrer.",
+      "connection": "Connexion",
+      "connectionHelp": "Ce qui est branché à l'autre bout, et tout ce qui mérite d'être noté sur ce port."
+    },
     "fields": {
       "number": "#",
       "label": "Libellé",
@@ -498,7 +574,12 @@
     "before": "Avant",
     "after": "Après",
     "noChanges": "Aucune modification de champ enregistrée.",
-    "help": "Toutes les écritures sont enregistrées avec l'auteur, l'horodatage, l'IP d'origine et le diff complet champ par champ. Conservation indéfinie — pour enquêter sur « qui a changé quoi, et quand »."
+    "help": "Toutes les écritures sont enregistrées avec l'auteur, l'horodatage, l'IP d'origine et le diff complet champ par champ. Conservation indéfinie — pour enquêter sur « qui a changé quoi, et quand ».",
+    "filtersAria": "Filtres du journal",
+    "resultCount": "{count} entrée(s)",
+    "emptyTitle": "Aucune entrée d'audit",
+    "emptyDescription": "Aucune écriture ne correspond à ces filtres. Réinitialisez-les pour revoir tout le journal.",
+    "metaTitle": "Contexte"
   },
   "snapshots": {
     "compare": {
@@ -527,7 +608,17 @@
       "colFields": "Champs modifiés",
       "helpFrom": "Début de la fenêtre. Date et heure dans votre fuseau local — converties en UTC à l'envoi.",
       "helpEntity": "Restreint la comparaison à un seul type d'entité. Laissez sur Tous pour une vue globale sur tout l'inventaire.",
-      "helpRun": "Parcourt le journal d'audit entre les deux dates et liste chaque entité créée, modifiée, supprimée ou brièvement créée puis supprimée (transitoire)."
+      "helpRun": "Parcourt le journal d'audit entre les deux dates et liste chaque entité créée, modifiée, supprimée ou brièvement créée puis supprimée (transitoire).",
+      "presetsLabel": "Plage rapide",
+      "preset24h": "24 h",
+      "preset7d": "7 jours",
+      "preset30d": "30 jours",
+      "helpTo": "Fin de la fenêtre. Date et heure dans votre fuseau local — converties en UTC.",
+      "rangeInvalid": "La date de fin est antérieure à la date de début.",
+      "changesTitle": "Entités modifiées",
+      "changesCount": "{count} entité(s)",
+      "widenRange": "Élargir à 30 jours",
+      "colTotal": "Total"
     }
   },
   "settings": {
@@ -537,7 +628,10 @@
     "tokensTab": "Jetons API",
     "aiTab": "Intelligence artificielle",
     "webhooksTab": "Webhooks",
-    "vrfsTab": "VRF"
+    "vrfsTab": "VRF",
+    "tabsLabel": "Sections des paramètres",
+    "sitesDescription": "Emplacements physiques. Chaque salle, switch et subnet est rattaché à un site.",
+    "roomsDescription": "Salles d'un site — là où se trouvent physiquement les switches et les baies de brassage."
   },
   "webhooks": {
     "subtitle": "Avertir vos propres systèmes quand l'inventaire change.",
@@ -566,6 +660,12 @@
     "deliveriesTitle": "Livraisons — {name}",
     "confirmDeleteTitle": "Supprimer le webhook « {name} » ?",
     "confirmDeleteMessage": "Le récepteur cessera immédiatement de recevoir les évènements. L'historique des livraisons est également effacé.",
+    "confirmRotateTitle": "Régénérer le secret de signature de « {name} » ?",
+    "confirmRotateMessage": "Le secret actuel cesse de fonctionner immédiatement. Chaque livraison est signée avec le nouveau : votre récepteur rejettera les évènements tant qu'il n'est pas mis à jour.",
+    "urlChangedWarning": "Vous changez l'URL cible. Dès l'enregistrement, les livraisons partent vers la nouvelle adresse et l'ancien récepteur ne reçoit plus rien.",
+    "disabledHint": "Tant qu'il est désactivé, ce webhook ne reçoit rien, et les évènements émis entre-temps ne sont pas rejoués.",
+    "secretStored": "Je l'ai conservé",
+    "shownOnce": "Affiché une seule fois",
     "errors": {
       "eventsRequired": "Indiquez au moins un motif d'évènement."
     },
@@ -637,6 +737,8 @@
     "revokedToast": "Jeton révoqué.",
     "plaintextTitle": "Copiez votre jeton maintenant — il ne sera plus jamais affiché.",
     "plaintextHint": "Conservez-le dans un gestionnaire de secrets. Si vous le perdez, vous devrez en générer un nouveau.",
+    "plaintextStored": "Je l'ai conservé",
+    "shownOnce": "Affiché une seule fois",
     "confirmRevokeTitle": "Révoquer le jeton « {name} » ?",
     "confirmRevokeMessage": "Tous les scripts qui utilisent ce jeton perdront l'accès immédiatement. Cette action est irréversible.",
     "fields": {
@@ -659,6 +761,12 @@
   },
   "topology": {
     "subtitle": "Carte visuelle de vos commutateurs et de leur câblage.",
+    "wip": {
+      "title": "La carte est en cours de refonte",
+      "body": "L'ancienne vue graphique a été retirée le temps d'en concevoir une plus lisible. Vos liens et vos ports restent intacts et consultables depuis les pages ci-dessous.",
+      "viaSwitches": "Ouvrir un commutateur pour voir ses ports et ce qui y est branché.",
+      "viaDevices": "Retrouver un équipement et le port qui le dessert."
+    },
     "layout": "Disposition",
     "layouts": {
       "dagre": "Hiérarchique",
@@ -812,7 +920,10 @@
           "file": "Fichier",
           "entity": "Entité détectée"
         }
-      }
+      },
+      "filesTitle": "Fichiers à importer",
+      "emptyTitle": "Aucun fichier sélectionné",
+      "emptyDescription": "Déposez vos CSV ci-dessus — le type d'entité est détecté à partir des en-têtes."
     },
     "report": {
       "title": "Dernier rapport d'import",
@@ -831,17 +942,42 @@
         "column": "Colonne",
         "value": "Valeur",
         "error": "Erreur"
-      }
+      },
+      "errorsHint": "Corrigez ces lignes dans votre CSV, puis relancez la validation à blanc.",
+      "errorsFilter": "Filtrer les erreurs…",
+      "errorsNoMatch": "Aucune erreur ne correspond à ce filtre.",
+      "nextStepApply": "Prochaine étape : décochez la validation à blanc et relancez pour écrire en base.",
+      "nextStepFix": "Prochaine étape : corrigez les lignes listées ci-dessous, puis relancez la validation.",
+      "nextStepDone": "Import appliqué — les données sont visibles dans l'inventaire."
     },
     "errors": {
       "tooLarge": "Le fichier dépasse la limite d'upload de 10 Mio.",
       "notCsv": "Seuls les fichiers .csv sont acceptés.",
       "bulkNotCsvOrZip": "Seuls les fichiers .csv ou .zip sont acceptés.",
       "tooManyFiles": "Limite atteinte : pas plus de {max} fichiers à la fois."
+    },
+    "fileHint": "CSV uniquement · 10 Mio maximum",
+    "fileBrowse": "Parcourir les fichiers",
+    "fileDropNow": "Relâchez pour déposer le fichier",
+    "fileReady": "Prêt",
+    "steps": {
+      "aria": "Étapes de l'import",
+      "selectTitle": "Choisir le fichier",
+      "selectHint": "Déposez un CSV — ou un ZIP en mode groupé.",
+      "validateTitle": "Valider à blanc",
+      "validateHint": "NetForge lit chaque ligne sans rien écrire.",
+      "reviewTitle": "Relire le rapport",
+      "reviewHint": "Vérifiez les compteurs et les lignes en erreur.",
+      "applyTitle": "Appliquer",
+      "applyHint": "Décochez la validation à blanc et relancez pour écrire.",
+      "done": "Terminé",
+      "current": "Étape en cours",
+      "todo": "À venir"
     }
   },
   "ai": {
     "suggestLinks": {
+      "confidenceLabel": "Confiance",
       "cta": "Suggestions IA",
       "title": "Suggestions de liens IA",
       "heading": "Trouver les liens manquants",
@@ -856,6 +992,13 @@
     "acceptedToast": "Lien créé à partir de la suggestion IA.",
     "scanDoneToast": "{persisted} suggestion(s) ajoutée(s) sur {raw} renvoyée(s).",
     "askView": {
+      "disabledTitle": "Assistant IA désactivé",
+      "thinking": "L'assistant rédige la réponse…",
+      "composerHint": "Entrée pour envoyer · Maj+Entrée pour un saut de ligne",
+      "sourcesTitle": "Éléments cités",
+      "historyErrorHint": "Impossible de charger l'historique. Réessayez, ou continuez sans : votre conversation en cours n'est pas affectée.",
+      "historyEmptyHint": "Posez une question : la conversation sera enregistrée ici automatiquement.",
+      "untitledConversation": "Conversation sans titre",
       "title": "Demander à l'IA",
       "subtitle": "Posez des questions à propos de votre inventaire en français courant.",
       "you": "Vous",
@@ -881,6 +1024,9 @@
       "help": "L'assistant lit votre inventaire en temps réel pour répondre. Vos questions et les données envoyées sont tracées dans Réglages → Consommation IA. Évitez d'inclure des identifiants ou des secrets externes dans vos prompts."
     },
     "advisor": {
+      "summaryLabel": "Répartition par gravité",
+      "affectedTitle": "Éléments concernés",
+      "disabledDescription": "L'assistant IA est désactivé. Activez-le dans Réglages → IA pour lancer une analyse.",
       "recurringBadge": "Récurrent ×{n}",
       "streakTooltip": "Ce constat est apparu sur {n} runs consécutifs — un correctif ou un acknowledge est attendu.",
       "tab": "Conseiller IA",
@@ -918,6 +1064,8 @@
       "help": "L'IA passe votre inventaire en revue à la recherche de SPOF, dépassements de capacité, failles de sécurité, problèmes de segmentation et incohérences de nommage. Chaque constat propose un correctif."
     },
     "integrity": {
+      "run": "Lancer les contrôles",
+      "notRunDescription": "Les contrôles n'ont pas encore été exécutés. Lancez-les pour vérifier la cohérence de votre inventaire.",
       "tab": "Cohérence des données",
       "description": "Vérifie la cohérence de votre inventaire.",
       "cleanTitle": "Tout est en ordre",
@@ -925,6 +1073,15 @@
       "help": "Contrôles déterministes, sans IA : références orphelines, contraintes cassées, états contradictoires. Pures requêtes SQL — aucun appel provider, aucun coût."
     },
     "drafts": {
+      "listTitle": "Brouillons",
+      "payloadTitle": "Modification proposée",
+      "rawPayload": "Voir le JSON brut",
+      "decisionHint": "Appliquer écrit immédiatement dans l'inventaire. Rejeter archive le brouillon sans rien modifier.",
+      "appliedResourceLabel": "Ressource créée",
+      "failedHint": "Rien n'a été écrit. Corrigez la demande puis préparez un nouveau brouillon.",
+      "confirmApplyTitle": "Appliquer ce brouillon ?",
+      "confirmApplyMessage": "NetForge va exécuter « {intent} » sur votre inventaire avec les valeurs ci-dessous.",
+      "confirmApplyWarning": "Action irréversible : NetForge ne sait pas annuler un brouillon appliqué. Il faudra supprimer la ressource à la main.",
       "title": "Actions IA à valider",
       "subtitle": "Décrivez ce que vous voulez faire — l'IA prépare un brouillon que vous validez.",
       "composerLabel": "Demande",
@@ -969,7 +1126,9 @@
       "intervalDays": "{n} j",
       "neverRun": "Jamais exécuté",
       "lastRunAt": "Dernière exécution : {at}",
-      "savedToast": "Planning enregistré."
+      "savedToast": "Planning enregistré.",
+      "disabledHint": "Désactivé — ce scan ne sera jamais lancé et aucun webhook ne sera envoyé.",
+      "webhookTargetHint": "Changer cette adresse redirige toutes les notifications à venir. Laissez vide pour ne plus notifier du tout."
     },
     "csvMapping": {
       "openButton": "Aide au mapping",
@@ -1032,6 +1191,14 @@
       "byKind": "Par fonctionnalité",
       "byProvider": "Par provider",
       "disclaimer": "Coût calculé à partir des tarifs publics 2026-05 (Anthropic, OpenAI, Google). La facturation réelle peut varier (cache, batch, région).",
+      "costCurrency": "USD",
+      "tokensUnit": "jetons",
+      "callsUnit": "appels",
+      "latencyUnit": "ms",
+      "tokensBreakdown": "{in} prompt · {out} réponse",
+      "sparklineLabel": "Appels par jour",
+      "errorTitle": "Données de consommation indisponibles",
+      "errorDescription": "Le rapport n'a pas pu être chargé. Vérifiez que le backend répond, puis réessayez.",
       "kinds": {
         "suggestLinks": "Suggestion de liens",
         "advisor": "Conseiller infra",

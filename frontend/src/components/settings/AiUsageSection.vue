@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, Coins, Gauge, TrendingUp } from 'lucide-vue-next'
+import { Activity, AlertTriangle, Coins, Gauge, Hash, TrendingUp } from 'lucide-vue-next'
+import Button from '@/components/ui/Button.vue'
+import Segmented from '@/components/ui/Segmented.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { aiApi, type UsageReport, type UsageBucket } from '@/api'
@@ -15,6 +17,10 @@ const { error: toastError } = useToast()
 const days = ref<7 | 30 | 90>(30)
 const report = ref<UsageReport | null>(null)
 const loading = ref(true)
+// A failed fetch used to fall through to the "no AI calls" empty state, which
+// told the admin something false. Track it separately so the panel can say
+// "couldn't load" and offer a retry.
+const loadFailed = ref(false)
 
 // Monotonic request token — when the admin flips 7 → 30 → 90 quickly, every
 // in-flight call resolves but only the LATEST one is allowed to update
@@ -32,10 +38,12 @@ async function load() {
       return
     }
     report.value = r
+    loadFailed.value = false
   } catch (err) {
     if (myToken !== requestSeq) return
     toastError(describe(err))
     report.value = null
+    loadFailed.value = true
   } finally {
     if (myToken === requestSeq) {
       loading.value = false
@@ -47,6 +55,10 @@ watch(days, load)
 onMounted(load)
 
 const totalsEmpty = computed(() => (report.value?.total.calls ?? 0) === 0)
+
+const windowOptions = computed(() =>
+  ([7, 30, 90] as const).map((n) => ({ value: n, label: t('ai.usage.daysOption', { n }) })),
+)
 
 /** Format a USD amount with locale-aware grouping. Below $0.01 we keep 4
  *  decimals so a "$0.0003" call doesn't display as "$0.00". */
@@ -61,6 +73,12 @@ function formatUsd(amount: number): string {
 
 function formatNumber(n: number): string {
   return new Intl.NumberFormat(locale.value === 'fr' ? 'fr-FR' : 'en-US').format(n)
+}
+
+/** Latency comes back as a float average. Sub-millisecond digits are noise
+ *  from the averaging, not measurement — round rather than imply precision. */
+function formatMs(n: number): string {
+  return formatNumber(Math.round(n))
 }
 
 /** Day sparkline — a minimal inline SVG so we don't pull a chart library for
@@ -102,43 +120,36 @@ function bucketLabel(b: UsageBucket, dimension: 'kind' | 'provider'): string {
 
 <template>
   <section class="nf-card p-5 sm:p-6">
-    <div class="flex items-start justify-between gap-3 flex-wrap mb-4">
+    <header class="flex items-start justify-between gap-3 flex-wrap mb-5">
       <div class="min-w-0">
-        <h3 class="text-base font-semibold tracking-tight">{{ t('ai.usage.title') }}</h3>
-        <p class="text-xs text-fg-muted mt-1 max-w-xl leading-relaxed">
+        <h3 class="nf-section-title">{{ t('ai.usage.title') }}</h3>
+        <p class="text-sm text-fg-muted mt-1 max-w-2xl">
           {{ t('ai.usage.description') }}
         </p>
       </div>
-      <div
-        class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface text-xs"
-        role="group"
-        :aria-label="t('ai.usage.windowLabel')"
-      >
-        <button
-          v-for="opt in [7, 30, 90] as const"
-          :key="opt"
-          type="button"
-          :aria-pressed="days === opt"
-          class="px-2.5 h-7 rounded font-medium transition tabular-nums"
-          :class="
-            days === opt
-              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-              : 'text-fg-muted hover:bg-surface-hover hover:text-fg'
-          "
-          @click="days = opt"
-        >
-          {{ t('ai.usage.daysOption', { n: opt }) }}
-        </button>
-      </div>
-    </div>
+      <Segmented v-model="days" :options="windowOptions" :aria-label="t('ai.usage.windowLabel')" />
+    </header>
 
     <!-- Loading skeleton -->
-    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-busy="true">
-      <div v-for="i in 4" :key="i" class="space-y-2">
+    <div v-if="loading" class="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-busy="true">
+      <div v-for="i in 4" :key="i" class="rounded-lg border border-border p-3.5 space-y-2">
         <Skeleton width="60%" height="0.75rem" />
         <Skeleton width="80%" height="1.5rem" />
       </div>
     </div>
+
+    <!-- Fetch failed — say so, and offer the way out. -->
+    <EmptyState
+      v-else-if="loadFailed"
+      :icon="AlertTriangle"
+      :title="t('ai.usage.errorTitle')"
+      :description="t('ai.usage.errorDescription')"
+      size="sm"
+    >
+      <template #action>
+        <Button variant="secondary" @click="load">{{ t('common.refresh') }}</Button>
+      </template>
+    </EmptyState>
 
     <!-- Empty -->
     <EmptyState
@@ -149,20 +160,22 @@ function bucketLabel(b: UsageBucket, dimension: 'kind' | 'provider'): string {
       size="sm"
     />
 
-    <!-- Stats -->
+    <!-- Stats. Four tiles, one shape: label, figure, unit, one line of
+         qualification. Every figure carries its unit so nothing is guessed. -->
     <template v-else-if="report">
-      <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div>
-          <dt
-            class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold flex items-center gap-1"
-          >
+      <dl class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-lg border border-border p-3.5">
+          <dt class="nf-label flex items-center gap-1.5">
             <Activity class="w-3 h-3" aria-hidden="true" />
             {{ t('ai.usage.calls') }}
           </dt>
-          <dd class="text-2xl font-semibold tabular-nums mt-1">
-            {{ formatNumber(report.total.calls) }}
+          <dd class="mt-1.5 flex items-baseline gap-1.5">
+            <span class="text-2xl font-semibold tabular-nums text-fg">
+              {{ formatNumber(report.total.calls) }}
+            </span>
+            <span class="text-xs text-fg-subtle">{{ t('ai.usage.callsUnit') }}</span>
           </dd>
-          <p class="text-[11px] text-fg-muted tabular-nums mt-0.5">
+          <p class="text-xs text-fg-muted tabular-nums mt-1">
             {{
               t('ai.usage.successFailure', {
                 ok: report.total.success,
@@ -171,112 +184,128 @@ function bucketLabel(b: UsageBucket, dimension: 'kind' | 'provider'): string {
             }}
           </p>
         </div>
-        <div>
-          <dt
-            class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold flex items-center gap-1"
-          >
+
+        <div class="rounded-lg border border-border p-3.5">
+          <dt class="nf-label flex items-center gap-1.5">
             <Coins class="w-3 h-3" aria-hidden="true" />
             {{ t('ai.usage.cost') }}
           </dt>
-          <dd class="text-2xl font-semibold tabular-nums mt-1">
-            {{ formatUsd(report.total.cost_usd) }}
+          <dd class="mt-1.5 flex items-baseline gap-1.5">
+            <span class="text-2xl font-semibold tabular-nums text-fg">
+              {{ formatUsd(report.total.cost_usd) }}
+            </span>
+            <span class="text-xs text-fg-subtle">{{ t('ai.usage.costCurrency') }}</span>
           </dd>
-          <p class="text-[11px] text-fg-muted mt-0.5">{{ t('ai.usage.costHint') }}</p>
+          <p class="text-xs text-fg-muted mt-1">{{ t('ai.usage.costHint') }}</p>
         </div>
-        <div>
-          <dt class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+
+        <div class="rounded-lg border border-border p-3.5">
+          <dt class="nf-label flex items-center gap-1.5">
+            <Hash class="w-3 h-3" aria-hidden="true" />
             {{ t('ai.usage.tokens') }}
           </dt>
-          <dd class="text-2xl font-semibold tabular-nums mt-1">
-            {{ formatNumber(report.total.prompt_tokens + report.total.completion_tokens) }}
+          <dd class="mt-1.5 flex items-baseline gap-1.5">
+            <span class="text-2xl font-semibold tabular-nums text-fg">
+              {{ formatNumber(report.total.prompt_tokens + report.total.completion_tokens) }}
+            </span>
+            <span class="text-xs text-fg-subtle">{{ t('ai.usage.tokensUnit') }}</span>
           </dd>
-          <p class="text-[11px] text-fg-muted tabular-nums mt-0.5">
-            {{ formatNumber(report.total.prompt_tokens) }} in ·
-            {{ formatNumber(report.total.completion_tokens) }} out
+          <p class="text-xs text-fg-muted tabular-nums mt-1">
+            {{
+              t('ai.usage.tokensBreakdown', {
+                in: formatNumber(report.total.prompt_tokens),
+                out: formatNumber(report.total.completion_tokens),
+              })
+            }}
           </p>
         </div>
-        <div>
-          <dt
-            class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold flex items-center gap-1"
-          >
+
+        <div class="rounded-lg border border-border p-3.5">
+          <dt class="nf-label flex items-center gap-1.5">
             <Gauge class="w-3 h-3" aria-hidden="true" />
             {{ t('ai.usage.latency') }}
           </dt>
-          <dd class="text-2xl font-semibold tabular-nums mt-1">
-            {{ formatNumber(report.total.avg_latency_ms) }}
-            <span class="text-sm">ms</span>
+          <dd class="mt-1.5 flex items-baseline gap-1.5">
+            <span class="text-2xl font-semibold tabular-nums text-fg">
+              {{ formatMs(report.total.avg_latency_ms) }}
+            </span>
+            <span class="text-xs text-fg-subtle">{{ t('ai.usage.latencyUnit') }}</span>
           </dd>
-          <p class="text-[11px] text-fg-muted mt-0.5">{{ t('ai.usage.latencyHint') }}</p>
+          <p class="text-xs text-fg-muted mt-1">{{ t('ai.usage.latencyHint') }}</p>
         </div>
       </dl>
 
-      <!-- Sparkline + per-day daily peak -->
-      <div
-        v-if="sparkline"
-        class="mt-5 pt-5 border-t border-border/70 dark:border-border/40 flex items-center gap-4 flex-wrap"
-      >
-        <svg
-          :viewBox="`0 0 ${sparkline.width} ${sparkline.height}`"
-          :width="sparkline.width"
-          :height="sparkline.height"
-          class="text-primary-500"
-          aria-hidden="true"
-        >
-          <path
-            :d="sparkline.d"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-        <p class="text-xs text-fg-muted">
-          {{ t('ai.usage.peakDay', { n: sparkline.max }) }}
-        </p>
+      <!-- Calls per day. A shape, not a chart — the peak is spelled out below
+           it because a sparkline has no axis to read a value off. -->
+      <div v-if="sparkline" class="mt-6 pt-5 border-t border-border">
+        <p class="nf-label">{{ t('ai.usage.sparklineLabel') }}</p>
+        <div class="mt-2 flex items-center gap-4 flex-wrap">
+          <svg
+            :viewBox="`0 0 ${sparkline.width} ${sparkline.height}`"
+            :width="sparkline.width"
+            :height="sparkline.height"
+            class="text-primary-500"
+            aria-hidden="true"
+          >
+            <path
+              :d="sparkline.d"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <p class="text-sm text-fg-muted tabular-nums">
+            {{ t('ai.usage.peakDay', { n: sparkline.max }) }}
+          </p>
+        </div>
       </div>
 
-      <!-- By kind + by provider tables -->
-      <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <!-- Breakdowns. Same row shape on both sides: name left, calls and cost
+           right, so the two lists can be compared without re-reading headers. -->
+      <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div v-if="report.by_kind.length">
-          <h4 class="text-xs uppercase tracking-wider text-fg-muted font-semibold mb-2">
-            {{ t('ai.usage.byKind') }}
-          </h4>
-          <ul class="space-y-1.5">
+          <h4 class="nf-label mb-2">{{ t('ai.usage.byKind') }}</h4>
+          <ul class="rounded-lg border border-border divide-y divide-border overflow-hidden">
             <li
               v-for="b in report.by_kind"
               :key="b.key"
-              class="flex items-center justify-between gap-3 text-sm"
+              class="nf-list-row justify-between !py-2.5"
             >
-              <span class="font-medium">{{ bucketLabel(b, 'kind') }}</span>
-              <span class="tabular-nums text-fg-muted">
-                {{ formatNumber(b.totals.calls) }} ·
-                <span class="text-fg">{{ formatUsd(b.totals.cost_usd) }}</span>
+              <span class="text-base font-medium text-fg min-w-0 truncate">
+                {{ bucketLabel(b, 'kind') }}
+              </span>
+              <span class="text-sm tabular-nums text-fg-muted whitespace-nowrap">
+                {{ formatNumber(b.totals.calls) }} {{ t('ai.usage.callsUnit') }}
+                <span class="text-fg-subtle" aria-hidden="true">·</span>
+                <span class="text-fg font-medium">{{ formatUsd(b.totals.cost_usd) }}</span>
               </span>
             </li>
           </ul>
         </div>
         <div v-if="report.by_provider.length">
-          <h4 class="text-xs uppercase tracking-wider text-fg-muted font-semibold mb-2">
-            {{ t('ai.usage.byProvider') }}
-          </h4>
-          <ul class="space-y-1.5">
+          <h4 class="nf-label mb-2">{{ t('ai.usage.byProvider') }}</h4>
+          <ul class="rounded-lg border border-border divide-y divide-border overflow-hidden">
             <li
               v-for="b in report.by_provider"
               :key="b.key"
-              class="flex items-center justify-between gap-3 text-sm"
+              class="nf-list-row justify-between !py-2.5"
             >
-              <span class="font-medium">{{ bucketLabel(b, 'provider') }}</span>
-              <span class="tabular-nums text-fg-muted">
-                {{ formatNumber(b.totals.calls) }} ·
-                <span class="text-fg">{{ formatUsd(b.totals.cost_usd) }}</span>
+              <span class="text-base font-medium text-fg min-w-0 truncate">
+                {{ bucketLabel(b, 'provider') }}
+              </span>
+              <span class="text-sm tabular-nums text-fg-muted whitespace-nowrap">
+                {{ formatNumber(b.totals.calls) }} {{ t('ai.usage.callsUnit') }}
+                <span class="text-fg-subtle" aria-hidden="true">·</span>
+                <span class="text-fg font-medium">{{ formatUsd(b.totals.cost_usd) }}</span>
               </span>
             </li>
           </ul>
         </div>
       </div>
 
-      <p class="mt-5 pt-4 border-t border-border/50 text-[11px] text-fg-muted">
+      <p class="mt-5 pt-4 border-t border-border text-xs text-fg-muted leading-relaxed">
         {{ t('ai.usage.disclaimer') }}
       </p>
     </template>

@@ -16,15 +16,16 @@ import Breadcrumb from '@/components/Breadcrumb.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import Segmented, { type SegmentedOption } from '@/components/ui/Segmented.vue'
+import Select from '@/components/ui/Select.vue'
 import VlanBadge from '@/components/VlanBadge.vue'
+import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import IpGrid from '@/components/IpGrid.vue'
-import IpEditor from '@/components/editors/IpEditor.vue'
-import SubnetEditor from '@/components/editors/SubnetEditor.vue'
 import BulkIpDialog from '@/components/editors/BulkIpDialog.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import { useStoredRef } from '@/composables/useStoredRef'
 import { ApiError, ipsApi, subnetsApi, vlansApi } from '@/api'
-import type { Ip, Subnet, SubnetIpEntry, SubnetUtilization, Vlan } from '@/api'
+import type { Subnet, SubnetIpEntry, SubnetUtilization, Vlan } from '@/api'
 
 // `ip_id` was added to SubnetIpEntry in PR perf/ipam-indexes-and-group-by
 // so the editor can be opened with one fetch instead of two. The optional
@@ -33,14 +34,13 @@ import type { Ip, Subnet, SubnetIpEntry, SubnetUtilization, Vlan } from '@/api'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
-import { formatPercent } from '@/utils/formatters'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const { isAdmin } = useAuth()
 const { info } = useToast()
-const { describe } = useApiErrorMessage()
+const { notify } = useApiErrorMessage()
 
 const subnet = ref<Subnet | null>(null)
 const ips = ref<SubnetIpEntry[]>([])
@@ -51,8 +51,6 @@ const loading = ref(true)
 // table once expect that choice to stick on the same machine.
 const view = useStoredRef<'grid' | 'table'>('netforge.subnet.view', 'grid')
 
-const editingSubnet = ref(false)
-const editingIpFor = ref<{ ip: Ip | null; address: string | null } | null>(null)
 const bulkOpen = ref(false)
 // True when `/ips` refused to enumerate the address space because the
 // subnet is bigger than the server-side cap (`SUBNET_TOO_LARGE`). The
@@ -108,7 +106,7 @@ async function load() {
     }
   } catch (err) {
     if (seq !== detailLoadSeq) return
-    void describe(err)
+    notify(err)
     router.replace('/subnets')
   } finally {
     if (seq === detailLoadSeq) loading.value = false
@@ -139,24 +137,48 @@ const stats = computed(() => {
   return { total, used, free, ratio: total ? used / total : 0 }
 })
 
+// Grid / table switch. Same control the switch detail page and the list
+// pages use, so the toggle behaves identically wherever it appears.
+const viewOptions = computed<SegmentedOption<'grid' | 'table'>[]>(() => [
+  { value: 'grid', label: t('subnet.viewGrid'), icon: Grid3x3 },
+  { value: 'table', label: t('subnet.viewTable'), icon: TableIcon },
+])
+
+// Create and edit are full pages, not modals — see components/FormPage.vue.
+// The address to pre-fill travels as a query param on the create route.
+function openIpCreate(address: string) {
+  if (!subnet.value) return
+  router.push({ name: 'ip-new', params: { subnetId: subnet.value.id }, query: { address } })
+}
+
+function editSubnet() {
+  if (!subnet.value) return
+  // `from` sends the user back here after saving rather than to the list.
+  router.push({
+    name: 'subnet-edit',
+    params: { id: subnet.value.id },
+    query: { from: route.fullPath },
+  })
+}
+
 async function suggestNextFree() {
   if (!subnet.value) return
   try {
     const res = await subnetsApi.nextFree(subnet.value.id)
     info(t('subnet.nextFreeFound', { address: res.address }))
-    // Admins flow straight into the IP editor with the suggestion
+    // Admins flow straight into the IP form with the suggestion
     // prefilled — one less click to actually assign. Viewers get the
     // toast and nothing else; the backend endpoint is open to them too,
     // but they have no write capability to follow up with.
     if (isAdmin.value) {
-      editingIpFor.value = { ip: null, address: res.address }
+      openIpCreate(res.address)
     }
   } catch (err) {
     if (err instanceof ApiError && err.code === 'SUBNET_FULL') {
       info(t('subnet.nextFreeNone'))
       return
     }
-    void describe(err)
+    notify(err)
   }
 }
 
@@ -169,17 +191,18 @@ function exportCsv() {
 async function onIpClick(entry: SubnetIpEntry) {
   if (!isAdmin.value) return
   if (entry.status === 'free') {
-    editingIpFor.value = { ip: null, address: entry.address }
+    openIpCreate(entry.address)
     return
   }
-  // The entry carries `ip_id` when the row exists in the DB — open the
-  // editor directly without a second round-trip. Synthetic "dhcp" rows
-  // for addresses inside a DHCP pool that aren't recorded yet have
-  // ip_id == null, so we fall through to a create-at-address flow.
+  // The entry carries `ip_id` when the row exists in the DB — go straight to
+  // the edit page for it. Synthetic "dhcp" rows for addresses inside a DHCP
+  // pool that aren't recorded yet have ip_id == null, so we fall through to
+  // a create-at-address flow. The GET is kept as a liveness probe: it is what
+  // tells a stale grid apart from a live row before we navigate.
   if (entry.ip_id != null) {
     try {
       const hit = await ipsApi.get(entry.ip_id)
-      editingIpFor.value = { ip: hit, address: null }
+      router.push({ name: 'ip-edit', params: { id: hit.id } })
       return
     } catch (err) {
       // Stale grid: another admin deleted the row between the page load
@@ -188,14 +211,14 @@ async function onIpClick(entry: SubnetIpEntry) {
       // something useful. Same behaviour as the pre-`ip_id` code path
       // (Codex P2 on #76).
       if (err instanceof ApiError && err.status === 404) {
-        editingIpFor.value = { ip: null, address: entry.address }
+        openIpCreate(entry.address)
         return
       }
-      void describe(err)
+      notify(err)
       return
     }
   }
-  editingIpFor.value = { ip: null, address: entry.address }
+  openIpCreate(entry.address)
 }
 
 // Wrap in computed so labels follow the i18n locale.
@@ -213,7 +236,17 @@ const ipColumns = computed<DataTableColumn[]>(() => [
 // keystroke. The status pill works the same way: filter the loaded list,
 // don't re-fetch.
 const ipSearch = ref('')
-const ipStatusFilter = ref<'all' | 'assigned' | 'reserved' | 'dhcp' | 'free'>('all')
+type IpStatusFilter = 'all' | 'assigned' | 'reserved' | 'dhcp' | 'free'
+const ipStatusFilter = ref<IpStatusFilter>('all')
+
+// Computed so the labels follow a locale switch, like `columns` further down.
+const ipStatusOptions = computed<{ value: IpStatusFilter; label: string }[]>(() => [
+  { value: 'all', label: t('ip.statusFilter.all') },
+  { value: 'assigned', label: t('ip.status.assigned') },
+  { value: 'reserved', label: t('ip.status.reserved') },
+  { value: 'dhcp', label: t('ip.status.dhcp') },
+  { value: 'free', label: t('ip.status.free') },
+])
 
 const filteredIps = computed(() => {
   const needle = ipSearch.value.trim().toLowerCase()
@@ -256,22 +289,25 @@ function statusKey(status: string): StatusKey {
 </script>
 
 <template>
-  <div class="p-4 sm:p-6 max-w-7xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <div v-if="loading && !subnet" aria-busy="true">
       <div class="mb-3">
         <Skeleton width="14rem" height="0.75rem" />
       </div>
-      <div class="mb-6">
+      <div class="mb-8">
         <Skeleton width="14rem" height="1.75rem" rounded="md" />
         <div class="mt-2">
           <Skeleton width="24rem" height="0.875rem" />
         </div>
       </div>
-      <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div v-for="i in 4" :key="`sk-meta-${i}`" class="nf-card p-4">
-          <Skeleton width="6rem" height="0.625rem" />
-          <div class="mt-2">
-            <Skeleton width="80%" height="0.875rem" />
+      <!-- Mirrors the identity block below: one card, four hairline-separated cells. -->
+      <section class="nf-card overflow-hidden mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border">
+          <div v-for="i in 4" :key="`sk-meta-${i}`" class="bg-surface px-5 py-4">
+            <Skeleton width="5rem" height="0.625rem" />
+            <div class="mt-2.5">
+              <Skeleton width="80%" height="0.875rem" />
+            </div>
           </div>
         </div>
       </section>
@@ -304,203 +340,154 @@ function statusKey(status: string): StatusKey {
             <Layers class="w-4 h-4" aria-hidden="true" />
             {{ t('subnet.bulk.open') }}
           </Button>
-          <Button v-if="isAdmin" variant="primary" @click="editingSubnet = true">
+          <Button v-if="isAdmin" variant="primary" @click="editSubnet">
             <Pencil class="w-4 h-4" aria-hidden="true" />
             {{ t('common.edit') }}
           </Button>
         </template>
       </PageHeader>
 
-      <!-- Metadata + usage card -->
-      <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div class="nf-card p-4">
-          <p class="text-[10px] uppercase tracking-wide text-fg-muted">
-            {{ t('subnet.fields.vlan') }}
-          </p>
-          <div class="mt-1">
-            <VlanBadge v-if="vlan" :vlan="vlan" />
-            <span v-else class="text-fg-muted text-sm">—</span>
+      <!-- Identity. One card, hairline-separated cells: the page opens with
+           what this subnet *is* rather than four disconnected boxes. The
+           `gap-px` over a `bg-border` container draws the dividers, so they
+           land correctly at every breakpoint without per-cell border rules. -->
+      <section class="nf-card overflow-hidden mb-8">
+        <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border">
+          <div class="bg-surface px-5 py-4 min-w-0">
+            <dt class="nf-label">{{ t('subnet.fields.vlan') }}</dt>
+            <dd class="mt-2">
+              <VlanBadge v-if="vlan" :vlan="vlan" />
+              <span v-else class="text-base text-fg-subtle">—</span>
+            </dd>
           </div>
-        </div>
-        <div class="nf-card p-4">
-          <p class="text-[10px] uppercase tracking-wide text-fg-muted">
-            {{ t('subnet.fields.gateway') }}
-          </p>
-          <p class="mt-1 font-mono text-sm">{{ subnet.gateway || '—' }}</p>
-        </div>
-        <div class="nf-card p-4">
-          <p class="text-[10px] uppercase tracking-wide text-fg-muted">
-            {{ t('subnet.fields.dhcp') }}
-          </p>
-          <p class="mt-1 text-sm">
-            <span v-if="subnet.dhcp_enabled" class="font-mono">
-              {{ subnet.dhcp_range_start }} → {{ subnet.dhcp_range_end }}
-            </span>
-            <span v-else class="text-fg-muted">{{ t('common.no') }}</span>
-          </p>
-        </div>
-        <div class="nf-card p-4">
-          <p class="text-[10px] uppercase tracking-wide text-fg-muted">
-            {{ t('subnet.fields.usage') }}
-          </p>
-          <p class="mt-1 text-sm">
-            <span class="font-semibold">{{ stats.used }}</span>
-            <span class="text-fg-muted">/ {{ stats.total }}</span>
-            <span class="text-fg-muted ml-2">({{ formatPercent(stats.ratio, 1) }})</span>
-          </p>
-          <div class="mt-2 h-1.5 bg-muted rounded overflow-hidden">
-            <div
-              class="h-full bg-primary-500 transition-all"
-              :style="{ width: `${stats.ratio * 100}%` }"
-              :aria-valuenow="Math.round(stats.ratio * 100)"
-              role="progressbar"
-              aria-valuemin="0"
-              aria-valuemax="100"
-            />
+          <div class="bg-surface px-5 py-4 min-w-0">
+            <dt class="nf-label">{{ t('subnet.fields.gateway') }}</dt>
+            <dd class="mt-2 font-mono text-base text-fg truncate">
+              {{ subnet.gateway || '—' }}
+            </dd>
           </div>
-        </div>
+          <div class="bg-surface px-5 py-4 min-w-0">
+            <dt class="nf-label">{{ t('subnet.fields.dhcp') }}</dt>
+            <dd
+              class="mt-2 text-base text-fg truncate"
+              :title="
+                subnet.dhcp_enabled
+                  ? `${subnet.dhcp_range_start} → ${subnet.dhcp_range_end}`
+                  : undefined
+              "
+            >
+              <span v-if="subnet.dhcp_enabled" class="font-mono">
+                {{ subnet.dhcp_range_start }} → {{ subnet.dhcp_range_end }}
+              </span>
+              <span v-else class="text-fg-subtle">{{ t('common.no') }}</span>
+            </dd>
+          </div>
+          <div class="bg-surface px-5 py-4 min-w-0">
+            <dt class="nf-label">{{ t('subnet.fields.usage') }}</dt>
+            <!-- Same component, same green / amber / red ramp as the lists and
+                 the dashboard, so a fill rate reads identically everywhere. -->
+            <dd class="mt-2">
+              <SubnetFillBar :used="stats.used" :usable="stats.total" variant="block" />
+            </dd>
+          </div>
+        </dl>
       </section>
 
-      <!-- IPs toolbar. Heading on the left, controls on the right. Status
-           pill + free-text filter only show in table view — they don't
-           apply to the grid heatmap, and rendering them when the user
-           toggles back to grid would just clutter the row. -->
-      <div v-if="!tooLarge" class="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h2 class="text-lg font-semibold">{{ t('ip.labelPlural') }}</h2>
-        <div class="flex flex-wrap items-center gap-2">
-          <template v-if="view === 'table'">
-            <select
-              v-model="ipStatusFilter"
-              class="nf-input nf-input-control w-auto min-w-[8rem] cursor-pointer"
-              :aria-label="t('ip.fields.status')"
-            >
-              <option value="all">{{ t('ip.statusFilter.all') }}</option>
-              <option value="assigned">{{ t('ip.status.assigned') }}</option>
-              <option value="reserved">{{ t('ip.status.reserved') }}</option>
-              <option value="dhcp">{{ t('ip.status.dhcp') }}</option>
-              <option value="free">{{ t('ip.status.free') }}</option>
-            </select>
-            <input
-              v-model="ipSearch"
-              type="search"
-              :placeholder="t('ip.searchPlaceholder')"
-              :aria-label="t('ip.searchPlaceholder')"
-              class="nf-input nf-input-control w-48"
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </template>
-          <div
-            class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
-            role="group"
-          >
-            <button
-              type="button"
-              :aria-pressed="view === 'grid'"
-              :class="[
-                'flex items-center gap-1.5 px-2.5 h-8 rounded text-xs font-medium transition',
-                view === 'grid'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                  : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-              ]"
-              @click="view = 'grid'"
-            >
-              <Grid3x3 class="w-3.5 h-3.5" aria-hidden="true" />
-              {{ t('subnet.viewGrid') }}
-            </button>
-            <button
-              type="button"
-              :aria-pressed="view === 'table'"
-              :class="[
-                'flex items-center gap-1.5 px-2.5 h-8 rounded text-xs font-medium transition',
-                view === 'table'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                  : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
-              ]"
-              @click="view = 'table'"
-            >
-              <TableIcon class="w-3.5 h-3.5" aria-hidden="true" />
-              {{ t('subnet.viewTable') }}
-            </button>
+      <!-- IPs. Heading on the left, controls on the right — same shape as the
+           list pages. Status pill + free-text filter only show in table view:
+           they don't apply to the grid heatmap, and rendering them when the
+           user toggles back to grid would just clutter the row. -->
+      <section>
+        <div v-if="!tooLarge" class="nf-toolbar justify-between">
+          <div class="flex items-baseline gap-2 min-w-0">
+            <h2 class="nf-section-title">{{ t('ip.labelPlural') }}</h2>
+            <span class="text-sm text-fg-subtle tabular-nums">{{ ips.length }}</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <template v-if="view === 'table'">
+              <div class="min-w-[9rem]">
+                <Select
+                  v-model="ipStatusFilter"
+                  :options="ipStatusOptions"
+                  :aria-label="t('ip.fields.status')"
+                />
+              </div>
+              <input
+                v-model="ipSearch"
+                type="search"
+                :placeholder="t('ip.searchPlaceholder')"
+                :aria-label="t('ip.searchPlaceholder')"
+                class="nf-input nf-input-control w-48"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </template>
+            <Segmented v-model="view" :options="viewOptions" :aria-label="t('ip.labelPlural')" />
           </div>
         </div>
-      </div>
 
-      <!-- Subnet too large to enumerate. The utilisation card above still
-           shows the fill rate (cheap COUNT, no scan), and the operator can
-           use the search/export/next-free actions — but the grid /
-           per-address table can't render the full address space. Better
-           than the previous behaviour where the grid silently rendered
-           empty, looking like the subnet had no IPs at all. -->
-      <!-- Warning card with the same gradient-icon language as the
-           dashboard tiles, kept gentle (warning tone, not danger) since
-           this is an informational state, not a failure. -->
-      <div v-if="tooLarge" class="nf-card p-5 flex items-start gap-4" role="status">
-        <span
-          class="inline-flex items-center justify-center w-10 h-10 rounded-xl shadow-sm flex-shrink-0 bg-gradient-to-br from-amber-500 to-orange-500"
-          aria-hidden="true"
-        >
-          <AlertTriangle class="w-5 h-5 text-white" :stroke-width="2.25" />
-        </span>
-        <div class="min-w-0 flex-1">
-          <p class="text-sm font-semibold text-fg">{{ t('subnet.tooLargeTitle') }}</p>
-          <p class="mt-1 text-sm text-fg-muted">
-            {{ t('subnet.tooLargeBody', { cidr: subnet.cidr }) }}
-          </p>
-          <ul class="mt-3 text-sm text-fg-muted list-disc pl-5 space-y-1">
-            <li>{{ t('subnet.tooLargeHint.splitChildren') }}</li>
-            <li>{{ t('subnet.tooLargeHint.useExport') }}</li>
-            <li>{{ t('subnet.tooLargeHint.useImport') }}</li>
-          </ul>
+        <!-- Subnet too large to enumerate. The identity block above still
+             shows the fill rate (cheap COUNT, no scan), and the operator can
+             use the search/export/next-free actions — but the grid /
+             per-address table can't render the full address space. Better
+             than the previous behaviour where the grid silently rendered
+             empty, looking like the subnet had no IPs at all. -->
+        <!-- Informational, not a failure: an amber caution plate rather than a
+             fault. Same LED vocabulary the dashboard capacity buckets use. -->
+        <div v-if="tooLarge" class="nf-card p-5 flex items-start gap-4" role="status">
+          <span
+            class="inline-flex items-center justify-center w-9 h-9 rounded-md flex-shrink-0 bg-warning/10 border border-warning/30 text-warning"
+            aria-hidden="true"
+          >
+            <AlertTriangle class="w-4 h-4" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-base font-semibold text-fg">{{ t('subnet.tooLargeTitle') }}</p>
+            <p class="mt-1 text-base text-fg-muted">
+              {{ t('subnet.tooLargeBody', { cidr: subnet.cidr }) }}
+            </p>
+            <ul class="mt-3 text-sm text-fg-muted list-disc pl-5 space-y-1">
+              <li>{{ t('subnet.tooLargeHint.splitChildren') }}</li>
+              <li>{{ t('subnet.tooLargeHint.useExport') }}</li>
+              <li>{{ t('subnet.tooLargeHint.useImport') }}</li>
+            </ul>
+          </div>
         </div>
-      </div>
 
-      <!-- Grid view -->
-      <div v-else-if="view === 'grid'" class="nf-card p-4">
-        <IpGrid :ips="ips" @select="onIpClick" />
-      </div>
+        <!-- Grid view -->
+        <div v-else-if="view === 'grid'" class="nf-card p-4 sm:p-5">
+          <IpGrid :ips="ips" @select="onIpClick" />
+        </div>
 
-      <!-- Table view -->
-      <DataTable
-        v-else
-        :columns="ipColumns"
-        :rows="tableRows"
-        :empty-title="t('ip.labelPlural')"
-        clickable
-        @row-click="(row) => onIpClick(row)"
-      >
-        <template #cell-status="{ row }">
-          <Badge :tone="statusBadgeTone[statusKey(row.status)]">
-            {{ statusBadgeLabel[statusKey(row.status)] }}
-          </Badge>
-        </template>
-        <template #cell-hostname="{ row }">
-          <span class="text-fg-muted">{{ row.hostname || '—' }}</span>
-        </template>
-        <template #cell-mac="{ row }">
-          <span class="text-fg-muted">{{ row.mac || '—' }}</span>
-        </template>
-        <template #cell-description="{ row }">
-          <span class="text-fg-muted">{{ row.description || '—' }}</span>
-        </template>
-      </DataTable>
+        <!-- Table view -->
+        <DataTable
+          v-else
+          :columns="ipColumns"
+          :rows="tableRows"
+          :empty-title="t('ip.labelPlural')"
+          clickable
+          @row-click="(row) => onIpClick(row)"
+        >
+          <template #cell-address="{ row }">
+            <span class="font-mono text-base text-fg">{{ row.address }}</span>
+          </template>
+          <template #cell-status="{ row }">
+            <Badge :tone="statusBadgeTone[statusKey(row.status)]">
+              {{ statusBadgeLabel[statusKey(row.status)] }}
+            </Badge>
+          </template>
+          <template #cell-hostname="{ row }">
+            <span class="text-fg-muted">{{ row.hostname || '—' }}</span>
+          </template>
+          <template #cell-mac="{ row }">
+            <span class="text-fg-muted">{{ row.mac || '—' }}</span>
+          </template>
+          <template #cell-description="{ row }">
+            <span class="text-fg-muted">{{ row.description || '—' }}</span>
+          </template>
+        </DataTable>
+      </section>
 
-      <SubnetEditor
-        :open="editingSubnet"
-        :subnet="subnet"
-        @close="editingSubnet = false"
-        @saved="load"
-      />
-      <IpEditor
-        v-if="editingIpFor"
-        :open="!!editingIpFor"
-        :subnet="subnet"
-        :ip="editingIpFor.ip"
-        :prefilled-address="editingIpFor.address"
-        @close="editingIpFor = null"
-        @saved="load"
-        @deleted="load"
-      />
       <BulkIpDialog :open="bulkOpen" :subnet="subnet" @close="bulkOpen = false" @applied="load" />
     </template>
   </div>

@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { CalendarClock, Webhook, Save } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import Select from '@/components/ui/Select.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 import {
   aiApi,
   type AISchedule,
@@ -109,6 +111,23 @@ function intervalLabel(minutes: number): string {
   return t('ai.schedules.intervalMinutes', { n: minutes })
 }
 
+// The three pickers feed the shared <Select>. Computed so every label
+// re-derives when the operator switches the UI locale.
+const enabledOptions = computed<{ value: boolean; label: string }[]>(() => [
+  { value: true, label: t('common.yes') },
+  { value: false, label: t('common.no') },
+])
+
+// `value: m as number` widens the `as const` literal back to `number` so it
+// matches `interval_minutes` on the form.
+const intervalOptions = computed<{ value: number; label: string }[]>(() =>
+  INTERVAL_OPTIONS.map((m) => ({ value: m as number, label: intervalLabel(m) })),
+)
+
+const severityOptions = computed<{ value: InsightSeverity; label: string }[]>(() =>
+  SEVERITIES.map((s) => ({ value: s, label: t(`ai.advisor.severity.${s}`) })),
+)
+
 const kindLabel: Record<AIScheduleKind, string> = {
   advisor: 'ai.schedules.kinds.advisor',
   suggest_links: 'ai.schedules.kinds.suggestLinks',
@@ -124,116 +143,90 @@ const lastRunDisplay = computed(() => (kind: AIScheduleKind): string => {
 
 <template>
   <section class="nf-card p-5 sm:p-6">
-    <div class="flex items-start gap-3 mb-4">
+    <header class="flex items-start gap-3 mb-5">
       <span
-        class="inline-flex items-center justify-center w-9 h-9 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white flex-shrink-0"
+        class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-primary-600 text-white flex-shrink-0 shadow-[inset_0_1px_0_0_rgb(255_255_255_/_0.18)]"
       >
         <CalendarClock class="w-4 h-4" aria-hidden="true" />
       </span>
       <div class="min-w-0 flex-1">
-        <h3 class="text-base font-semibold tracking-tight">{{ t('ai.schedules.title') }}</h3>
-        <p class="text-xs text-fg-muted mt-1 max-w-xl leading-relaxed">
+        <h3 class="nf-section-title">{{ t('ai.schedules.title') }}</h3>
+        <p class="text-sm text-fg-muted mt-1 max-w-2xl">
           {{ t('ai.schedules.description') }}
         </p>
       </div>
+    </header>
+
+    <div v-if="loading" class="space-y-4" aria-busy="true">
+      <div v-for="i in 2" :key="i" class="rounded-lg border border-border p-4 space-y-3">
+        <Skeleton width="30%" height="1rem" />
+        <Skeleton width="100%" height="2.25rem" />
+      </div>
     </div>
 
-    <div v-if="loading" class="text-sm text-fg-muted">{{ t('common.loading') }}</div>
+    <div v-else class="space-y-4">
+      <article v-for="kind in KINDS" :key="kind" class="rounded-lg border border-border p-4">
+        <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <div class="inline-flex items-center gap-2 min-w-0">
+            <h4 class="text-base font-semibold text-fg">{{ t(kindLabel[kind]) }}</h4>
+            <Badge :tone="forms[kind].enabled ? 'success' : 'neutral'">
+              {{ forms[kind].enabled ? t('ai.settings.enabled') : t('ai.settings.disabled') }}
+            </Badge>
+          </div>
+          <p class="text-xs text-fg-subtle tabular-nums">{{ lastRunDisplay(kind) }}</p>
+        </div>
 
-    <div v-else class="space-y-5">
-      <fieldset
-        v-for="kind in KINDS"
-        :key="kind"
-        class="border border-border/70 dark:border-border/40 rounded-lg p-4 space-y-3"
-      >
-        <legend class="px-2 -mt-7 bg-surface inline-flex items-center gap-2">
-          <span class="text-sm font-semibold">{{ t(kindLabel[kind]) }}</span>
-          <Badge :tone="forms[kind].enabled ? 'success' : 'muted'">
-            {{ forms[kind].enabled ? t('ai.settings.enabled') : t('ai.settings.disabled') }}
-          </Badge>
-        </legend>
-
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <label class="text-sm">
-            <span
-              class="block text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1"
-            >
-              {{ t('ai.schedules.fieldEnabled') }}
-            </span>
-            <select
-              v-model="forms[kind].enabled"
-              class="w-full h-9 px-2 rounded border border-border bg-surface"
-            >
-              <option :value="true">{{ t('common.yes') }}</option>
-              <option :value="false">{{ t('common.no') }}</option>
-            </select>
+        <!-- Cadence: when and how often the scan runs. -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="block">
+            <span class="nf-label block mb-1.5">{{ t('ai.schedules.fieldEnabled') }}</span>
+            <Select v-model="forms[kind].enabled" :options="enabledOptions" />
           </label>
-          <label class="text-sm">
-            <span
-              class="block text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1"
-            >
-              {{ t('ai.schedules.fieldInterval') }}
-            </span>
-            <select
-              v-model.number="forms[kind].interval_minutes"
-              class="w-full h-9 px-2 rounded border border-border bg-surface"
-            >
-              <option v-for="m in INTERVAL_OPTIONS" :key="m" :value="m">
-                {{ intervalLabel(m) }}
-              </option>
-            </select>
-          </label>
-          <label v-if="kind === 'advisor'" class="text-sm">
-            <span
-              class="block text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1"
-            >
-              {{ t('ai.schedules.fieldThreshold') }}
-            </span>
-            <select
-              v-model="forms[kind].webhook_severity_threshold"
-              class="w-full h-9 px-2 rounded border border-border bg-surface"
-            >
-              <option v-for="s in SEVERITIES" :key="s" :value="s">
-                {{ t(`ai.advisor.severity.${s}`) }}
-              </option>
-            </select>
+          <label class="block">
+            <span class="nf-label block mb-1.5">{{ t('ai.schedules.fieldInterval') }}</span>
+            <Select v-model="forms[kind].interval_minutes" :options="intervalOptions" />
           </label>
         </div>
 
-        <label v-if="kind === 'advisor'" class="text-sm block">
-          <span
-            class="block text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1 flex items-center gap-1"
-          >
-            <Webhook class="w-3 h-3" aria-hidden="true" />
-            {{ t('ai.schedules.fieldWebhook') }}
-          </span>
-          <input
-            v-model="forms[kind].webhook_url"
-            type="url"
-            placeholder="https://hooks.slack.com/services/…"
-            class="w-full h-9 px-2 rounded border border-border bg-surface font-mono text-xs"
-          />
-          <span class="block text-[11px] text-fg-muted mt-1">
-            {{ t('ai.schedules.webhookHint') }}
-          </span>
-        </label>
+        <!-- Turning a scan off is a quiet change with loud consequences —
+             name them where the switch is, not in a toast afterwards. -->
+        <p v-if="!forms[kind].enabled" class="text-sm text-fg-muted mt-2.5">
+          {{ t('ai.schedules.disabledHint') }}
+        </p>
 
-        <div class="flex items-center justify-between gap-3 flex-wrap pt-1">
-          <p class="text-[11px] text-fg-muted tabular-nums">
-            {{ lastRunDisplay(kind) }}
-          </p>
-          <Button
-            variant="primary"
-            size="sm"
-            shape="pill"
-            :loading="forms[kind].saving"
-            @click="save(kind)"
-          >
+        <!-- Notification: only the advisor pushes findings out today. -->
+        <div
+          v-if="kind === 'advisor'"
+          class="mt-4 pt-4 border-t border-border grid grid-cols-1 sm:grid-cols-2 gap-3"
+        >
+          <label class="block sm:col-span-2">
+            <span class="nf-label mb-1.5 flex items-center gap-1.5">
+              <Webhook class="w-3 h-3" aria-hidden="true" />
+              {{ t('ai.schedules.fieldWebhook') }}
+            </span>
+            <input
+              v-model="forms[kind].webhook_url"
+              type="url"
+              placeholder="https://hooks.slack.com/services/…"
+              class="nf-input nf-input-control font-mono text-sm"
+            />
+            <span class="block text-xs text-fg-muted mt-1.5">
+              {{ t('ai.schedules.webhookHint') }} {{ t('ai.schedules.webhookTargetHint') }}
+            </span>
+          </label>
+          <label class="block">
+            <span class="nf-label block mb-1.5">{{ t('ai.schedules.fieldThreshold') }}</span>
+            <Select v-model="forms[kind].webhook_severity_threshold" :options="severityOptions" />
+          </label>
+        </div>
+
+        <div class="flex justify-end pt-4">
+          <Button variant="primary" size="sm" :loading="forms[kind].saving" @click="save(kind)">
             <Save class="w-4 h-4" aria-hidden="true" />
             {{ t('common.save') }}
           </Button>
         </div>
-      </fieldset>
+      </article>
     </div>
   </section>
 </template>

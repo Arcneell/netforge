@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import type { UserRole } from '@/api'
+import { roleSatisfies } from '@/utils/roles'
 
 // Each protected route declares the minimum role it needs. The global guard:
 //   1. Lazily fetches /api/auth/me on first navigation.
@@ -38,6 +39,14 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/SubnetsListView.vue'),
         meta: { titleKey: 'nav.subnets' },
       },
+      // Declared BEFORE `subnets/:id` — otherwise the detail route matches
+      // `/subnets/new` first and tries to load a subnet with id "new".
+      {
+        path: 'subnets/new',
+        name: 'subnet-new',
+        component: () => import('@/views/forms/SubnetFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'subnet.new' },
+      },
       {
         path: 'subnets/:id',
         name: 'subnet-detail',
@@ -45,16 +54,58 @@ const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'subnet.label' },
       },
       {
+        path: 'subnets/:id/edit',
+        name: 'subnet-edit',
+        component: () => import('@/views/forms/SubnetFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'subnet.edit' },
+      },
+      // An IP is created inside a subnet, so the parent is part of the path.
+      // The optional `?address=` query pre-fills the form (clicking a free
+      // cell in the grid, or accepting the "next free" suggestion).
+      {
+        path: 'subnets/:subnetId/ips/new',
+        name: 'ip-new',
+        component: () => import('@/views/forms/IpFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'ip.new' },
+      },
+      {
+        path: 'ips/:id/edit',
+        name: 'ip-edit',
+        component: () => import('@/views/forms/IpFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'ip.edit' },
+      },
+      {
         path: 'vlans',
         name: 'vlans',
         component: () => import('@/views/VlansListView.vue'),
         meta: { titleKey: 'nav.vlans' },
+      },
+      // Create and edit are full pages, not modals — see components/FormPage.vue.
+      {
+        path: 'vlans/new',
+        name: 'vlan-new',
+        component: () => import('@/views/forms/VlanFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'vlan.new' },
+      },
+      {
+        path: 'vlans/:id/edit',
+        name: 'vlan-edit',
+        component: () => import('@/views/forms/VlanFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'vlan.edit' },
       },
       {
         path: 'switches',
         name: 'switches',
         component: () => import('@/views/SwitchesListView.vue'),
         meta: { titleKey: 'nav.switches' },
+      },
+      // `switches/new` must stay ABOVE `switches/:id`, otherwise the detail
+      // route matches first and swallows the literal segment.
+      {
+        path: 'switches/new',
+        name: 'switch-new',
+        component: () => import('@/views/forms/SwitchFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'switch.new' },
       },
       {
         path: 'switches/:id',
@@ -63,53 +114,106 @@ const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'switch.label' },
       },
       {
+        path: 'switches/:id/edit',
+        name: 'switch-edit',
+        component: () => import('@/views/forms/SwitchFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'switch.edit' },
+      },
+      // A port only exists inside a switch, so its route is nested under one.
+      {
+        path: 'switches/:switchId/ports/:id/edit',
+        name: 'port-edit',
+        component: () => import('@/views/forms/PortFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'port.edit' },
+      },
+      {
         path: 'devices',
         name: 'devices',
         component: () => import('@/views/DevicesListView.vue'),
         meta: { titleKey: 'nav.devices' },
       },
       {
+        path: 'devices/new',
+        name: 'device-new',
+        component: () => import('@/views/forms/DeviceFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'device.new' },
+      },
+      {
+        path: 'devices/:id/edit',
+        name: 'device-edit',
+        component: () => import('@/views/forms/DeviceFormView.vue'),
+        meta: { minRole: 'admin', titleKey: 'device.edit' },
+      },
+      {
         path: 'topology',
         name: 'topology',
-        component: () => import('@/views/TopologyView.vue'),
+        // The graph view is paused pending a redesign. `TopologyView.vue`
+        // stays on disk and comes back once the new one is ready.
+        component: () => import('@/views/TopologyWipView.vue'),
         meta: { titleKey: 'nav.topology' },
       },
+      // The AI surfaces and the data-management surfaces used to be six
+      // separate sidebar entries. They are grouped into two workspaces, each
+      // with its own tab bar — same pages, a third of the top-level choices.
       {
-        path: 'import',
-        name: 'import',
-        component: () => import('@/views/ImportView.vue'),
-        meta: { minRole: 'admin', titleKey: 'nav.import' },
+        path: 'assistant',
+        component: () => import('@/views/AssistantWorkspace.vue'),
+        meta: { minRole: 'admin', titleKey: 'nav.assistant' },
+        children: [
+          { path: '', redirect: { name: 'insights' } },
+          {
+            path: 'insights',
+            name: 'insights',
+            component: () => import('@/views/InsightsView.vue'),
+            meta: { minRole: 'admin', titleKey: 'nav.insights' },
+          },
+          {
+            path: 'ask',
+            name: 'ask',
+            component: () => import('@/views/AskAiView.vue'),
+            meta: { minRole: 'admin', titleKey: 'nav.ask' },
+          },
+          {
+            path: 'drafts',
+            name: 'drafts',
+            component: () => import('@/views/DraftsView.vue'),
+            meta: { minRole: 'admin', titleKey: 'nav.drafts' },
+          },
+        ],
       },
       {
-        path: 'audit',
-        name: 'audit',
-        component: () => import('@/views/AuditView.vue'),
-        meta: { minRole: 'admin', titleKey: 'nav.audit' },
+        path: 'data',
+        component: () => import('@/views/DataWorkspace.vue'),
+        meta: { minRole: 'admin', titleKey: 'nav.data' },
+        children: [
+          { path: '', redirect: { name: 'import' } },
+          {
+            path: 'import',
+            name: 'import',
+            component: () => import('@/views/ImportView.vue'),
+            meta: { minRole: 'admin', titleKey: 'nav.import' },
+          },
+          {
+            path: 'audit',
+            name: 'audit',
+            component: () => import('@/views/AuditView.vue'),
+            meta: { minRole: 'admin', titleKey: 'nav.audit' },
+          },
+          {
+            path: 'snapshots',
+            name: 'snapshots-compare',
+            component: () => import('@/views/SnapshotCompareView.vue'),
+            meta: { minRole: 'admin', titleKey: 'nav.snapshots' },
+          },
+        ],
       },
-      {
-        path: 'snapshots/compare',
-        name: 'snapshots-compare',
-        component: () => import('@/views/SnapshotCompareView.vue'),
-        meta: { minRole: 'admin', titleKey: 'nav.snapshots' },
-      },
-      {
-        path: 'insights',
-        name: 'insights',
-        component: () => import('@/views/InsightsView.vue'),
-        meta: { minRole: 'admin', titleKey: 'nav.insights' },
-      },
-      {
-        path: 'ask',
-        name: 'ask',
-        component: () => import('@/views/AskAiView.vue'),
-        meta: { minRole: 'admin', titleKey: 'nav.ask' },
-      },
-      {
-        path: 'drafts',
-        name: 'drafts',
-        component: () => import('@/views/DraftsView.vue'),
-        meta: { minRole: 'admin', titleKey: 'nav.drafts' },
-      },
+      // Bookmarks and any link still pointing at the pre-grouping paths.
+      { path: 'insights', redirect: { name: 'insights' } },
+      { path: 'ask', redirect: { name: 'ask' } },
+      { path: 'drafts', redirect: { name: 'drafts' } },
+      { path: 'import', redirect: { name: 'import' } },
+      { path: 'audit', redirect: { name: 'audit' } },
+      { path: 'snapshots/compare', redirect: { name: 'snapshots-compare' } },
       {
         path: 'settings',
         name: 'settings',
@@ -139,12 +243,6 @@ export const router = createRouter({
     return saved || { top: 0 }
   },
 })
-
-function roleSatisfies(actual: UserRole | null | undefined, required: UserRole): boolean {
-  if (!actual) return false
-  if (required === 'viewer') return actual === 'viewer' || actual === 'admin'
-  return actual === required
-}
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore()

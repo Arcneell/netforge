@@ -13,7 +13,11 @@ import { seedTopologyPair } from './seed-helpers'
  * Seeds its own pair of linked switches via the API so the test runs on a
  * fresh DB (Codex P2 on PR #7).
  */
-test('topology view renders the graph with at least one node', async ({ page, request }) => {
+// Skipped: /topology currently serves `TopologyWipView.vue` while the graph is
+// redesigned, so there is no canvas, no layout selector and no export button to
+// assert on. `TopologyView.vue` and this spec both stay in place and the skip
+// comes off together with the route.
+test.skip('topology view renders the graph with at least one node', async ({ page, request }) => {
   await seedTopologyPair(request)
   await page.goto('/topology')
   await expect(page.getByRole('heading', { name: /topology|topologie/i })).toBeVisible()

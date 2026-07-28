@@ -39,7 +39,7 @@ function signIn() {
 
 <template>
   <div class="min-h-screen flex flex-col bg-bg text-fg">
-    <header class="flex items-center justify-between p-4">
+    <header class="flex items-center justify-between px-6 h-16">
       <BrandMark />
       <div class="flex items-center gap-2">
         <LocaleSwitcher />
@@ -47,26 +47,25 @@ function signIn() {
       </div>
     </header>
 
-    <main class="flex-1 flex items-center justify-center px-4">
-      <div class="w-full max-w-sm">
-        <div class="nf-card p-8">
-          <div class="flex flex-col items-center text-center gap-2 mb-6">
-            <BrandMark :show-wordmark="false" :size="44" />
-            <h1 class="text-xl font-semibold tracking-tight">{{ $t('app.name') }}</h1>
-            <p class="text-sm text-fg-muted">{{ $t('app.tagline') }}</p>
-          </div>
+    <main class="flex-1 flex items-center justify-center px-4 pb-16">
+      <div class="w-full max-w-[22rem] nf-enter">
+        <div class="text-center">
+          <BrandMark :show-wordmark="false" :size="48" class="mx-auto" />
+          <h1 class="text-2xl font-semibold tracking-[-0.02em] mt-5">{{ $t('app.name') }}</h1>
+          <p class="text-base text-fg-muted mt-1.5">{{ $t('app.tagline') }}</p>
+        </div>
 
-          <p class="text-sm text-fg-muted text-center mb-5">
-            {{ $t('auth.signInPrompt') }}
-          </p>
-
-          <Button variant="primary" size="lg" block @click="signIn">
+        <!-- The card holds only the action. Identity lives above it, on the
+             page, which keeps the one thing you came here to do unmissable. -->
+        <div class="nf-card p-6 mt-8">
+          <p class="text-base text-fg-muted text-center">{{ $t('auth.signInPrompt') }}</p>
+          <Button variant="primary" size="lg" block class="mt-5" @click="signIn">
             <LogIn class="w-4 h-4" aria-hidden="true" />
             {{ $t('auth.signInWith', { provider: providerLabel }) }}
           </Button>
         </div>
 
-        <p class="mt-4 text-center text-xs text-fg-muted">NetForge · v{{ appVersion }}</p>
+        <p class="mt-6 text-center text-xs text-fg-subtle">v{{ appVersion }}</p>
       </div>
     </main>
   </div>

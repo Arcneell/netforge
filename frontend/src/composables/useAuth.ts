@@ -1,6 +1,7 @@
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import type { UserRole } from '@/api'
+import { roleSatisfies } from '@/utils/roles'
 
 /**
  * Composable façade over the auth Pinia store.
@@ -14,9 +15,7 @@ export function useAuth() {
   const { user, status, isAuthenticated, role, isAdmin } = storeToRefs(store)
 
   function hasRole(required: UserRole): boolean {
-    if (!role.value) return false
-    if (required === 'viewer') return role.value === 'viewer' || role.value === 'admin'
-    return role.value === required
+    return roleSatisfies(role.value, required)
   }
 
   return {

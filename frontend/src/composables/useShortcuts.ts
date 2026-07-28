@@ -73,8 +73,8 @@ export function useGlobalShortcuts(handlers: Handlers): void {
     w: '/switches',
     e: '/devices',
     t: '/topology',
-    i: '/import',
-    a: '/audit',
+    i: '/data/import',
+    a: '/data/audit',
   }
 
   function clearLeader() {

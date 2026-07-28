@@ -3,26 +3,29 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
-   Semantic color tokens — moderne & dense (shadcn / Plane vibe).
-   Light: zinc neutrals on white. Dark: deep zinc with subtle borders.
-   Accent: indigo across both modes (consistent brand presence).
-   Tailwind reads these via rgb(var(--...) / <a>).
+   NetForge design tokens.
+
+   The interface aims to disappear: white space and type size carry the
+   hierarchy, borders are hairlines, colour is spent on one accent plus the
+   three status signals. Nothing is decorative.
+
+   Tailwind reads these via rgb(var(--...) / <alpha-value>).
    --------------------------------------------------------------------------- */
 :root {
-  /* Neutrals — slightly cooler / less saturated than before to feel closer
-     to iOS's "system gray" family. The page background is darker than the
-     surface so cards genuinely look elevated without needing heavy borders. */
-  --color-bg: 245 245 247; /* iOS-style cool grey background */
-  --color-surface: 255 255 255; /* white    — cards / inputs */
-  --color-surface-hover: 244 244 245; /* zinc-100 — hover wash */
-  --color-border: 228 228 231; /* zinc-200 — hairline borders */
-  --color-muted: 244 244 245; /* zinc-100 — subtle fills */
-  --color-fg: 17 17 17; /* near-black — Apple uses a pure neutral here */
-  --color-fg-muted: 113 113 122; /* zinc-500 — secondary text */
+  /* Neutrals. The page is a touch off-white so white cards read as surfaces
+     without needing a heavy border or shadow. */
+  --color-bg: 250 250 251;
+  --color-surface: 255 255 255;
+  --color-surface-hover: 245 245 247;
+  --color-muted: 244 244 246;
+  --color-border: 233 233 238;
+  --color-border-strong: 214 214 221;
+  --color-fg: 24 24 27;
+  --color-fg-muted: 98 98 108;
+  --color-fg-subtle: 140 140 152;
 
-  /* Accent — indigo. Use 500 for fills, 600 for primary buttons in light,
-     400 for emphasis in dark. The 700/800/900 stops are kept for deep
-     accents (selected nav row, link hover). */
+  /* Indigo — the single brand accent. Used for the primary action, the active
+     nav item, links and focus. Never for decoration. */
   --color-primary-50: 238 242 255;
   --color-primary-100: 224 231 255;
   --color-primary-200: 199 210 254;
@@ -35,29 +38,31 @@
   --color-primary-900: 49 46 129;
   --color-primary-950: 30 27 75;
 
-  --color-success: 16 185 129;
-  --color-warning: 245 158 11;
-  --color-danger: 239 68 68;
+  /* Status. Reserved for state — never borrowed for emphasis. */
+  --color-success: 22 143 85;
+  --color-warning: 190 116 8;
+  --color-danger: 208 45 45;
 
   color-scheme: light;
 }
 
 .dark {
-  /* Deep neutral close to true black with a tiny lift on cards, mirroring
-     iOS dark mode (system background ~#000, secondary system #1c1c1e).
-     Borders stay near-invisible — cards rely on the surface contrast and
-     a soft shadow instead of a hairline. */
-  --color-bg: 10 10 12; /* near-black page background */
-  --color-surface: 28 28 30; /* iOS dark "elevated" — slight blue tint */
-  --color-surface-hover: 44 44 46; /* iOS secondary system */
-  --color-border: 56 56 58; /* very subtle — only hints at separation */
-  --color-muted: 44 44 46;
-  --color-fg: 250 250 250;
-  --color-fg-muted: 174 174 178; /* iOS secondary label */
+  /* Dark is a first-class theme, not an inversion. The page sits a step below
+     the surfaces it carries, borders stay visible enough to define a card
+     without glowing, and no text is pure white — #FAFAFA on near-black is
+     harsh to read for long. */
+  --color-bg: 10 10 12;
+  --color-surface: 21 21 24;
+  --color-surface-hover: 30 30 35;
+  --color-muted: 28 28 32;
+  --color-border: 39 39 45;
+  --color-border-strong: 58 58 66;
+  --color-fg: 240 240 243;
+  --color-fg-muted: 160 160 172;
+  --color-fg-subtle: 118 118 130;
 
-  /* Keep the primary scale identical to light mode. Components pick the
-     right shade per theme via Tailwind's `dark:` modifier — inverting the
-     scale silently breaks every existing `text-primary-700` etc. */
+  /* Same ramp in both themes — components pick the right stop per theme via
+     `dark:`. Inverting the scale would break every existing `text-primary-700`. */
   --color-primary-50: 238 242 255;
   --color-primary-100: 224 231 255;
   --color-primary-200: 199 210 254;
@@ -70,28 +75,30 @@
   --color-primary-900: 49 46 129;
   --color-primary-950: 30 27 75;
 
-  --color-success: 16 185 129;
-  --color-warning: 245 158 11;
-  --color-danger: 239 68 68;
+  --color-success: 52 175 110;
+  --color-warning: 226 149 44;
+  --color-danger: 236 90 90;
 
   color-scheme: dark;
 }
 
 /* ---------------------------------------------------------------------------
-   Global polish
+   Base
    --------------------------------------------------------------------------- */
 
 html,
 body {
-  /* Geist Sans is the body font; the OpenType features below enable its
-     stylistic alternates (e.g. proper single-storey `a`) so the UI looks
-     the way Vercel designed it rather than the default fallback rendering. */
-  font-feature-settings:
-    'ss01' on,
-    /* Geist's stylistic set 1 — refined `a` / `g` */ 'cv11' on; /* Slashed zero — disambiguates 0 vs O in IPs */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+}
+
+/* Slashed zero in the mono face: 10.0.0.0/8 must never be ambiguous. */
+code,
+kbd,
+pre,
+samp,
+.font-mono {
+  font-variant-numeric: slashed-zero tabular-nums;
 }
 
 *,
@@ -101,93 +108,192 @@ body {
 }
 
 ::selection {
-  background: rgb(var(--color-primary-500) / 0.25);
+  background: rgb(var(--color-primary-500) / 0.18);
 }
 
-/* Visible, consistent keyboard-focus ring on every interactive element. The
-   2px offset gives the indigo ring room to breathe against dense layouts. */
 :focus-visible {
   outline: 2px solid rgb(var(--color-primary-500));
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-/* Thin, theme-aware scrollbars (WebKit + Firefox). The hover state bumps to
-   fg-muted for visibility without going harsh. */
+/* Thin, theme-aware scrollbars. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(var(--color-border)) transparent;
+  scrollbar-color: rgb(var(--color-border-strong)) transparent;
 }
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgb(var(--color-border));
+  background: rgb(var(--color-border-strong));
   border-radius: 999px;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--color-fg-muted));
+  background: rgb(var(--color-fg-subtle));
   background-clip: padding-box;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
 }
 
-/* ---------------------------------------------------------------------------
-   Component utilities — radius / ring / shadow tuned for the dense look.
-   Cards rely on a hairline border + a soft 1px shadow rather than a heavy
-   drop-shadow; that reads as "elevated paper" without competing with the
-   indigo focus ring.
-   --------------------------------------------------------------------------- */
 @layer components {
-  /* iOS-inspired card. The border is intentionally near-invisible in dark
-     mode — separation comes from the surface contrast + soft shadow.
-     `lg` radius = 14 px, matching Apple's HIG container corners. */
+  /* -------------------------------------------------------------------------
+     Surfaces
+     ------------------------------------------------------------------------- */
+
+  /* The default container. A hairline and the faintest lift — enough to read
+     as a surface on the off-white page, quiet enough to stack six of them. */
   .nf-card {
-    @apply bg-surface border border-border/70 dark:border-border/40 rounded-lg shadow-card;
+    @apply bg-surface border border-border rounded-lg shadow-xs;
   }
-  /* Tap-able list row. Generous vertical padding for touch, a subtle hover
-     wash, and a focus ring that follows the same indigo accent. Used by
-     iOS-style settings rows / lists. */
-  .nf-list-row {
-    @apply flex items-center gap-3 px-4 py-3 transition-colors
-           hover:bg-surface-hover/70 active:bg-surface-hover
-           focus-within:bg-surface-hover/70;
+  .nf-surface-elevated {
+    @apply bg-surface border border-border rounded-lg shadow-xs;
   }
-  /* Compact pill / capsule — for tags, filter chips, action buttons that
-     want the iOS look. */
-  .nf-pill {
-    @apply inline-flex items-center gap-1.5 h-7 px-3 text-xs font-medium
-           rounded-full transition-colors;
+
+  /* Section label above a group of content. Sentence case, not shouted. */
+  .nf-section-title {
+    @apply text-md font-semibold text-fg tracking-[-0.01em];
   }
-  /* Frosted-glass surface — used by the topbar and sticky headers. Falls
-     back to a solid colour where backdrop-filter isn't supported. */
-  .nf-glass {
-    background-color: rgb(var(--color-surface) / 0.82);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    backdrop-filter: saturate(180%) blur(20px);
+
+  /* Small caption for a value's name — table headers, definition labels. */
+  .nf-label {
+    @apply text-xs font-medium text-fg-muted;
   }
+
+  /* -------------------------------------------------------------------------
+     Controls
+     ------------------------------------------------------------------------- */
   .nf-input {
-    @apply w-full px-3 py-2 text-sm bg-surface border border-border rounded-md
-           text-fg placeholder:text-fg-muted
-           focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500
-           disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+    @apply w-full px-3 py-2 text-base bg-surface border border-border-strong rounded-md
+           text-fg placeholder:text-fg-subtle
+           focus:outline-none focus:border-primary-500 focus:shadow-ring
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted
+           transition-[border-color,box-shadow] duration-150 ease-soft;
   }
   .nf-input-control {
     @apply h-9 py-0;
   }
+  /* Invalid state. Overrides both the resting border and the focus ring so a
+     field that failed validation stays red while it has focus. */
+  .nf-input-invalid {
+    @apply border-danger focus:border-danger;
+  }
+  .nf-input-invalid:focus {
+    box-shadow: 0 0 0 3px rgb(var(--color-danger) / 0.16);
+  }
+
+  /* Segmented control — the two-or-three-way view switch that recurs on the
+     subnet, switch, insights and settings pages. One implementation so they
+     stop drifting apart. */
+  .nf-segmented {
+    @apply inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-muted;
+  }
+  .nf-segmented-item {
+    @apply inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-sm font-medium
+           text-fg-muted hover:text-fg
+           transition-colors duration-150 ease-soft whitespace-nowrap;
+  }
+  .nf-segmented-item-active {
+    @apply bg-surface text-fg shadow-xs;
+  }
+
+  /* Filter / action bar above a table or list. */
+  .nf-toolbar {
+    @apply flex flex-wrap items-center gap-2 mb-4;
+  }
+
   .nf-link {
     @apply text-primary-600 dark:text-primary-400
            hover:text-primary-700 dark:hover:text-primary-300
-           hover:underline underline-offset-2 transition-colors;
+           hover:underline underline-offset-2
+           transition-colors duration-150 ease-soft;
   }
-  .nf-surface-elevated {
-    @apply bg-surface border border-border/70 dark:border-border/40 rounded-lg shadow-card;
+
+  /* A row in a list that navigates somewhere. */
+  .nf-list-row {
+    @apply flex items-center gap-3 px-4 py-3
+           transition-colors duration-150 ease-soft
+           hover:bg-surface-hover focus-within:bg-surface-hover;
   }
-  /* Shimmer placeholder used by Skeleton primitives. Translates a faint
-     highlight band across a muted base — quieter than a pulsing opacity,
-     reads more like "loading content" and less like a broken toggle. */
+
+  /* Tab in a horizontal tab bar. The active state is an underline in the
+     accent — the lightest way to say "you are here". */
+  .nf-tab {
+    @apply relative inline-flex items-center gap-2 h-9 px-1 text-base font-medium
+           text-fg-muted hover:text-fg
+           border-b-2 border-transparent -mb-px
+           transition-colors duration-150 ease-soft whitespace-nowrap;
+  }
+  .nf-tab-active {
+    @apply text-fg border-primary-600 dark:border-primary-400;
+  }
+
+  /* -------------------------------------------------------------------------
+     Motion
+
+     One entrance, used everywhere, animating only `opacity` and `transform`
+     so it stays on the compositor. Sections of a page fade up in sequence,
+     which makes a screen feel assembled rather than dumped. Delays are baked
+     into nth-child so no JS or inline style is involved.
+
+     Apply `.nf-stagger` to a page's top-level wrapper — not to table rows,
+     which re-render on every refetch and would replay the animation.
+     ------------------------------------------------------------------------- */
+  .nf-enter {
+    /* `backwards`, not `both`: the element holds the start state through its
+       delay, then returns to its normal styles once done. With `both` the
+       animation's final `transform: none` stays latched and silently defeats
+       every hover transform underneath it. */
+    animation: nf-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+  .nf-stagger > * {
+    /* `backwards`, not `both`: the element holds the start state through its
+       delay, then returns to its normal styles once done. With `both` the
+       animation's final `transform: none` stays latched and silently defeats
+       every hover transform underneath it. */
+    animation: nf-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+  .nf-stagger > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .nf-stagger > *:nth-child(2) {
+    animation-delay: 45ms;
+  }
+  .nf-stagger > *:nth-child(3) {
+    animation-delay: 90ms;
+  }
+  .nf-stagger > *:nth-child(4) {
+    animation-delay: 135ms;
+  }
+  .nf-stagger > *:nth-child(5) {
+    animation-delay: 180ms;
+  }
+  .nf-stagger > *:nth-child(n + 6) {
+    animation-delay: 215ms;
+  }
+  @keyframes nf-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Interactive card: lifts a hair on hover, settles on press. */
+  .nf-interactive {
+    @apply transition-[transform,box-shadow,border-color] duration-200 ease-soft
+           hover:-translate-y-0.5 hover:shadow-md hover:border-border-strong
+           active:translate-y-0 active:shadow-xs;
+  }
+
+  /* -------------------------------------------------------------------------
+     Loading
+     ------------------------------------------------------------------------- */
   .nf-skeleton {
     position: relative;
     overflow: hidden;
@@ -201,19 +307,35 @@ body {
     background: linear-gradient(
       90deg,
       transparent 0,
-      rgb(var(--color-surface-hover) / 0.6) 50%,
+      rgb(var(--color-surface) / 0.75) 50%,
       transparent 100%
     );
-    animation: nf-skeleton-shimmer 1.4s ease-in-out infinite;
+    animation: nf-skeleton-shimmer 1.5s ease-in-out infinite;
   }
   @keyframes nf-skeleton-shimmer {
     100% {
       transform: translateX(100%);
     }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .nf-skeleton::after {
-      animation: none;
-    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .nf-enter,
+  .nf-stagger > * {
+    animation: none;
   }
 }

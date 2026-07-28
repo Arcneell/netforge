@@ -14,11 +14,7 @@ const options = [
 </script>
 
 <template>
-  <div
-    class="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-surface"
-    role="group"
-    :aria-label="$t('theme.label')"
-  >
+  <div class="nf-segmented" role="group" :aria-label="$t('theme.label')">
     <button
       v-for="opt in options"
       :key="opt.value"
@@ -27,14 +23,12 @@ const options = [
       :aria-label="$t(opt.key)"
       :title="$t(opt.key)"
       :class="[
-        'flex items-center justify-center w-7 h-7 rounded transition',
-        theme === opt.value
-          ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-          : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+        'nf-segmented-item w-7 justify-center px-0',
+        theme === opt.value ? 'nf-segmented-item-active' : '',
       ]"
       @click="ui.setTheme(opt.value)"
     >
-      <component :is="opt.icon" class="w-4 h-4" aria-hidden="true" />
+      <component :is="opt.icon" class="w-4 h-4" :stroke-width="1.9" aria-hidden="true" />
     </button>
   </div>
 </template>

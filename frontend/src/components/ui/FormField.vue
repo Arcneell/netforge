@@ -31,10 +31,7 @@ const id = computed(() => props.fieldId ?? `field-${autoId}`)
          label made clicking `?` also focus the associated input (label's
          default behaviour), which in Safari blurs the tooltip immediately
          and on other browsers steals focus from the help bubble. -->
-    <div
-      v-if="label || $slots.help"
-      class="flex items-center gap-1 text-xs font-medium text-fg-muted"
-    >
+    <div v-if="label || $slots.help" class="flex items-center gap-1 text-base font-medium text-fg">
       <label v-if="label" :for="id" class="flex items-center gap-1">
         <span>{{ label }}</span>
         <span v-if="required" class="text-danger" aria-hidden="true">*</span>

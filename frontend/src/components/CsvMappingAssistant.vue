@@ -5,6 +5,7 @@ import { AlertTriangle, Sparkles, Wand2 } from 'lucide-vue-next'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import Select from '@/components/ui/Select.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { aiApi, type CsvMappingResponse, type ImportEntity } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
@@ -64,6 +65,21 @@ const ENTITIES: ImportEntity[] = [
   'ports',
   'links',
 ]
+
+// Both pickers feed the shared <Select>, which takes a flat options array.
+// Computed rather than const so the labels re-derive on a locale switch —
+// the entity names are the import API's own identifiers and the delimiter
+// glyphs are literal, so nothing translates today, but the arrays stay in
+// the right shape if that changes.
+const entityOptions = computed<{ value: ImportEntity; label: string }[]>(() =>
+  ENTITIES.map((e) => ({ value: e, label: e })),
+)
+
+const delimiterOptions = computed<{ value: ';' | ',' | '\t'; label: string }[]>(() => [
+  { value: ';', label: '; (semicolon)' },
+  { value: ',', label: ', (comma)' },
+  { value: '\t', label: '↦ (tab)' },
+])
 
 /**
  * Parse the pasted CSV body. We pick the first three non-empty lines: line
@@ -136,39 +152,30 @@ function applyMapping() {
       <p class="text-sm text-fg-muted leading-relaxed">{{ t('ai.csvMapping.description') }}</p>
 
       <!-- Entity + delimiter pickers -->
-      <div class="grid grid-cols-2 gap-3">
-        <label class="text-sm">
-          <span class="block text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label class="block">
+          <span class="nf-label block mb-1">
             {{ t('ai.csvMapping.entity') }}
           </span>
-          <select v-model="entity" class="w-full h-9 px-2 rounded border border-border bg-surface">
-            <option v-for="e in ENTITIES" :key="e" :value="e">{{ e }}</option>
-          </select>
+          <Select v-model="entity" :options="entityOptions" />
         </label>
-        <label class="text-sm">
-          <span class="block text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1">
+        <label class="block">
+          <span class="nf-label block mb-1">
             {{ t('ai.csvMapping.delimiter') }}
           </span>
-          <select
-            v-model="delimiter"
-            class="w-full h-9 px-2 rounded border border-border bg-surface font-mono"
-          >
-            <option value=";">; (semicolon)</option>
-            <option value=",">, (comma)</option>
-            <option value="	">↦ (tab)</option>
-          </select>
+          <Select v-model="delimiter" :options="delimiterOptions" class="font-mono" />
         </label>
       </div>
 
       <!-- Paste area -->
-      <label class="text-sm block">
-        <span class="block text-[11px] uppercase tracking-wider text-fg-muted font-semibold mb-1">
+      <label class="block">
+        <span class="nf-label block mb-1">
           {{ t('ai.csvMapping.pasteLabel') }}
         </span>
         <textarea
           v-model="csvText"
           rows="6"
-          class="w-full p-2 rounded border border-border bg-surface font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary-500"
+          class="nf-input font-mono text-xs leading-relaxed resize-y"
           :placeholder="t('ai.csvMapping.pastePlaceholder')"
         />
       </label>
@@ -183,18 +190,15 @@ function applyMapping() {
             })
           }}
         </p>
-        <Button variant="primary" shape="pill" :disabled="!canRun" :loading="running" @click="run">
+        <Button variant="primary" :disabled="!canRun" :loading="running" @click="run">
           <Wand2 class="w-4 h-4" aria-hidden="true" />
           {{ t('ai.csvMapping.suggest') }}
         </Button>
       </div>
 
       <!-- Result -->
-      <div
-        v-if="result"
-        class="mt-3 pt-3 border-t border-border/70 dark:border-border/40 space-y-3"
-      >
-        <p class="text-[11px] text-fg-muted tabular-nums">
+      <div v-if="result" class="mt-3 pt-3 border-t border-border space-y-3">
+        <p class="text-2xs text-fg-muted tabular-nums">
           {{
             t('ai.csvMapping.resultMeta', {
               provider: result.provider,
@@ -203,40 +207,44 @@ function applyMapping() {
             })
           }}
         </p>
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-[11px] uppercase tracking-wider text-fg-muted">
-              <th class="text-left font-semibold py-1.5">{{ t('ai.csvMapping.colCsv') }}</th>
-              <th class="text-left font-semibold py-1.5">{{ t('ai.csvMapping.colTarget') }}</th>
-              <th class="text-left font-semibold py-1.5">{{ t('ai.csvMapping.colConfidence') }}</th>
-              <th class="text-left font-semibold py-1.5">{{ t('ai.csvMapping.colNotes') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="col in result.columns"
-              :key="col.csv_column"
-              class="border-t border-border/50 align-top"
-            >
-              <td class="py-2 font-mono text-xs">{{ col.csv_column }}</td>
-              <td class="py-2">
-                <span v-if="col.suggested_field" class="font-mono text-xs">
-                  {{ col.suggested_field }}
-                </span>
-                <Badge v-else tone="muted">{{ t('ai.csvMapping.unmapped') }}</Badge>
-              </td>
-              <td class="py-2">
-                <Badge :tone="confidenceTone(col.confidence)">
-                  {{ Math.round(col.confidence * 100) }}%
-                </Badge>
-              </td>
-              <td class="py-2 text-xs text-fg-muted">{{ col.notes }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="rounded-lg border border-border overflow-hidden overflow-x-auto">
+          <table class="w-full text-base">
+            <thead>
+              <tr class="bg-muted border-b border-border">
+                <th class="nf-label text-left px-3 py-2">{{ t('ai.csvMapping.colCsv') }}</th>
+                <th class="nf-label text-left px-3 py-2">{{ t('ai.csvMapping.colTarget') }}</th>
+                <th class="nf-label text-left px-3 py-2 w-28">
+                  {{ t('ai.csvMapping.colConfidence') }}
+                </th>
+                <th class="nf-label text-left px-3 py-2">{{ t('ai.csvMapping.colNotes') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="col in result.columns"
+                :key="col.csv_column"
+                class="border-b border-border last:border-0 align-top"
+              >
+                <td class="px-3 py-2 font-mono text-sm text-fg break-all">{{ col.csv_column }}</td>
+                <td class="px-3 py-2">
+                  <span v-if="col.suggested_field" class="font-mono text-sm text-fg">
+                    {{ col.suggested_field }}
+                  </span>
+                  <Badge v-else tone="muted">{{ t('ai.csvMapping.unmapped') }}</Badge>
+                </td>
+                <td class="px-3 py-2">
+                  <Badge :tone="confidenceTone(col.confidence)">
+                    {{ Math.round(col.confidence * 100) }}%
+                  </Badge>
+                </td>
+                <td class="px-3 py-2 text-sm text-fg-muted">{{ col.notes }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <p
           v-if="result.missing_required_fields.length"
-          class="text-xs text-warning p-3 rounded bg-warning/10 border border-warning/20"
+          class="text-xs text-warning p-3 rounded-md bg-warning/10 border border-warning/20"
         >
           <Sparkles class="w-3 h-3 inline-block mr-1" aria-hidden="true" />
           {{
@@ -247,15 +255,15 @@ function applyMapping() {
         </p>
 
         <!-- Data-quality observations: deterministic checks + LLM hints -->
-        <div v-if="result.data_quality.length" class="border-t border-border/50 pt-3 space-y-2">
-          <p class="text-[11px] uppercase tracking-wider text-fg-muted font-semibold">
+        <div v-if="result.data_quality.length" class="border-t border-border pt-3 space-y-2">
+          <p class="nf-label">
             {{ t('ai.csvMapping.dataQualityTitle') }}
           </p>
           <ul class="space-y-2">
             <li
               v-for="(issue, idx) in result.data_quality"
               :key="idx"
-              class="p-2.5 rounded border border-border bg-surface flex items-start gap-2"
+              class="p-3 rounded-lg border border-border bg-surface flex items-start gap-2.5"
             >
               <AlertTriangle
                 class="w-4 h-4 mt-0.5 flex-shrink-0"
@@ -271,16 +279,18 @@ function applyMapping() {
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2 flex-wrap">
                   <Badge :tone="severityTone(issue.severity)">{{ issue.severity }}</Badge>
-                  <span v-if="issue.column" class="font-mono text-xs">{{ issue.column }}</span>
-                  <span class="text-sm font-medium">{{ issue.issue }}</span>
-                  <span class="text-[10px] text-fg-muted uppercase tracking-wider">
+                  <span v-if="issue.column" class="font-mono text-sm text-fg">
+                    {{ issue.column }}
+                  </span>
+                  <span class="text-base font-medium text-fg">{{ issue.issue }}</span>
+                  <span class="text-2xs text-fg-subtle uppercase tracking-wider">
                     {{ issue.source }}
                   </span>
                 </div>
-                <p class="text-xs text-fg-muted mt-1">{{ issue.details }}</p>
+                <p class="text-sm text-fg-muted mt-1">{{ issue.details }}</p>
                 <p
                   v-if="issue.sample_values.length"
-                  class="text-[11px] text-fg-muted mt-1 font-mono truncate"
+                  class="text-2xs text-fg-subtle mt-1 font-mono truncate"
                 >
                   {{ t('ai.csvMapping.dataQualitySample') }}:
                   {{ issue.sample_values.join(' · ') }}
@@ -294,7 +304,7 @@ function applyMapping() {
              as `column_map` on the next CSV upload (server rewrites the
              header row in-flight). -->
         <div class="flex justify-end pt-2">
-          <Button variant="primary" shape="pill" @click="applyMapping">
+          <Button variant="primary" @click="applyMapping">
             <Wand2 class="w-4 h-4" aria-hidden="true" />
             {{ t('ai.csvMapping.applyButton') }}
           </Button>

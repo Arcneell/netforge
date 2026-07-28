@@ -34,10 +34,7 @@ const attrs = useAttrs()
     :disabled="disabled"
     :rows="rows"
     :aria-invalid="invalid || undefined"
-    :class="[
-      'nf-input resize-y leading-relaxed',
-      invalid ? 'border-danger focus:ring-danger/40 focus:border-danger' : '',
-    ]"
+    :class="['nf-input resize-y leading-relaxed', invalid ? 'nf-input-invalid' : '']"
     @input="$emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
   />
 </template>

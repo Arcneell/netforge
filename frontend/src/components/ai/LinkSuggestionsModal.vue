@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, Sparkles, X as XIcon } from 'lucide-vue-next'
+import { ArrowLeftRight, Check, Sparkles, X as XIcon } from 'lucide-vue-next'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -129,19 +129,23 @@ const hasSuggestions = computed(() => suggestions.value.length > 0)
 <template>
   <Modal :open="open" :title="t('ai.suggestLinks.title')" size="xl" @close="emit('close')">
     <div class="space-y-4">
-      <!-- Action strip — explains what the scan does + triggers it -->
-      <div class="flex items-start gap-3 p-4 rounded-lg bg-primary-50 dark:bg-primary-400/10">
-        <span
-          class="inline-flex items-center justify-center w-9 h-9 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white flex-shrink-0"
-        >
-          <Sparkles class="w-4 h-4" aria-hidden="true" />
-        </span>
-        <div class="flex-1 min-w-0">
-          <p class="text-sm font-semibold text-fg">{{ t('ai.suggestLinks.heading') }}</p>
-          <p class="text-xs text-fg-muted mt-1 leading-relaxed">
+      <!-- What the scan does, and the button that runs it. -->
+      <div
+        class="nf-card p-4 flex flex-wrap items-start justify-between gap-4 bg-primary-50 dark:bg-primary-500/10 border-primary-200 dark:border-primary-800"
+      >
+        <div class="flex-1 min-w-[16rem]">
+          <p class="text-base font-semibold text-fg flex items-center gap-2">
+            <Sparkles
+              class="w-4 h-4 text-primary-600 dark:text-primary-400 flex-shrink-0"
+              :stroke-width="1.9"
+              aria-hidden="true"
+            />
+            {{ t('ai.suggestLinks.heading') }}
+          </p>
+          <p class="text-sm text-fg-muted mt-1.5 leading-relaxed max-w-[70ch]">
             {{ t('ai.suggestLinks.description') }}
           </p>
-          <p v-if="lastReport" class="text-[11px] text-fg-muted mt-2 tabular-nums">
+          <p v-if="lastReport" class="text-xs text-fg-muted mt-2 tabular-nums">
             {{
               t('ai.suggestLinks.lastRun', {
                 persisted: lastReport.persisted_count,
@@ -151,20 +155,21 @@ const hasSuggestions = computed(() => suggestions.value.length > 0)
             }}
           </p>
         </div>
-        <Button variant="primary" shape="pill" :loading="scanning" @click="runScan">
+        <Button variant="primary" :loading="scanning" @click="runScan">
           <Sparkles class="w-4 h-4" aria-hidden="true" />
           {{ t('ai.suggestLinks.scan') }}
         </Button>
       </div>
 
       <!-- Suggestion list -->
-      <div v-if="loading" class="space-y-2">
+      <div v-if="loading" class="space-y-2.5" aria-busy="true">
         <div v-for="i in 3" :key="i" class="nf-card p-4 space-y-2">
           <Skeleton width="60%" height="1rem" />
           <Skeleton width="40%" height="0.75rem" />
           <Skeleton width="80%" height="0.75rem" />
         </div>
       </div>
+
       <EmptyState
         v-else-if="!hasSuggestions"
         :icon="Sparkles"
@@ -172,42 +177,59 @@ const hasSuggestions = computed(() => suggestions.value.length > 0)
         :description="t('ai.suggestLinks.emptyDescription')"
         size="sm"
       />
+
       <ul v-else class="space-y-2.5 max-h-[28rem] overflow-y-auto pr-1 -mr-1">
-        <li v-for="s in suggestions" :key="s.id" class="nf-card p-4 flex flex-col gap-3">
-          <div class="flex items-start justify-between gap-3 flex-wrap">
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 flex-wrap text-sm">
+        <li v-for="s in suggestions" :key="s.id" class="nf-card p-4">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div class="flex-1 min-w-[18rem]">
+              <!-- The proposed link, read as one line: A ↔ B -->
+              <div class="flex items-center gap-2 flex-wrap text-base">
                 <span class="font-mono text-fg">
                   {{ endpointLabel(s.switch_a_name, s.port_a_label, s.port_a_id) }}
                 </span>
-                <span class="text-fg-muted">↔</span>
+                <ArrowLeftRight
+                  class="w-3.5 h-3.5 text-fg-subtle flex-shrink-0"
+                  :stroke-width="1.9"
+                  aria-hidden="true"
+                />
                 <span class="font-mono text-fg">
                   {{ endpointLabel(s.switch_b_name, s.port_b_label, s.port_b_id) }}
                 </span>
-                <Badge :tone="confidenceTone(s.confidence)" class="ml-1">
-                  {{ Math.round(s.confidence * 100) }}%
-                </Badge>
                 <Badge tone="muted" monospace>{{ s.link_type }}</Badge>
               </div>
-              <p v-if="s.reasoning" class="text-xs text-fg-muted mt-1.5 leading-relaxed">
+
+              <p
+                v-if="s.reasoning"
+                class="text-sm text-fg-muted mt-1.5 leading-relaxed max-w-[70ch]"
+              >
                 {{ s.reasoning }}
               </p>
-              <!-- Visual confidence bar — same hue as the badge -->
-              <div class="mt-2 h-1 bg-muted rounded-full overflow-hidden">
-                <div
-                  class="h-full rounded-full transition-all"
-                  :class="{
-                    'bg-success': s.confidence >= 0.8,
-                    'bg-primary-500': s.confidence >= 0.5 && s.confidence < 0.8,
-                    'bg-warning': s.confidence < 0.5,
-                  }"
-                  :style="{ width: confidenceWidth(s.confidence) }"
-                />
+
+              <!-- How sure the model is — label, bar, value. -->
+              <div class="mt-2.5 flex items-center gap-2.5">
+                <span class="nf-label flex-shrink-0">
+                  {{ t('ai.suggestLinks.confidenceLabel') }}
+                </span>
+                <div class="h-1.5 flex-1 max-w-[12rem] rounded-full bg-muted overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-[width] duration-150 ease-soft"
+                    :class="{
+                      'bg-success': s.confidence >= 0.8,
+                      'bg-primary-500': s.confidence >= 0.5 && s.confidence < 0.8,
+                      'bg-warning': s.confidence < 0.5,
+                    }"
+                    :style="{ width: confidenceWidth(s.confidence) }"
+                  />
+                </div>
+                <Badge :tone="confidenceTone(s.confidence)">
+                  {{ Math.round(s.confidence * 100) }}%
+                </Badge>
               </div>
             </div>
+
             <div class="flex items-center gap-2 flex-shrink-0">
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="sm"
                 :loading="rejectingId === s.id"
                 :disabled="acceptingId !== null"
@@ -219,7 +241,6 @@ const hasSuggestions = computed(() => suggestions.value.length > 0)
               <Button
                 variant="primary"
                 size="sm"
-                shape="pill"
                 :loading="acceptingId === s.id"
                 :disabled="rejectingId !== null"
                 @click="accept(s.id)"

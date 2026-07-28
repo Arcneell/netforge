@@ -117,11 +117,14 @@ async function confirmDelete() {
 
 <template>
   <section>
-    <div class="flex items-start justify-between gap-3 mb-3">
-      <p class="text-xs text-fg-muted max-w-2xl inline-flex items-center gap-1.5">
-        {{ t('vrf.subtitle') }}
-        <HelpTooltip :text="t('vrf.help.section')" placement="bottom" />
-      </p>
+    <div class="nf-toolbar items-start justify-between">
+      <div class="min-w-0">
+        <h2 class="nf-section-title">{{ t('vrf.labelPlural') }}</h2>
+        <p class="text-sm text-fg-muted mt-1 max-w-2xl inline-flex items-start gap-1.5">
+          <span>{{ t('vrf.subtitle') }}</span>
+          <HelpTooltip :text="t('vrf.help.section')" placement="bottom" />
+        </p>
+      </div>
       <Button variant="primary" @click="openCreate">
         <Plus class="w-4 h-4" aria-hidden="true" />
         {{ t('vrf.new') }}
@@ -135,6 +138,12 @@ async function confirmDelete() {
       :empty-title="t('vrf.empty.title')"
       :empty-description="t('vrf.empty.description')"
     >
+      <template #empty-action>
+        <Button variant="primary" @click="openCreate">
+          <Plus class="w-4 h-4" aria-hidden="true" />
+          {{ t('vrf.new') }}
+        </Button>
+      </template>
       <template #cell-rd="{ row }">
         <span class="text-fg-muted">{{ row.rd || '—' }}</span>
       </template>
@@ -142,19 +151,24 @@ async function confirmDelete() {
         <span class="text-fg-muted">{{ row.description || '—' }}</span>
       </template>
       <template #cell-actions="{ row }">
-        <div class="flex justify-end gap-1">
+        <div class="flex items-center justify-end gap-1">
           <Button
             variant="ghost"
             size="sm"
-            :aria-label="t('common.edit')"
+            :aria-label="`${t('common.edit')} ${row.name}`"
+            :title="t('common.edit')"
             @click.stop="openEdit(row)"
           >
             <Pencil class="w-4 h-4" aria-hidden="true" />
           </Button>
+          <!-- Hairline before the destructive action so it is never the button
+               you hit by momentum after Edit. -->
+          <span class="w-px h-5 bg-border" aria-hidden="true" />
           <Button
             variant="ghost"
             size="sm"
-            :aria-label="t('common.delete')"
+            :aria-label="`${t('common.delete')} ${row.name}`"
+            :title="t('common.delete')"
             @click.stop="toDelete = row"
           >
             <Trash2 class="w-4 h-4 text-danger" aria-hidden="true" />
@@ -182,7 +196,7 @@ async function confirmDelete() {
           </template>
         </FormField>
 
-        <FormField :label="t('vrf.fields.rd')">
+        <FormField :label="t('vrf.fields.rd')" :hint="t('vrf.rdHint')">
           <template #help>
             <HelpTooltip :text="t('vrf.help.rd')" />
           </template>
@@ -196,7 +210,6 @@ async function confirmDelete() {
             />
           </template>
         </FormField>
-        <p class="text-xs text-fg-muted -mt-2">{{ t('vrf.rdHint') }}</p>
 
         <FormField :label="t('vrf.fields.description')">
           <template #default="{ id }">
@@ -220,6 +233,7 @@ async function confirmDelete() {
       :open="!!toDelete"
       :title="t('vrf.confirmDeleteTitle', { name: toDelete?.name ?? '' })"
       :message="t('vrf.confirmDeleteMessage')"
+      :confirm-label="t('common.delete')"
       variant="danger"
       :loading="deleting"
       @confirm="confirmDelete"

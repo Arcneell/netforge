@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import {
   Download,
   Upload,
+  UploadCloud,
   CheckCircle2,
   AlertTriangle,
   Info,
@@ -12,18 +13,23 @@ import {
   Archive,
   HelpCircle,
   Wand2,
+  Check,
+  ArrowRight,
 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Select from '@/components/ui/Select.vue'
 import Badge from '@/components/ui/Badge.vue'
+import Segmented, { type SegmentedOption } from '@/components/ui/Segmented.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import CsvDropzone from '@/components/CsvDropzone.vue'
 import CsvMappingAssistant from '@/components/CsvMappingAssistant.vue'
 import {
   importsApi,
   IMPORT_ENTITIES,
   type ImportEntity,
+  type ImportErrorRow,
   type ImportReport,
   type BulkImportReport,
   type DetectReport,
@@ -322,10 +328,110 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
   if (e === null) return t('import.bulk.detected.unknown')
   return t(entityLabel[e])
 }
+
+// --- Progress rail --------------------------------------------------------- #
+// The import is a four-beat sequence — pick, dry-run, review, apply — and it
+// runs identically in both modes. Everything below derives the operator's
+// position in that sequence from whichever mode is on screen, so the rail
+// never contradicts the panel underneath it.
+
+const modeOptions = computed<SegmentedOption<Mode>[]>(() => [
+  { value: 'bulk', label: t('import.tabs.bulk'), count: bulkFiles.value.length || undefined },
+  { value: 'single', label: t('import.tabs.single') },
+])
+
+const activeReport = computed<ImportReport | BulkImportReport | null>(() =>
+  mode.value === 'bulk' ? bulkReport.value : report.value,
+)
+
+const hasPickedFiles = computed(() =>
+  mode.value === 'bulk' ? bulkFiles.value.length > 0 : !!file.value,
+)
+
+const activeErrorCount = computed(() => {
+  const r = activeReport.value
+  if (!r) return 0
+  return 'files' in r ? r.files.reduce((s, f) => s + f.error_rows.length, 0) : r.error_rows.length
+})
+
+const activeApplied = computed(() => !!activeReport.value?.applied)
+
+const currentStep = computed(() => {
+  if (!hasPickedFiles.value) return 1
+  if (!activeReport.value) return 2
+  if (activeErrorCount.value > 0) return 3
+  return 4
+})
+
+const steps = computed(() => [
+  { n: 1, title: t('import.steps.selectTitle'), hint: t('import.steps.selectHint') },
+  { n: 2, title: t('import.steps.validateTitle'), hint: t('import.steps.validateHint') },
+  { n: 3, title: t('import.steps.reviewTitle'), hint: t('import.steps.reviewHint') },
+  { n: 4, title: t('import.steps.applyTitle'), hint: t('import.steps.applyHint') },
+])
+
+type StepState = 'done' | 'current' | 'todo'
+
+function stepState(n: number): StepState {
+  if (activeApplied.value) return 'done'
+  if (n < currentStep.value) return 'done'
+  if (n === currentStep.value) return 'current'
+  return 'todo'
+}
+
+function stepBadgeClass(state: StepState): string {
+  if (state === 'done') return 'bg-success/10 text-success'
+  if (state === 'current')
+    return 'bg-primary-500/15 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-500/40'
+  return 'bg-muted text-fg-subtle'
+}
+
+function stepStateLabel(state: StepState): string {
+  if (state === 'done') return t('import.steps.done')
+  if (state === 'current') return t('import.steps.current')
+  return t('import.steps.todo')
+}
+
+// Sentence telling the operator what to do next, derived from the report that
+// is actually on screen.
+const nextStepMessage = computed(() => {
+  const r = activeReport.value
+  if (!r) return ''
+  if (r.applied) return t('import.report.nextStepDone')
+  if (activeErrorCount.value > 0) return t('import.report.nextStepFix')
+  return t('import.report.nextStepApply')
+})
+
+// --- Error triage ---------------------------------------------------------- #
+// A 400-row failure is unusable as a flat dump. One filter narrows every error
+// table on the page (single mode and each bulk file) to the lines that mention
+// a column, a value or a message.
+
+const errorQuery = ref('')
+
+function filterErrors(rows: ImportErrorRow[]): ImportErrorRow[] {
+  const q = errorQuery.value.trim().toLowerCase()
+  if (!q) return rows
+  return rows.filter(
+    (e) =>
+      String(e.line).includes(q) ||
+      (e.column ?? '').toLowerCase().includes(q) ||
+      (e.value ?? '').toLowerCase().includes(q) ||
+      e.error.toLowerCase().includes(q),
+  )
+}
+
+// Bulk mode groups errors per file, so "no match" is only true when every
+// file's filtered list came back empty.
+const bulkNoErrorMatch = computed(() => {
+  const r = bulkReport.value
+  if (!r || !errorQuery.value.trim() || activeErrorCount.value === 0) return false
+  return !r.files.some((f) => filterErrors(f.error_rows).length > 0)
+})
 </script>
 
 <template>
-  <div class="p-6 max-w-5xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('nav.import')" :subtitle="t('import.subtitle')">
       <template #help>
         <HelpTooltip :text="t('import.help')" placement="bottom" />
@@ -348,58 +454,63 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
       </template>
     </PageHeader>
 
-    <CsvMappingAssistant
-      :open="mappingOpen"
-      :entity="entity"
-      @close="mappingOpen = false"
-      @apply="onMappingApply"
-    />
-
-    <!-- Visible reminder that a mapping is queued. Same entity gate as the
-         `submit()` logic so a stale mapping on a different entity stays
-         hidden. -->
-    <p
-      v-if="pendingMapping && pendingMappingEntity === entity"
-      class="text-xs text-primary-700 bg-primary-50 border border-primary-200 rounded p-3 mb-3 flex items-center gap-2"
+    <!-- Where you are in the job. Four beats, same in both modes. -->
+    <ol
+      class="nf-card p-4 sm:p-5 mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-0"
+      :aria-label="t('import.steps.aria')"
     >
-      <Wand2 class="w-3.5 h-3.5" aria-hidden="true" />
-      {{ t('ai.csvMapping.pendingNotice') }}
-    </p>
+      <li
+        v-for="(s, i) in steps"
+        :key="s.n"
+        class="flex items-start gap-3 min-w-0"
+        :class="i > 0 ? 'lg:border-l lg:border-border lg:pl-5' : 'lg:pr-5'"
+        :aria-current="stepState(s.n) === 'current' ? 'step' : undefined"
+      >
+        <span
+          class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold tabular-nums flex-shrink-0 mt-0.5 transition-colors duration-150 ease-soft"
+          :class="stepBadgeClass(stepState(s.n))"
+        >
+          <Check v-if="stepState(s.n) === 'done'" class="w-3.5 h-3.5" aria-hidden="true" />
+          <template v-else>{{ s.n }}</template>
+        </span>
+        <div class="min-w-0">
+          <p
+            class="text-base font-medium"
+            :class="stepState(s.n) === 'todo' ? 'text-fg-muted' : 'text-fg'"
+          >
+            {{ s.title }}
+            <span class="sr-only">— {{ stepStateLabel(stepState(s.n)) }}</span>
+          </p>
+          <p class="text-xs text-fg-muted mt-0.5">{{ s.hint }}</p>
+        </div>
+      </li>
+    </ol>
 
-    <!-- Mode tabs -->
-    <div
-      class="inline-flex items-center gap-1 p-1 bg-muted rounded-md mb-5"
-      role="tablist"
-      :aria-label="t('import.modeAria')"
-    >
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="mode === 'bulk'"
-        class="px-3 py-1.5 text-sm font-medium rounded transition"
-        :class="mode === 'bulk' ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'"
-        @click="mode = 'bulk'"
+    <!-- Mode switch + the reminder that an AI mapping is queued. Same entity
+         gate as the `submit()` logic so a stale mapping on a different entity
+         stays hidden. -->
+    <div class="mb-6 flex flex-wrap items-center gap-3">
+      <Segmented
+        v-model="mode"
+        :options="modeOptions"
+        :aria-label="t('import.modeAria')"
+        class="flex-shrink-0"
+      />
+      <p
+        v-if="pendingMapping && pendingMappingEntity === entity"
+        class="inline-flex items-center gap-2 text-xs text-primary-700 dark:text-primary-300 bg-primary-500/10 border border-primary-500/30 rounded-md px-3 py-1.5"
       >
-        {{ t('import.tabs.bulk') }}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="mode === 'single'"
-        class="px-3 py-1.5 text-sm font-medium rounded transition"
-        :class="mode === 'single' ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'"
-        @click="mode = 'single'"
-      >
-        {{ t('import.tabs.single') }}
-      </button>
+        <Wand2 class="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+        {{ t('ai.csvMapping.pendingNotice') }}
+      </p>
     </div>
 
     <!-- =================== BULK MODE =================== -->
-    <div v-if="mode === 'bulk'" class="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-      <section class="nf-card p-5 space-y-5">
+    <div v-if="mode === 'bulk'" class="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 mb-6">
+      <section class="nf-card p-4 sm:p-5 space-y-5">
         <div>
-          <h2 class="text-sm font-semibold text-fg mb-1">{{ t('import.bulk.title') }}</h2>
-          <p class="text-xs text-fg-muted">{{ t('import.bulk.subtitle') }}</p>
+          <h2 class="nf-section-title">{{ t('import.bulk.title') }}</h2>
+          <p class="text-sm text-fg-muted mt-0.5">{{ t('import.bulk.subtitle') }}</p>
         </div>
 
         <!-- Dropzone -->
@@ -407,11 +518,11 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
           role="button"
           tabindex="0"
           :aria-disabled="bulkSubmitting"
-          class="flex flex-col items-center justify-center gap-2 px-4 py-8 border-2 border-dashed rounded-md text-center transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/60"
+          class="flex flex-col items-center justify-center gap-3 px-6 py-10 rounded-lg border-2 border-dashed text-center cursor-pointer focus:outline-none focus-visible:shadow-ring transition-colors duration-150 ease-soft"
           :class="[
             bulkDragOver
-              ? 'border-primary-500 bg-primary-50/60 dark:bg-primary-900/20'
-              : 'border-border hover:border-primary-400 hover:bg-surface-hover',
+              ? 'border-primary-500 bg-primary-500/10'
+              : 'border-border-strong bg-muted/40 hover:border-primary-400 hover:bg-surface-hover',
             bulkSubmitting ? 'opacity-50 pointer-events-none' : '',
           ]"
           @click="onBulkPickerClick"
@@ -422,9 +533,23 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
           @dragleave.prevent="bulkDragOver = false"
           @drop="onBulkDrop"
         >
-          <Upload class="w-7 h-7 text-fg-muted" aria-hidden="true" />
-          <p class="text-sm text-fg">{{ t('import.bulk.dropPrompt') }}</p>
-          <p class="text-xs text-fg-muted">{{ t('import.bulk.dropHint') }}</p>
+          <span
+            class="inline-flex items-center justify-center w-11 h-11 rounded-lg border bg-surface transition-colors duration-150 ease-soft"
+            :class="
+              bulkDragOver
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-border text-fg-muted'
+            "
+          >
+            <UploadCloud class="w-5 h-5" :stroke-width="1.75" aria-hidden="true" />
+          </span>
+          <div class="space-y-1">
+            <p class="text-base font-medium text-fg">
+              {{ bulkDragOver ? t('import.fileDropNow') : t('import.bulk.dropPrompt') }}
+            </p>
+            <p class="text-xs text-fg-muted">{{ t('import.bulk.dropHint') }}</p>
+          </div>
+          <span class="nf-link text-sm font-medium">{{ t('import.fileBrowse') }}</span>
           <input
             ref="bulkInput"
             type="file"
@@ -436,106 +561,108 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
         </div>
 
         <!-- File list with detection results -->
-        <ul v-if="bulkFiles.length > 0" class="space-y-2">
-          <li
-            v-for="(slot, i) in bulkFiles"
-            :key="i"
-            class="flex items-center gap-3 px-3 py-2 border border-border rounded-md bg-surface"
-          >
-            <Archive
-              v-if="slot.file.name.toLowerCase().endsWith('.zip')"
-              class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0"
-              aria-hidden="true"
-            />
-            <FileText
-              v-else
-              class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0"
-              aria-hidden="true"
-            />
-            <div class="min-w-0 flex-1">
-              <p class="text-sm text-fg truncate font-medium">{{ slot.file.name }}</p>
-              <p class="text-xs text-fg-muted font-mono">
-                {{ formatBytes(slot.file.size) }}
-              </p>
-            </div>
-
-            <!-- Detection badge -->
-            <span v-if="slot.detecting" class="text-xs text-fg-muted">
-              {{ t('import.bulk.detected.detecting') }}
-            </span>
-            <Badge
-              v-else-if="slot.file.name.toLowerCase().endsWith('.zip')"
-              tone="primary"
-              size="sm"
+        <div v-if="bulkFiles.length > 0">
+          <div class="flex items-center justify-between gap-3 mb-2">
+            <p class="nf-label">{{ t('import.bulk.filesTitle') }}</p>
+            <p
+              class="text-xs tabular-nums"
+              :class="bulkOverLimit ? 'text-danger' : 'text-fg-muted'"
             >
-              {{ t('import.bulk.detected.zip') }}
-            </Badge>
-            <Badge v-else-if="slot.detection?.entity" tone="success" size="sm">
-              → {{ entityLabelOrFallback(slot.detection.entity) }}
-            </Badge>
-            <Badge
-              v-else-if="slot.detection && slot.detection.entity === null"
-              tone="danger"
-              size="sm"
+              {{
+                t('import.bulk.totalSize', {
+                  size: formatBytes(totalBulkBytes),
+                  files: bulkFiles.length,
+                })
+              }}
+              <span v-if="bulkOverLimit">
+                · {{ t('import.bulk.totalOverLimit', { max: formatBytes(MAX_TOTAL_BYTES) }) }}
+              </span>
+            </p>
+          </div>
+          <ul class="rounded-lg border border-border overflow-hidden divide-y divide-border">
+            <li
+              v-for="(slot, i) in bulkFiles"
+              :key="i"
+              class="flex items-center gap-3 px-3 py-2.5 bg-surface transition-colors duration-150 ease-soft hover:bg-surface-hover"
             >
-              <HelpCircle class="w-3 h-3" aria-hidden="true" />
-              {{ t('import.bulk.detected.unknown') }}
-            </Badge>
-            <Badge v-else-if="slot.detectError" tone="danger" size="sm">
-              {{ t('import.bulk.detected.error') }}
-            </Badge>
+              <span
+                class="inline-flex items-center justify-center w-8 h-8 rounded-md bg-primary-500/10 text-primary-600 dark:text-primary-400 flex-shrink-0"
+              >
+                <Archive
+                  v-if="slot.file.name.toLowerCase().endsWith('.zip')"
+                  class="w-4 h-4"
+                  aria-hidden="true"
+                />
+                <FileText v-else class="w-4 h-4" aria-hidden="true" />
+              </span>
+              <div class="min-w-0 flex-1">
+                <p class="text-base text-fg truncate font-medium">{{ slot.file.name }}</p>
+                <p class="text-xs text-fg-muted font-mono tabular-nums">
+                  {{ formatBytes(slot.file.size) }}
+                </p>
+              </div>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              :disabled="bulkSubmitting"
-              :aria-label="t('import.bulk.removeFile')"
-              @click="removeBulkSlot(i)"
-            >
-              <X class="w-4 h-4" aria-hidden="true" />
-            </Button>
-          </li>
-        </ul>
+              <!-- Detection badge -->
+              <span v-if="slot.detecting" class="text-xs text-fg-muted">
+                {{ t('import.bulk.detected.detecting') }}
+              </span>
+              <Badge
+                v-else-if="slot.file.name.toLowerCase().endsWith('.zip')"
+                tone="primary"
+                size="sm"
+              >
+                {{ t('import.bulk.detected.zip') }}
+              </Badge>
+              <Badge v-else-if="slot.detection?.entity" tone="success" size="sm">
+                → {{ entityLabelOrFallback(slot.detection.entity) }}
+              </Badge>
+              <Badge
+                v-else-if="slot.detection && slot.detection.entity === null"
+                tone="danger"
+                size="sm"
+              >
+                <HelpCircle class="w-3 h-3" aria-hidden="true" />
+                {{ t('import.bulk.detected.unknown') }}
+              </Badge>
+              <Badge v-else-if="slot.detectError" tone="danger" size="sm">
+                {{ t('import.bulk.detected.error') }}
+              </Badge>
 
-        <!-- Total size -->
-        <div
-          v-if="bulkFiles.length > 0"
-          class="flex items-center justify-between text-xs"
-          :class="bulkOverLimit ? 'text-danger' : 'text-fg-muted'"
-        >
-          <span>
-            {{
-              t('import.bulk.totalSize', {
-                size: formatBytes(totalBulkBytes),
-                files: bulkFiles.length,
-              })
-            }}
-          </span>
-          <span v-if="bulkOverLimit">
-            {{ t('import.bulk.totalOverLimit', { max: formatBytes(MAX_TOTAL_BYTES) }) }}
-          </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="bulkSubmitting"
+                :aria-label="t('import.bulk.removeFile')"
+                @click="removeBulkSlot(i)"
+              >
+                <X class="w-4 h-4" aria-hidden="true" />
+              </Button>
+            </li>
+          </ul>
         </div>
 
         <!-- HelpTooltip lives OUTSIDE the <label> so clicking `?` doesn't also
              toggle the checkbox via the label's default activation behaviour
              (which would silently flip a validation-only run into a write
              run, or vice versa). Codex P1 on #71. -->
-        <div class="flex items-start gap-2">
-          <label class="flex items-start gap-2 cursor-pointer flex-1">
+        <div class="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/40">
+          <label class="flex items-start gap-2.5 cursor-pointer flex-1">
             <input
               v-model="bulkDryRun"
               type="checkbox"
-              class="mt-0.5 h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
+              class="mt-0.5 h-4 w-4 rounded border-border-strong accent-primary-600"
             />
-            <span class="text-sm">
-              <span class="text-fg font-medium">{{ t('import.dryRun') }}</span>
-              <span class="block text-xs text-fg-muted">{{ t('import.bulk.dryRunHint') }}</span>
+            <span>
+              <span class="block text-base text-fg font-medium">{{ t('import.dryRun') }}</span>
+              <span class="block text-xs text-fg-muted mt-0.5">
+                {{ t('import.bulk.dryRunHint') }}
+              </span>
             </span>
           </label>
           <HelpTooltip :text="t('import.helpDryRun')" class="mt-0.5" />
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
+        <div class="flex flex-wrap items-center gap-2 pt-1">
           <Button
             variant="primary"
             :loading="bulkSubmitting"
@@ -557,29 +684,37 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
       </section>
 
       <!-- Help -->
-      <aside class="nf-card p-5">
-        <h2 class="text-sm font-semibold text-fg flex items-center gap-2">
+      <aside class="nf-card p-4 sm:p-5 h-fit">
+        <h2 class="nf-section-title flex items-center gap-2">
           <Info class="w-4 h-4 text-primary-600 dark:text-primary-400" aria-hidden="true" />
           {{ t('import.bulk.helpTitle') }}
         </h2>
-        <ul class="mt-2 space-y-1.5 text-xs text-fg-muted list-disc pl-4">
-          <li>{{ t('import.bulk.helpDetect') }}</li>
-          <li>{{ t('import.bulk.helpOrder') }}</li>
-          <li>{{ t('import.bulk.helpTransaction') }}</li>
-          <li>{{ t('import.bulk.helpZip') }}</li>
+        <ul class="mt-3 space-y-2 text-sm text-fg-muted">
+          <li
+            v-for="key in ['helpDetect', 'helpOrder', 'helpTransaction', 'helpZip']"
+            :key="key"
+            class="flex items-start gap-2"
+          >
+            <span
+              class="mt-1.5 w-1 h-1 rounded-full bg-fg-subtle flex-shrink-0"
+              aria-hidden="true"
+            />
+            <span>{{ t(`import.bulk.${key}`) }}</span>
+          </li>
         </ul>
       </aside>
     </div>
 
     <!-- =================== SINGLE MODE (legacy) =================== -->
-    <div v-else class="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-      <section class="nf-card p-5 space-y-5">
+    <div v-else class="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 mb-6">
+      <section class="nf-card p-4 sm:p-5 space-y-5">
         <div>
-          <label class="text-sm font-medium text-fg mb-1.5 flex items-center gap-1.5">
-            <span>{{ t('import.entity') }}</span>
+          <div class="nf-label mb-1.5 flex items-center gap-1.5">
+            <label for="import-entity">{{ t('import.entity') }}</label>
             <HelpTooltip :text="t('import.helpEntity')" />
-          </label>
+          </div>
           <Select
+            id="import-entity"
             :model-value="entity"
             :options="entityOptions"
             @update:model-value="(v) => (entity = v as ImportEntity)"
@@ -588,7 +723,7 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-fg mb-1.5">{{ t('import.file') }}</label>
+          <p class="nf-label mb-1.5">{{ t('import.file') }}</p>
           <CsvDropzone
             :model-value="file"
             :disabled="submitting"
@@ -597,128 +732,154 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
           />
         </div>
 
-        <div class="flex items-start gap-2">
-          <label class="flex items-start gap-2 cursor-pointer flex-1">
+        <div class="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/40">
+          <label class="flex items-start gap-2.5 cursor-pointer flex-1">
             <input
               v-model="dryRun"
               type="checkbox"
-              class="mt-0.5 h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
+              class="mt-0.5 h-4 w-4 rounded border-border-strong accent-primary-600"
             />
-            <span class="text-sm">
-              <span class="text-fg font-medium">{{ t('import.dryRun') }}</span>
-              <span class="block text-xs text-fg-muted">{{ t('import.dryRunHint') }}</span>
+            <span>
+              <span class="block text-base text-fg font-medium">{{ t('import.dryRun') }}</span>
+              <span class="block text-xs text-fg-muted mt-0.5">{{ t('import.dryRunHint') }}</span>
             </span>
           </label>
           <HelpTooltip :text="t('import.helpDryRun')" class="mt-0.5" />
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
-          <Button variant="primary" :loading="submitting" :disabled="!file" @click="submit">
-            <Upload class="w-4 h-4" aria-hidden="true" />
-            {{ dryRun ? t('import.submitDryRun') : t('import.submit') }}
-          </Button>
-          <div class="inline-flex items-center gap-1">
-            <Button variant="secondary" :disabled="submitting" @click="downloadTemplate">
-              <Download class="w-4 h-4" aria-hidden="true" />
-              {{ t('import.exportTemplate') }}
+        <div class="pt-1 space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <Button variant="primary" :loading="submitting" :disabled="!file" @click="submit">
+              <Upload class="w-4 h-4" aria-hidden="true" />
+              {{ dryRun ? t('import.submitDryRun') : t('import.submit') }}
             </Button>
-            <HelpTooltip :text="t('import.helpExportTemplate')" />
+            <div class="inline-flex items-center gap-1">
+              <Button variant="secondary" :disabled="submitting" @click="downloadTemplate">
+                <Download class="w-4 h-4" aria-hidden="true" />
+                {{ t('import.exportTemplate') }}
+              </Button>
+              <HelpTooltip :text="t('import.helpExportTemplate')" />
+            </div>
           </div>
+          <p class="text-xs text-fg-muted">{{ t('import.exportTemplateHint') }}</p>
         </div>
-        <p class="text-xs text-fg-muted -mt-3">{{ t('import.exportTemplateHint') }}</p>
       </section>
 
-      <aside class="nf-card p-5">
-        <h2 class="text-sm font-semibold text-fg flex items-center gap-2">
+      <aside class="nf-card p-4 sm:p-5 h-fit">
+        <h2 class="nf-section-title flex items-center gap-2">
           <Info class="w-4 h-4 text-primary-600 dark:text-primary-400" aria-hidden="true" />
           {{ t('import.orderTitle') }}
         </h2>
         <p class="text-xs text-fg-muted mt-1.5 mb-3">{{ t('import.orderHint') }}</p>
-        <ol class="space-y-1.5 text-sm">
-          <li
-            v-for="(e, i) in ORDERED"
-            :key="e"
-            class="flex items-center gap-2 px-2 py-1 rounded transition cursor-pointer"
-            :class="
-              entity === e
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                : 'text-fg hover:bg-surface-hover'
-            "
-            @click="entity = e"
-          >
-            <span class="font-mono text-xs text-fg-muted w-5 text-right">{{ i + 1 }}.</span>
-            <span class="font-medium">{{ t(entityLabel[e]) }}</span>
+        <ol class="space-y-0.5">
+          <li v-for="(e, i) in ORDERED" :key="e">
+            <button
+              type="button"
+              class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-left transition-colors duration-150 ease-soft"
+              :class="
+                entity === e
+                  ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300'
+                  : 'text-fg hover:bg-surface-hover'
+              "
+              :aria-pressed="entity === e"
+              @click="entity = e"
+            >
+              <span class="font-mono text-xs text-fg-subtle w-5 text-right tabular-nums">
+                {{ i + 1 }}.
+              </span>
+              <span class="text-base font-medium">{{ t(entityLabel[e]) }}</span>
+            </button>
           </li>
         </ol>
       </aside>
     </div>
 
-    <!-- Bulk report -->
+    <!-- =================== BULK REPORT =================== -->
     <section
       v-if="bulkReport && mode === 'bulk'"
       id="bulk-report"
-      class="nf-card mt-6 overflow-hidden"
+      class="nf-card overflow-hidden"
       aria-live="polite"
     >
-      <div class="p-5 border-b border-border">
-        <div class="flex items-center gap-3 flex-wrap">
+      <header class="p-4 sm:p-5 border-b border-border">
+        <div class="flex items-start gap-3 flex-wrap">
           <CheckCircle2
             v-if="bulkReportTone === 'success'"
-            class="w-5 h-5 text-success"
+            class="w-5 h-5 text-success flex-shrink-0 mt-0.5"
             aria-hidden="true"
           />
           <AlertTriangle
             v-else-if="bulkReportTone === 'danger'"
-            class="w-5 h-5 text-danger"
+            class="w-5 h-5 text-danger flex-shrink-0 mt-0.5"
             aria-hidden="true"
           />
-          <Info v-else class="w-5 h-5 text-warning" aria-hidden="true" />
+          <Info v-else class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" aria-hidden="true" />
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-fg">{{ t('import.bulk.report.title') }}</p>
-            <p class="text-xs text-fg-muted">{{ bulkReportSummary }}</p>
+            <h2 class="nf-section-title">{{ t('import.bulk.report.title') }}</h2>
+            <p class="text-sm text-fg-muted mt-0.5">{{ bulkReportSummary }}</p>
           </div>
-          <Badge :tone="bulkReport.applied ? 'success' : 'muted'">
+          <Badge :tone="bulkReport.applied ? 'success' : 'muted'" size="md">
             {{
               bulkReport.applied ? t('import.report.appliedTrue') : t('import.report.appliedFalse')
             }}
           </Badge>
         </div>
 
-        <dl class="grid grid-cols-3 gap-4 mt-4">
-          <div>
-            <dt class="text-xs text-fg-muted">{{ t('import.bulk.report.files') }}</dt>
-            <dd class="text-2xl font-semibold text-fg font-mono tabular-nums">
+        <!-- Compact readout — four numbers on one line, not four hero cards. -->
+        <div class="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+          <p class="flex items-baseline gap-1.5">
+            <span class="text-lg font-semibold font-mono tabular-nums text-fg">
               {{ formatNumber(bulkReport.files.length) }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-xs text-fg-muted">{{ t('import.report.okRows') }}</dt>
-            <dd class="text-2xl font-semibold text-success font-mono tabular-nums">
-              {{ formatNumber(bulkReport.total_ok_rows) }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-xs text-fg-muted">{{ t('import.report.parsedRows') }}</dt>
-            <dd class="text-2xl font-semibold text-fg font-mono tabular-nums">
+            </span>
+            <span class="text-xs text-fg-muted">{{ t('import.bulk.report.files') }}</span>
+          </p>
+          <p class="flex items-baseline gap-1.5">
+            <span class="text-lg font-semibold font-mono tabular-nums text-fg">
               {{ formatNumber(bulkReport.total_parsed_rows) }}
-            </dd>
-          </div>
-        </dl>
-      </div>
+            </span>
+            <span class="text-xs text-fg-muted">{{ t('import.report.parsedRows') }}</span>
+          </p>
+          <p class="flex items-baseline gap-1.5">
+            <span class="text-lg font-semibold font-mono tabular-nums text-success">
+              {{ formatNumber(bulkReport.total_ok_rows) }}
+            </span>
+            <span class="text-xs text-fg-muted">{{ t('import.report.okRows') }}</span>
+          </p>
+          <p class="flex items-baseline gap-1.5">
+            <span
+              class="text-lg font-semibold font-mono tabular-nums"
+              :class="activeErrorCount > 0 ? 'text-danger' : 'text-fg-subtle'"
+            >
+              {{ formatNumber(activeErrorCount) }}
+            </span>
+            <span class="text-xs text-fg-muted">{{ t('import.report.errorRows') }}</span>
+          </p>
+        </div>
+
+        <p
+          v-if="nextStepMessage"
+          class="mt-4 flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-sm text-fg"
+        >
+          <ArrowRight class="w-4 h-4 text-fg-subtle flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{{ nextStepMessage }}</span>
+        </p>
+      </header>
 
       <!-- Per-file rows -->
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-muted text-fg-muted text-xs uppercase tracking-wide">
-            <tr>
-              <th class="text-left px-3 py-2 font-medium">
+        <table class="w-full text-base">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="nf-label text-left px-4 sm:px-5 py-2.5">
                 {{ t('import.bulk.report.columns.file') }}
               </th>
-              <th class="text-left px-3 py-2 font-medium">
+              <th class="nf-label text-left px-3 py-2.5">
                 {{ t('import.bulk.report.columns.entity') }}
               </th>
-              <th class="text-right px-3 py-2 w-24 font-medium">{{ t('import.report.okRows') }}</th>
-              <th class="text-right px-3 py-2 w-24 font-medium">
+              <th class="nf-label text-right px-3 py-2.5 w-28">
+                {{ t('import.report.okRows') }}
+              </th>
+              <th class="nf-label text-right px-4 sm:px-5 py-2.5 w-28">
                 {{ t('import.report.errorRows') }}
               </th>
             </tr>
@@ -727,10 +888,12 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
             <tr
               v-for="(fileReport, i) in bulkReport.files"
               :key="i"
-              class="border-t border-border align-top"
+              class="border-b border-border last:border-0 align-top"
             >
-              <td class="px-3 py-2 font-mono text-fg break-all">{{ fileReport.filename }}</td>
-              <td class="px-3 py-2">
+              <td class="px-4 sm:px-5 py-2.5 font-mono text-sm text-fg break-all">
+                {{ fileReport.filename }}
+              </td>
+              <td class="px-3 py-2.5">
                 <Badge v-if="fileReport.detected_entity" tone="primary" size="sm">
                   {{ entityLabelOrFallback(fileReport.detected_entity) }}
                 </Badge>
@@ -739,14 +902,14 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
                 </Badge>
               </td>
               <td
-                class="px-3 py-2 text-right font-mono"
-                :class="fileReport.ok_rows > 0 ? 'text-success' : 'text-fg-muted'"
+                class="px-3 py-2.5 text-right font-mono tabular-nums"
+                :class="fileReport.ok_rows > 0 ? 'text-success' : 'text-fg-subtle'"
               >
                 {{ formatNumber(fileReport.ok_rows) }}
               </td>
               <td
-                class="px-3 py-2 text-right font-mono"
-                :class="fileReport.error_rows.length > 0 ? 'text-danger' : 'text-fg-muted'"
+                class="px-4 sm:px-5 py-2.5 text-right font-mono tabular-nums"
+                :class="fileReport.error_rows.length > 0 ? 'text-danger' : 'text-fg-subtle'"
               >
                 {{ formatNumber(fileReport.error_rows.length) }}
               </td>
@@ -755,146 +918,241 @@ function entityLabelOrFallback(e: ImportEntity | null): string {
         </table>
       </div>
 
+      <!-- Error triage bar — one filter drives every per-file table below. -->
+      <div
+        v-if="activeErrorCount > 0"
+        class="border-t border-border bg-danger/5 px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3"
+      >
+        <div class="min-w-0">
+          <p class="inline-flex items-center gap-2 text-base font-medium text-danger">
+            <AlertTriangle class="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+            {{ t('import.report.errorsTitle') }} ({{ formatNumber(activeErrorCount) }})
+          </p>
+          <p class="text-xs text-fg-muted mt-0.5">{{ t('import.report.errorsHint') }}</p>
+        </div>
+        <input
+          v-if="activeErrorCount > 10"
+          v-model="errorQuery"
+          type="search"
+          class="nf-input nf-input-control w-full sm:w-64"
+          :placeholder="t('import.report.errorsFilter')"
+          :aria-label="t('import.report.errorsFilter')"
+        />
+      </div>
+
       <!-- Per-file error details -->
       <template v-for="(fileReport, i) in bulkReport.files" :key="`err-${i}`">
-        <div v-if="fileReport.error_rows.length > 0" class="border-t border-border bg-danger/5">
-          <div class="px-5 py-2 text-xs font-medium text-fg-muted">
+        <div
+          v-if="fileReport.error_rows.length > 0 && filterErrors(fileReport.error_rows).length > 0"
+          class="border-t border-border"
+        >
+          <p class="px-4 sm:px-5 py-2 text-xs text-fg-muted bg-muted/60">
             <span class="font-mono text-fg">{{ fileReport.filename }}</span>
-            <span>·</span>
-            <span>{{ t('import.report.errorsTitle') }} ({{ fileReport.error_rows.length }})</span>
-          </div>
+            <span>· {{ formatNumber(filterErrors(fileReport.error_rows).length) }}</span>
+          </p>
           <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead class="bg-muted text-fg-muted text-xs uppercase tracking-wide">
-                <tr>
-                  <th class="text-right px-3 py-1.5 w-16 font-medium">
+            <table class="w-full text-base">
+              <thead>
+                <tr class="border-b border-border">
+                  <th class="nf-label text-right px-4 sm:px-5 py-2 w-20">
                     {{ t('import.report.columns.line') }}
                   </th>
-                  <th class="text-left px-3 py-1.5 w-32 font-medium">
+                  <th class="nf-label text-left px-3 py-2 w-36">
                     {{ t('import.report.columns.column') }}
                   </th>
-                  <th class="text-left px-3 py-1.5 w-40 font-medium">
+                  <th class="nf-label text-left px-3 py-2 w-44">
                     {{ t('import.report.columns.value') }}
                   </th>
-                  <th class="text-left px-3 py-1.5 font-medium">
+                  <th class="nf-label text-left px-4 sm:px-5 py-2">
                     {{ t('import.report.columns.error') }}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="(err, j) in fileReport.error_rows"
+                  v-for="(err, j) in filterErrors(fileReport.error_rows)"
                   :key="j"
-                  class="border-t border-border align-top"
+                  class="border-b border-border last:border-0 align-top"
                 >
-                  <td class="px-3 py-1.5 text-right font-mono text-fg-muted">{{ err.line }}</td>
-                  <td class="px-3 py-1.5 font-mono text-fg">{{ err.column || '—' }}</td>
-                  <td class="px-3 py-1.5 font-mono text-fg break-all">
-                    <span v-if="err.value">{{ err.value }}</span>
-                    <span v-else class="text-fg-muted">—</span>
+                  <td class="px-4 sm:px-5 py-2 text-right">
+                    <span class="font-mono text-sm text-fg-muted tabular-nums">{{ err.line }}</span>
                   </td>
-                  <td class="px-3 py-1.5 text-fg">{{ err.error }}</td>
+                  <td class="px-3 py-2">
+                    <Badge v-if="err.column" tone="neutral" monospace>{{ err.column }}</Badge>
+                    <span v-else class="text-fg-subtle">—</span>
+                  </td>
+                  <td class="px-3 py-2 font-mono text-sm text-fg break-all">
+                    <span v-if="err.value">{{ err.value }}</span>
+                    <span v-else class="text-fg-subtle">—</span>
+                  </td>
+                  <td class="px-4 sm:px-5 py-2 text-fg">{{ err.error }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
       </template>
+
+      <p
+        v-if="bulkNoErrorMatch"
+        class="border-t border-border px-4 sm:px-5 py-4 text-base text-fg-muted"
+      >
+        {{ t('import.report.errorsNoMatch') }}
+      </p>
     </section>
 
-    <!-- Single-mode report (unchanged) -->
+    <!-- =================== SINGLE-MODE REPORT =================== -->
     <section
-      v-if="report && mode === 'single'"
+      v-else-if="report && mode === 'single'"
       id="import-report"
-      class="nf-card mt-6 overflow-hidden"
+      class="nf-card overflow-hidden"
       aria-live="polite"
     >
-      <div class="p-5 border-b border-border">
-        <div class="flex items-center gap-3 flex-wrap">
+      <header class="p-4 sm:p-5 border-b border-border">
+        <div class="flex items-start gap-3 flex-wrap">
           <CheckCircle2
             v-if="reportTone === 'success'"
-            class="w-5 h-5 text-success"
+            class="w-5 h-5 text-success flex-shrink-0 mt-0.5"
             aria-hidden="true"
           />
           <AlertTriangle
             v-else-if="reportTone === 'danger'"
-            class="w-5 h-5 text-danger"
+            class="w-5 h-5 text-danger flex-shrink-0 mt-0.5"
             aria-hidden="true"
           />
-          <Info v-else class="w-5 h-5 text-warning" aria-hidden="true" />
+          <Info v-else class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" aria-hidden="true" />
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-fg">{{ t('import.report.title') }}</p>
-            <p class="text-xs text-fg-muted">
+            <h2 class="nf-section-title">{{ t('import.report.title') }}</h2>
+            <p class="text-sm text-fg-muted mt-0.5">
               <span v-if="lastEntity">{{ t(entityLabel[lastEntity]) }} ·</span>
               {{ reportSummary }}
             </p>
           </div>
-          <Badge :tone="report.applied ? 'success' : 'muted'">
+          <Badge :tone="report.applied ? 'success' : 'muted'" size="md">
             {{ report.applied ? t('import.report.appliedTrue') : t('import.report.appliedFalse') }}
           </Badge>
         </div>
 
-        <dl class="grid grid-cols-3 gap-4 mt-4">
-          <div>
-            <dt class="text-xs text-fg-muted">{{ t('import.report.parsedRows') }}</dt>
-            <dd class="text-2xl font-semibold text-fg font-mono tabular-nums">
+        <div class="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+          <p class="flex items-baseline gap-1.5">
+            <span class="text-lg font-semibold font-mono tabular-nums text-fg">
               {{ formatNumber(report.parsed_rows) }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-xs text-fg-muted">{{ t('import.report.okRows') }}</dt>
-            <dd class="text-2xl font-semibold text-success font-mono tabular-nums">
+            </span>
+            <span class="text-xs text-fg-muted">{{ t('import.report.parsedRows') }}</span>
+          </p>
+          <p class="flex items-baseline gap-1.5">
+            <span class="text-lg font-semibold font-mono tabular-nums text-success">
               {{ formatNumber(report.ok_rows) }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-xs text-fg-muted">{{ t('import.report.errorRows') }}</dt>
-            <dd
-              class="text-2xl font-semibold font-mono tabular-nums"
-              :class="report.error_rows.length > 0 ? 'text-danger' : 'text-fg-muted'"
+            </span>
+            <span class="text-xs text-fg-muted">{{ t('import.report.okRows') }}</span>
+          </p>
+          <p class="flex items-baseline gap-1.5">
+            <span
+              class="text-lg font-semibold font-mono tabular-nums"
+              :class="report.error_rows.length > 0 ? 'text-danger' : 'text-fg-subtle'"
             >
               {{ formatNumber(report.error_rows.length) }}
-            </dd>
-          </div>
-        </dl>
-      </div>
+            </span>
+            <span class="text-xs text-fg-muted">{{ t('import.report.errorRows') }}</span>
+          </p>
+        </div>
 
-      <div v-if="report.error_rows.length > 0" class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-muted text-fg-muted text-xs uppercase tracking-wide">
-            <tr>
-              <th class="text-right px-3 py-2 w-16 font-medium">
-                {{ t('import.report.columns.line') }}
-              </th>
-              <th class="text-left px-3 py-2 w-32 font-medium">
-                {{ t('import.report.columns.column') }}
-              </th>
-              <th class="text-left px-3 py-2 w-40 font-medium">
-                {{ t('import.report.columns.value') }}
-              </th>
-              <th class="text-left px-3 py-2 font-medium">
-                {{ t('import.report.columns.error') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(err, i) in report.error_rows"
-              :key="i"
-              class="border-t border-border align-top"
-            >
-              <td class="px-3 py-2 text-right font-mono text-fg-muted">{{ err.line }}</td>
-              <td class="px-3 py-2 font-mono text-fg">{{ err.column || '—' }}</td>
-              <td class="px-3 py-2 font-mono text-fg break-all">
-                <span v-if="err.value">{{ err.value }}</span>
-                <span v-else class="text-fg-muted">—</span>
-              </td>
-              <td class="px-3 py-2 text-fg">{{ err.error }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="px-5 py-4 text-sm text-fg-muted">{{ t('import.report.noErrors') }}</p>
+        <p
+          v-if="nextStepMessage"
+          class="mt-4 flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-sm text-fg"
+        >
+          <ArrowRight class="w-4 h-4 text-fg-subtle flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{{ nextStepMessage }}</span>
+        </p>
+      </header>
+
+      <template v-if="report.error_rows.length > 0">
+        <div
+          class="bg-danger/5 px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-border"
+        >
+          <div class="min-w-0">
+            <p class="inline-flex items-center gap-2 text-base font-medium text-danger">
+              <AlertTriangle class="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+              {{ t('import.report.errorsTitle') }} ({{ formatNumber(report.error_rows.length) }})
+            </p>
+            <p class="text-xs text-fg-muted mt-0.5">{{ t('import.report.errorsHint') }}</p>
+          </div>
+          <input
+            v-if="report.error_rows.length > 10"
+            v-model="errorQuery"
+            type="search"
+            class="nf-input nf-input-control w-full sm:w-64"
+            :placeholder="t('import.report.errorsFilter')"
+            :aria-label="t('import.report.errorsFilter')"
+          />
+        </div>
+
+        <div v-if="filterErrors(report.error_rows).length > 0" class="overflow-x-auto">
+          <table class="w-full text-base">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="nf-label text-right px-4 sm:px-5 py-2.5 w-20">
+                  {{ t('import.report.columns.line') }}
+                </th>
+                <th class="nf-label text-left px-3 py-2.5 w-36">
+                  {{ t('import.report.columns.column') }}
+                </th>
+                <th class="nf-label text-left px-3 py-2.5 w-44">
+                  {{ t('import.report.columns.value') }}
+                </th>
+                <th class="nf-label text-left px-4 sm:px-5 py-2.5">
+                  {{ t('import.report.columns.error') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(err, i) in filterErrors(report.error_rows)"
+                :key="i"
+                class="border-b border-border last:border-0 align-top"
+              >
+                <td class="px-4 sm:px-5 py-2.5 text-right">
+                  <span class="font-mono text-sm text-fg-muted tabular-nums">{{ err.line }}</span>
+                </td>
+                <td class="px-3 py-2.5">
+                  <Badge v-if="err.column" tone="neutral" monospace>{{ err.column }}</Badge>
+                  <span v-else class="text-fg-subtle">—</span>
+                </td>
+                <td class="px-3 py-2.5 font-mono text-sm text-fg break-all">
+                  <span v-if="err.value">{{ err.value }}</span>
+                  <span v-else class="text-fg-subtle">—</span>
+                </td>
+                <td class="px-4 sm:px-5 py-2.5 text-fg">{{ err.error }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="px-4 sm:px-5 py-4 text-base text-fg-muted">
+          {{ t('import.report.errorsNoMatch') }}
+        </p>
+      </template>
+
+      <p v-else class="px-4 sm:px-5 py-4 text-base text-fg-muted">
+        {{ t('import.report.noErrors') }}
+      </p>
     </section>
+
+    <!-- Nothing picked and nothing run yet: name the next action instead of
+         leaving a gap under the form. -->
+    <section v-else-if="!hasPickedFiles" class="nf-card">
+      <EmptyState
+        :icon="UploadCloud"
+        :title="t('import.bulk.emptyTitle')"
+        :description="t('import.bulk.emptyDescription')"
+        size="sm"
+      />
+    </section>
+
+    <CsvMappingAssistant
+      :open="mappingOpen"
+      :entity="entity"
+      @close="mappingOpen = false"
+      @apply="onMappingApply"
+    />
   </div>
 </template>

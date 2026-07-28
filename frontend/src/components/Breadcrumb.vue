@@ -25,26 +25,26 @@ defineProps<{
     and the same back-link behavior. Centralising it keeps the styling, the
     separator icon, and the truncation rules identical across the app.
   -->
-  <nav aria-label="Breadcrumb" class="flex items-center gap-1 text-xs text-fg-muted mb-3 min-w-0">
-    <ol class="flex items-center gap-1 min-w-0">
-      <li v-for="(item, i) in items" :key="i" class="flex items-center gap-1 min-w-0">
+  <nav aria-label="Breadcrumb" class="flex items-center text-sm text-fg-muted mb-4 min-w-0">
+    <ol class="flex items-center gap-1.5 min-w-0">
+      <li v-for="(item, i) in items" :key="i" class="flex items-center gap-1.5 min-w-0">
         <RouterLink
           v-if="item.to && i < items.length - 1"
           :to="item.to"
-          class="hover:text-fg transition-colors truncate max-w-[18ch]"
+          class="rounded hover:text-fg transition-colors duration-150 ease-soft truncate max-w-[18ch]"
         >
           {{ item.label }}
         </RouterLink>
         <span
           v-else
-          class="text-fg font-medium truncate max-w-[28ch]"
+          class="text-fg-muted truncate max-w-[28ch]"
           :aria-current="i === items.length - 1 ? 'page' : undefined"
         >
           {{ item.label }}
         </span>
         <ChevronRight
           v-if="i < items.length - 1"
-          class="w-3.5 h-3.5 text-fg-muted/60 flex-shrink-0"
+          class="w-3.5 h-3.5 text-fg-subtle flex-shrink-0"
           aria-hidden="true"
         />
       </li>

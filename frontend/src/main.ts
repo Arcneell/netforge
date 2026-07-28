@@ -8,15 +8,12 @@ import { registerLocaleProvider } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 
-// Self-hosted Geist Sans + Mono. We pull only the weights actually used:
-// 400 (body), 500 (medium emphasis), 600 (semibold titles). Mono ships in
-// 400 + 500 — that's enough for IDs / CIDRs / MACs. Each extra weight is
-// ~30KB so we resist the urge to import the whole family.
-import '@fontsource/geist-sans/400.css'
-import '@fontsource/geist-sans/500.css'
-import '@fontsource/geist-sans/600.css'
-import '@fontsource/geist-mono/400.css'
-import '@fontsource/geist-mono/500.css'
+// Self-hosted type. Inter ships as one variable file covering every weight the
+// UI uses. IBM Plex Mono is loaded in two weights and only ever applied to
+// code-like values (CIDRs, MACs, firmware strings).
+import '@fontsource-variable/inter'
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
 
 import '@/assets/tailwind.css'
 

@@ -29,15 +29,15 @@ function go(p: number) {
 
 <template>
   <div
-    class="flex items-center justify-between gap-4 px-4 py-2 border-t border-border text-xs text-fg-muted"
+    class="flex items-center justify-between gap-4 px-5 py-3 border-t border-border text-sm text-fg-muted"
   >
-    <span aria-live="polite">
+    <span aria-live="polite" class="tabular-nums">
       {{ t('common.pagination.range', { start, end, total }) }}
     </span>
     <div class="flex items-center gap-1">
       <button
         type="button"
-        class="inline-flex items-center justify-center w-7 h-7 rounded text-fg-muted hover:bg-surface-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted transition"
+        class="inline-flex items-center justify-center w-8 h-8 rounded-md text-fg-muted hover:bg-surface-hover hover:text-fg disabled:opacity-35 disabled:pointer-events-none transition-colors duration-150 ease-soft"
         :disabled="!canPrev"
         :aria-label="t('common.pagination.previous')"
         @click="go(page - 1)"
@@ -49,7 +49,7 @@ function go(p: number) {
       </span>
       <button
         type="button"
-        class="inline-flex items-center justify-center w-7 h-7 rounded text-fg-muted hover:bg-surface-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted transition"
+        class="inline-flex items-center justify-center w-8 h-8 rounded-md text-fg-muted hover:bg-surface-hover hover:text-fg disabled:opacity-35 disabled:pointer-events-none transition-colors duration-150 ease-soft"
         :disabled="!canNext"
         :aria-label="t('common.pagination.next')"
         @click="go(page + 1)"

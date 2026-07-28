@@ -32,7 +32,7 @@ const { t } = useI18n()
 
 <template>
   <Modal :open="open" :title="title" size="sm" @close="emit('cancel')">
-    <p v-if="message" class="text-sm text-fg-muted whitespace-pre-line">{{ message }}</p>
+    <p v-if="message" class="text-base text-fg-muted whitespace-pre-line">{{ message }}</p>
     <slot />
     <template #footer>
       <div class="flex justify-end gap-2">

@@ -2,18 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import {
-  Network,
-  Tags,
-  Router as RouterIcon,
-  Server,
-  History,
-  ArrowUpRight,
-  ChevronRight,
-  AlertTriangle,
-  TrendingUp,
-  Inbox,
-} from 'lucide-vue-next'
+import { Network, Tags, Router as RouterIcon, Server, ArrowRight } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -46,9 +35,9 @@ async function load() {
       devicesApi.list({ page_size: 1 }),
       isAdmin.value
         ? auditApi
-            .list({ page_size: 10 })
-            .catch(() => ({ items: [] as AuditLog[], total: 0, page: 1, page_size: 10 }))
-        : Promise.resolve({ items: [] as AuditLog[], total: 0, page: 1, page_size: 10 }),
+            .list({ page_size: 8 })
+            .catch(() => ({ items: [] as AuditLog[], total: 0, page: 1, page_size: 8 }))
+        : Promise.resolve({ items: [] as AuditLog[], total: 0, page: 1, page_size: 8 }),
       subnetsApi.capacityOverview(5).catch(
         () =>
           ({
@@ -76,23 +65,16 @@ async function load() {
 // "at least one bucket has rows" hid the section for healthy
 // mid-fill deployments where every subnet sits in the 1–79 % range,
 // which is the exact state most operators run in (Codex P2 on #79).
-// The empty-bucket placeholders are already the right message there
-// ("Nothing to watch", "No saturated subnets", …).
+// The empty-bucket placeholders are already the right message there.
 const hasCapacity = computed(() => (capacity.value?.total_subnets ?? 0) > 0)
 
-// Bucket descriptors. Each carries its own colour family — the icon disc
-// matches the entity tiles above so the dashboard reads as one
-// composition. Tailwind's JIT picks up the full literals; avoid dynamic
-// concatenation.
 const capacityBuckets = computed(() => [
   {
     key: 'full',
     titleKey: 'dashboard.capacity.full.title',
     helpKey: 'dashboard.capacity.full.help',
     emptyKey: 'dashboard.capacity.full.empty',
-    icon: AlertTriangle,
-    iconClass: 'bg-gradient-to-br from-rose-500 to-red-600',
-    barClass: 'bg-danger',
+    tone: 'danger' as const,
     items: capacity.value?.full ?? [],
   },
   {
@@ -100,9 +82,7 @@ const capacityBuckets = computed(() => [
     titleKey: 'dashboard.capacity.fullest.title',
     helpKey: 'dashboard.capacity.fullest.help',
     emptyKey: 'dashboard.capacity.fullest.empty',
-    icon: TrendingUp,
-    iconClass: 'bg-gradient-to-br from-amber-500 to-orange-500',
-    barClass: 'bg-warning',
+    tone: 'warning' as const,
     items: capacity.value?.fullest ?? [],
   },
   {
@@ -110,21 +90,13 @@ const capacityBuckets = computed(() => [
     titleKey: 'dashboard.capacity.unused.title',
     helpKey: 'dashboard.capacity.unused.help',
     emptyKey: 'dashboard.capacity.unused.empty',
-    icon: Inbox,
-    iconClass: 'bg-gradient-to-br from-slate-400 to-slate-500',
-    barClass: 'bg-muted',
+    tone: 'neutral' as const,
     items: capacity.value?.unused ?? [],
   },
 ])
 
 onMounted(load)
 
-// Each entity tile gets its own colour family so the dashboard reads as a
-// real overview rather than four identical indigo cards. The hues stay
-// within the iOS system palette (blue / orange / teal / pink-ish purple).
-// Each tile's accent classes are kept as full literal strings so Tailwind's
-// JIT scanner picks them up. Avoid dynamic concatenation like
-// `'hover:' + ring` — Tailwind cannot expand that.
 const cards = computed(() => [
   {
     key: 'subnets',
@@ -132,26 +104,14 @@ const cards = computed(() => [
     icon: Network,
     to: '/subnets',
     value: counts.value.subnets,
-    iconClass: 'bg-gradient-to-br from-sky-500 to-indigo-500',
-    hoverRingClass: 'hover:ring-sky-500/15',
   },
-  {
-    key: 'vlans',
-    labelKey: 'nav.vlans',
-    icon: Tags,
-    to: '/vlans',
-    value: counts.value.vlans,
-    iconClass: 'bg-gradient-to-br from-amber-500 to-orange-500',
-    hoverRingClass: 'hover:ring-amber-500/15',
-  },
+  { key: 'vlans', labelKey: 'nav.vlans', icon: Tags, to: '/vlans', value: counts.value.vlans },
   {
     key: 'switches',
     labelKey: 'nav.switches',
     icon: RouterIcon,
     to: '/switches',
     value: counts.value.switches,
-    iconClass: 'bg-gradient-to-br from-emerald-500 to-teal-500',
-    hoverRingClass: 'hover:ring-emerald-500/15',
   },
   {
     key: 'devices',
@@ -159,8 +119,6 @@ const cards = computed(() => [
     icon: Server,
     to: '/devices',
     value: counts.value.devices,
-    iconClass: 'bg-gradient-to-br from-fuchsia-500 to-purple-500',
-    hoverRingClass: 'hover:ring-fuchsia-500/15',
   },
 ])
 
@@ -172,62 +130,41 @@ const actionTone = {
 </script>
 
 <template>
-  <div class="p-4 sm:p-8 max-w-7xl mx-auto">
+  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('nav.dashboard')" :subtitle="t('dashboard.subtitle')" />
 
-    <!-- iOS Today-widget style stat cards. Each one is a full-bleed clickable
-         tile with an accented icon disc, a large numeric value, and a hover
-         lift via the card-hover shadow. -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+    <!-- Inventory at a glance. Four counts, each a way into its list. -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
       <RouterLink
         v-for="c in cards"
         :key="c.key"
         :to="c.to"
-        :class="[
-          'group relative nf-card p-5 transition-all duration-200',
-          'hover:shadow-card-hover hover:-translate-y-0.5',
-          'ring-1 ring-transparent',
-          c.hoverRingClass,
-        ]"
+        class="group nf-card nf-interactive p-5"
       >
-        <div class="flex items-start justify-between mb-6">
-          <span
-            :class="[
-              'inline-flex items-center justify-center w-11 h-11 rounded-2xl shadow-sm',
-              c.iconClass,
-            ]"
-          >
-            <component
-              :is="c.icon"
-              class="w-5 h-5 text-white"
-              aria-hidden="true"
-              :stroke-width="2.25"
-            />
-          </span>
-          <ArrowUpRight
-            class="w-4 h-4 text-fg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+        <div class="flex items-center gap-2 text-fg-muted">
+          <component
+            :is="c.icon"
+            class="w-4 h-4 flex-shrink-0"
+            :stroke-width="1.9"
+            aria-hidden="true"
+          />
+          <span class="text-sm truncate">{{ t(c.labelKey) }}</span>
+          <ArrowRight
+            class="ml-auto w-4 h-4 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 ease-soft"
             aria-hidden="true"
           />
         </div>
-        <p class="text-4xl font-semibold tabular-nums text-fg tracking-[-0.02em]">
-          <Skeleton v-if="loading" width="3.5rem" height="2rem" rounded="md" />
+        <p class="text-3xl font-semibold text-fg tracking-[-0.02em] tabular-nums mt-3">
+          <Skeleton v-if="loading" width="3rem" height="1.75rem" rounded="md" />
           <template v-else>{{ formatNumber(c.value) }}</template>
         </p>
-        <p class="text-sm text-fg-muted mt-1 font-medium">{{ t(c.labelKey) }}</p>
       </RouterLink>
     </section>
 
-    <!-- Capacity hot-spots. Three columns of "things worth looking at":
-         at-capacity / nearly-full / unused. Each row is a clickable
-         RouterLink to the subnet detail. The whole section hides on
-         empty deployments so a fresh install doesn't show three empty
-         placeholders. -->
+    <!-- Capacity hot-spots: at capacity / filling up / unused. -->
     <section v-if="loading || hasCapacity" class="mb-10">
-      <div class="flex items-center justify-between mb-4 px-1">
-        <h2 class="text-xl font-semibold tracking-tight flex items-center gap-2">
-          <TrendingUp class="w-5 h-5 text-fg-muted" :stroke-width="2.25" aria-hidden="true" />
-          {{ t('dashboard.capacity.title') }}
-        </h2>
+      <div class="flex items-baseline justify-between gap-4 mb-4">
+        <h2 class="nf-section-title">{{ t('dashboard.capacity.title') }}</h2>
         <span v-if="capacity" class="text-xs text-fg-muted tabular-nums">
           {{ t('dashboard.capacity.subtitle', { n: capacity.total_subnets }) }}
         </span>
@@ -239,63 +176,48 @@ const actionTone = {
           :key="bucket.key"
           class="nf-card overflow-hidden flex flex-col"
         >
-          <!-- Card header: gradient icon disc matches the entity tiles
-               at the top of the page so the dashboard reads as one
-               composition rather than two unrelated sections. -->
-          <header class="px-4 py-3 border-b border-border/60 flex items-center gap-3">
-            <span
-              :class="[
-                'inline-flex items-center justify-center w-9 h-9 rounded-xl shadow-sm flex-shrink-0',
-                bucket.iconClass,
-              ]"
-              aria-hidden="true"
-            >
-              <component :is="bucket.icon" class="w-4 h-4 text-white" :stroke-width="2.25" />
-            </span>
-            <div class="min-w-0">
-              <p class="text-sm font-semibold text-fg truncate">{{ t(bucket.titleKey) }}</p>
-              <p class="text-xs text-fg-muted mt-0.5 truncate">{{ t(bucket.helpKey) }}</p>
+          <!-- min-height keeps the three headers the same height so the lists
+               below them start on the same line. -->
+          <header class="px-5 pt-4 pb-3 min-h-[5.25rem]">
+            <div class="flex items-center gap-2">
+              <p class="text-base font-medium text-fg">{{ t(bucket.titleKey) }}</p>
+              <Badge v-if="!loading && bucket.items.length > 0" :tone="bucket.tone">
+                {{ bucket.items.length }}
+              </Badge>
             </div>
-            <span
-              v-if="!loading && bucket.items.length > 0"
-              class="ml-auto text-xs font-semibold tabular-nums text-fg-muted bg-muted px-2 py-0.5 rounded-full"
-            >
-              {{ bucket.items.length }}
-            </span>
+            <p class="text-xs text-fg-muted mt-1">{{ t(bucket.helpKey) }}</p>
           </header>
 
-          <ul v-if="loading" class="divide-y divide-border/40" aria-busy="true">
-            <li v-for="i in 3" :key="`sk-cap-${bucket.key}-${i}`" class="px-4 py-2.5">
-              <Skeleton width="70%" height="0.75rem" />
-              <div class="mt-1.5">
-                <Skeleton width="40%" height="0.625rem" />
+          <ul v-if="loading" class="border-t border-border divide-y divide-border" aria-busy="true">
+            <li v-for="i in 3" :key="`sk-cap-${bucket.key}-${i}`" class="px-5 py-3">
+              <Skeleton width="60%" height="0.75rem" />
+              <div class="mt-2">
+                <Skeleton width="35%" height="0.625rem" />
               </div>
             </li>
           </ul>
-          <div
+          <p
             v-else-if="bucket.items.length === 0"
-            class="px-4 py-8 text-xs text-fg-muted text-center flex-1 flex items-center justify-center"
+            class="px-5 pb-6 pt-2 text-sm text-fg-subtle flex-1"
           >
             {{ t(bucket.emptyKey) }}
-          </div>
-          <ul v-else class="divide-y divide-border/40">
+          </p>
+          <ul v-else class="border-t border-border divide-y divide-border">
             <li v-for="entry in bucket.items" :key="entry.id">
               <RouterLink
                 :to="`/subnets/${entry.id}`"
-                class="block px-4 py-2.5 hover:bg-surface-hover transition-colors"
+                class="block px-5 py-3 hover:bg-surface-hover transition-colors duration-150 ease-soft"
               >
-                <div class="flex items-center gap-2 min-w-0 mb-1.5">
-                  <span class="font-mono text-sm font-medium text-fg truncate">
-                    {{ entry.cidr }}
-                  </span>
+                <div class="flex items-center justify-between gap-3">
+                  <span class="font-mono text-sm text-fg truncate">{{ entry.cidr }}</span>
                   <SubnetFillBar
                     :used="entry.used"
                     :usable="entry.usable"
-                    bar-class="w-20"
-                    class="ml-auto flex-shrink-0"
+                    bar-class="w-16"
+                    class="flex-shrink-0"
                   />
                 </div>
-                <p v-if="entry.description" class="text-xs text-fg-muted truncate">
+                <p v-if="entry.description" class="text-xs text-fg-muted truncate mt-1">
                   {{ entry.description }}
                 </p>
               </RouterLink>
@@ -306,51 +228,39 @@ const actionTone = {
     </section>
 
     <section v-if="isAdmin">
-      <div class="flex items-center justify-between mb-4 px-1">
-        <h2 class="text-xl font-semibold tracking-tight flex items-center gap-2">
-          <History class="w-5 h-5 text-fg-muted" :stroke-width="2.25" aria-hidden="true" />
-          {{ t('dashboard.recent.title') }}
-        </h2>
+      <div class="flex items-baseline justify-between gap-4 mb-4">
+        <h2 class="nf-section-title">{{ t('dashboard.recent.title') }}</h2>
         <RouterLink
-          to="/audit"
-          class="inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors"
+          to="/data/audit"
+          class="inline-flex items-center gap-1 text-sm font-medium nf-link no-underline hover:no-underline"
         >
           {{ t('dashboard.recent.viewAll') }}
-          <ChevronRight class="w-4 h-4" aria-hidden="true" />
+          <ArrowRight class="w-3.5 h-3.5" aria-hidden="true" />
         </RouterLink>
       </div>
 
-      <!-- iOS grouped list — single rounded container, hairline dividers
-           between items, no per-row borders. -->
       <div class="nf-card overflow-hidden">
-        <ul v-if="loading" class="divide-y divide-border/70 dark:divide-border/40" aria-busy="true">
+        <ul v-if="loading" class="divide-y divide-border" aria-busy="true">
           <li v-for="i in 5" :key="`sk-recent-${i}`" class="px-5 py-3.5 flex items-center gap-3">
-            <Skeleton width="3.5rem" height="1.25rem" rounded="full" />
-            <Skeleton width="40%" height="0.75rem" />
+            <Skeleton width="4rem" height="1.25rem" rounded="md" />
+            <Skeleton width="35%" height="0.75rem" />
             <span class="flex-1" />
             <Skeleton width="4rem" height="0.75rem" />
           </li>
         </ul>
-        <div v-else-if="recent.length === 0" class="px-6 py-12 text-center text-sm text-fg-muted">
+        <div v-else-if="recent.length === 0" class="px-6 py-12 text-center text-base text-fg-muted">
           {{ t('dashboard.recent.empty') }}
         </div>
-        <ul v-else class="divide-y divide-border/70 dark:divide-border/40">
+        <ul v-else class="divide-y divide-border">
           <li v-for="entry in recent" :key="entry.id" class="px-5 py-3.5 flex items-center gap-3">
             <Badge :tone="actionTone[entry.action]" class="flex-shrink-0">
               {{ t(`audit.actions.${entry.action}`) }}
             </Badge>
-            <div class="flex-1 min-w-0 flex items-baseline gap-2">
-              <span class="font-mono text-[13px] text-fg">
-                {{ entry.entity }}
-                <span v-if="entry.entity_id" class="text-fg-muted ml-0.5">
-                  #{{ entry.entity_id }}
-                </span>
-              </span>
-              <span class="text-xs text-fg-muted truncate">
-                · {{ t('audit.fields.user') }} #{{ entry.user_id ?? '—' }}
-              </span>
-            </div>
-            <span class="text-xs text-fg-muted flex-shrink-0 tabular-nums">
+            <span class="text-base text-fg truncate">
+              {{ entry.entity }}
+              <span v-if="entry.entity_id" class="text-fg-subtle">#{{ entry.entity_id }}</span>
+            </span>
+            <span class="ml-auto text-xs text-fg-muted flex-shrink-0 tabular-nums">
               {{ formatRelativeTime(entry.created_at) }}
             </span>
           </li>

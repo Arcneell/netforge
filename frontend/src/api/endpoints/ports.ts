@@ -16,8 +16,9 @@ export const portsApi = {
   update(id: number, data: PortUpdate): Promise<Port> {
     return request<Port>({ method: 'PUT', url: `/ports/${id}`, data })
   },
-  /** Batch read of the trunk's tagged VLAN set. PortEditor calls this on open
-   * so the list reflects the actual server state instead of resetting empty. */
+  /** Batch read of the trunk's tagged VLAN set. PortFormView calls this on
+   * mount so the list reflects the actual server state instead of resetting
+   * empty. */
   listTaggedVlans(portId: number): Promise<Vlan[]> {
     return request<Vlan[]>({ method: 'GET', url: `/ports/${portId}/vlans` })
   },
