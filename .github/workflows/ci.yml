@@ -332,6 +332,10 @@ jobs:
         working-directory: frontend
         # --audit-level=high so only High/Critical advisories fail the gate;
         # lower-severity noise is reported but non-blocking.
+        # --omit=dev scopes the gate to what actually ships in the bundle:
+        # devDependency chains (eslint, vitest, vue-tsc…) never reach
+        # production and their fixes routinely require major bumps — they
+        # are still surfaced by dependabot, just not as a merge blocker.
         run: |
           npm ci
-          npm audit --audit-level=high
+          npm audit --omit=dev --audit-level=high

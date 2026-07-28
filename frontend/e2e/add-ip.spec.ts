@@ -44,9 +44,11 @@ test('admin can add an IP via the subnet next-free flow', async ({ page, request
   // On success we land back on the subnet the IP belongs to.
   await expect(page).toHaveURL(new RegExp(`/subnets/${subnet.id}$`))
 
-  // The hostname we just typed should now be visible somewhere on the page —
-  // table view shows it as a column; grid view shows it in a hover tooltip
-  // (so we toggle to table to make the assertion deterministic).
+  // The hostname we just typed should now be visible in the table view —
+  // grid view shows it in a hover tooltip (so we toggle to table to make the
+  // assertion deterministic). Scope to the table: the responsive layout also
+  // renders the hostname in the (hidden) mobile card list, and an unscoped
+  // getByText would trip Playwright's strict mode on the duplicate.
   await page.getByRole('button', { name: /table view|vue tableau/i }).click()
-  await expect(page.getByText(hostname)).toBeVisible()
+  await expect(page.getByRole('table').getByText(hostname)).toBeVisible()
 })
