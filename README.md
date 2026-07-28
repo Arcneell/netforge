@@ -8,12 +8,12 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0891b2.svg?style=flat-square" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0E8C84.svg?style=flat-square" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.12+-3776ab.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/PostgreSQL-16-336791.svg?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL 16">
   <img src="https://img.shields.io/badge/Vue-3-4FC08D.svg?style=flat-square&logo=vue.js&logoColor=white" alt="Vue 3">
   <img src="https://img.shields.io/badge/AI-Anthropic%20%C2%B7%20OpenAI%20%C2%B7%20Gemini-8b5cf6.svg?style=flat-square" alt="AI: Anthropic · OpenAI · Gemini">
-  <img src="https://img.shields.io/badge/status-v1-22c55e.svg?style=flat-square" alt="v1">
+  <img src="https://img.shields.io/badge/version-0.1.0-22c55e.svg?style=flat-square" alt="Version 0.1.0">
 </p>
 
 ---
@@ -29,7 +29,7 @@ Most network documentation lives in Excel files, sticky notes, and the memory of
 - **CSV import / export** — bulk import with header auto-detection + dry-run, per-row error report, audit-log CSV stream, full-DB ZIP export.
 - **Audit log** — every mutation logged with before/after diff, side-by-side coloured view, user + IP + user-agent captured.
 - **Auth** — OIDC SSO (Entra ID, Keycloak, Authentik, Google Workspace, GitLab, …) or GitHub OAuth, personal access tokens for scripts (Bearer auth).
-- **Hardening up front** — per-IP write rate limit, strict CSP, focus-trapped modals, skeleton loaders + empty states, Playwright E2E on the critical flows.
+- **Hardening up front** — per-IP write rate limit, strict CSP, focus-trapped modals, skeleton loaders + empty states, Playwright E2E on the critical flows (run on every PR in CI).
 - **Localisation** — UI + AI responses in English and French.
 - **100% self-hosted** — everything runs under Docker Compose.
 
@@ -37,30 +37,30 @@ Most network documentation lives in Excel files, sticky notes, and the memory of
 
 Provider-agnostic — pick **Anthropic Claude**, **OpenAI**, or **Google Gemini** by config. Admin-only, rate-limited per user, gated by `AI_ENABLED`. Privacy-sensitive sites can disable individual surfaces with `AI_DRAFTS_ENABLED` / `AI_SCHEDULER_ENABLED`.
 
-| Surface | What it does |
-|---------|-------------|
-| **Infra advisor** | Full-snapshot review — SPOF, capacity, security, segmentation, naming, redundancy findings, each with a concrete recommendation. PDF export. |
-| **Suggest links** | Scan that proposes missing port-to-port topology links from labels / notes / VLAN profiles. Accept / reject per row. |
-| **Ask AI** | Multi-turn natural-language Q&A on the live inventory, **SSE-streamed** reply rendered as Markdown with clickable entity chips. |
-| **Integrity checks** | Zero-LLM deterministic detectors (duplicate MACs, orphan IPs, switches without ports, VLAN/subnet drift, port label collisions, missing gateways) — no API call, no cost. |
-| **CSV mapping assistant** | Paste foreign headers + sample rows → canonical NetForge column mapping with confidence scores, **auto-rewrites the CSV header row** for one-click import. |
-| **NL-to-action drafts** | Free-text request → drafted CRUD payload (create site / room / VLAN / subnet). Admin reviews and explicitly applies — never auto-applied, full rollback on partial failure. |
-| **Scheduled runs + webhook** | Periodic advisor / suggest-links scan; fires a **Slack / Mattermost / Teams** webhook on *new* findings above a chosen severity. |
-| **Usage dashboard** | Per-day / per-feature / per-provider token + USD cost estimate from public list prices, with sparkline + breakdowns. |
+| Surface                      | What it does                                                                                                                                                                |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Infra advisor**            | Full-snapshot review — SPOF, capacity, security, segmentation, naming, redundancy findings, each with a concrete recommendation. PDF export.                                |
+| **Suggest links**            | Scan that proposes missing port-to-port topology links from labels / notes / VLAN profiles. Accept / reject per row.                                                        |
+| **Ask AI**                   | Multi-turn natural-language Q&A on the live inventory, **SSE-streamed** reply rendered as Markdown with clickable entity chips.                                             |
+| **Integrity checks**         | Zero-LLM deterministic detectors (duplicate MACs, orphan IPs, switches without ports, VLAN/subnet drift, port label collisions, missing gateways) — no API call, no cost.   |
+| **CSV mapping assistant**    | Paste foreign headers + sample rows → canonical NetForge column mapping with confidence scores, **auto-rewrites the CSV header row** for one-click import.                  |
+| **NL-to-action drafts**      | Free-text request → drafted CRUD payload (create site / room / VLAN / subnet). Admin reviews and explicitly applies — never auto-applied, full rollback on partial failure. |
+| **Scheduled runs + webhook** | Periodic advisor / suggest-links scan; fires a **Slack / Mattermost / Teams** webhook on _new_ findings above a chosen severity.                                            |
+| **Usage dashboard**          | Per-day / per-feature / per-provider token + USD cost estimate from public list prices, with sparkline + breakdowns.                                                        |
 
 Performance & safety: per-user rate limiter, prompt-injection sanitisation of free-text fields, topology snapshot cache, Anthropic prompt caching on system + large user blocks, SDK client reuse across requests.
 
 ## Stack
 
-| Layer | Technology |
-|-------|------------|
-| Backend | Python 3.12 · FastAPI · SQLAlchemy 2.0 async · Alembic |
-| Database | PostgreSQL 16 (`INET` / `CIDR` / `MACADDR`, GiST exclusion, triggers) |
-| Frontend | Vue 3 · Vite · TypeScript · Tailwind · Pinia · vue-i18n |
-| Topology | Cytoscape.js (dagre + fcose layouts) |
-| Auth | OIDC (any IdP) or GitHub OAuth — pluggable provider · personal access tokens |
-| AI | Anthropic Claude · OpenAI · Google Gemini — swappable via `AI_PROVIDER` |
-| Deployment | Docker Compose |
+| Layer      | Technology                                                                   |
+| ---------- | ---------------------------------------------------------------------------- |
+| Backend    | Python 3.12 · FastAPI · SQLAlchemy 2.0 async · Alembic                       |
+| Database   | PostgreSQL 16 (`INET` / `CIDR` / `MACADDR`, GiST exclusion, triggers)        |
+| Frontend   | Vue 3 · Vite · TypeScript · Tailwind · Pinia · vue-i18n                      |
+| Topology   | Cytoscape.js (dagre + fcose layouts)                                         |
+| Auth       | OIDC (any IdP) or GitHub OAuth — pluggable provider · personal access tokens |
+| AI         | Anthropic Claude · OpenAI · Google Gemini — swappable via `AI_PROVIDER`      |
+| Deployment | Docker Compose                                                               |
 
 ## Quick start
 
@@ -73,11 +73,11 @@ docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
 
 The stack ships three services:
 
-| Service | URL | Notes |
-|---------|-----|-------|
-| SPA (Vite, HMR) | <http://localhost:5173> | the page you'll use |
-| Backend (FastAPI) | <http://localhost:8000/api/docs> | OpenAPI explorer |
-| Postgres | localhost:5432 | psql / dump from the host |
+| Service           | URL                              | Notes                                                                                         |
+| ----------------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
+| SPA (Vite, HMR)   | <http://localhost:5173>          | the page you'll use                                                                           |
+| Backend (FastAPI) | <http://localhost:8000/api/docs> | OpenAPI explorer                                                                              |
+| Postgres          | localhost:5432                   | psql / dump from the host — set `POSTGRES_HOST_PORT` if 5432 is already taken on your machine |
 
 OAuth callback URLs registered on your IdP must point at `http://localhost:5173/api/auth/callback` (the SPA proxies the callback through to the backend).
 

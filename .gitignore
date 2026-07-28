@@ -19,7 +19,6 @@ htmlcov/
 
 # Node
 node_modules/
-dist/
 .vite/
 *.log
 npm-debug.log*
@@ -50,5 +49,33 @@ alembic/local.ini
 *.dump
 *.sql.gz
 
+# Demo dataset bundle — generated at the repo root by scripts/build_demo_bundle.py
+demo-bundle.zip
+
 # OS
 Thumbs.db
+
+# code-review-graph local index
+.code-review-graph/
+
+# Local MCP config (absolute machine paths)
+.mcp.json
+
+# Other AI agents' config — we only keep CLAUDE.md
+.clinerules/
+.codebuddy/
+.cursor/
+.cursorrules
+.gemini/
+.kiro/
+.opencode/
+.qoder/
+.windsurf/
+.windsurfrules
+AGENTS.md
+CODEBUDDY.md
+GEMINI.md
+QODER.md
+opencode.jsonc
+.github/copilot-instructions.md
+.github/code-review-graph.instruction.md
