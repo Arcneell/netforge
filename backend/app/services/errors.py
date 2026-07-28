@@ -55,6 +55,17 @@ _CONSTRAINT_CODES: dict[str, tuple[str, str]] = {
         "SUBNET_OVERLAP",
         "This CIDR overlaps another subnet in the same VRF.",
     ),
+    # Raised by the subnets_validate_parent() trigger (migration 0017): the
+    # GiST exclusions only cover ROOT subnets since `&&` is also true for
+    # containment; children are checked against their siblings in the
+    # trigger, which raises 23P01 with this constraint name in the message.
+    # Must stay ABOVE the legacy "subnets_no_overlap" entry — matching is
+    # substring-based in insertion order and that name is a prefix of this
+    # one.
+    "subnets_no_overlap_siblings": (
+        "SUBNET_OVERLAP",
+        "This CIDR overlaps a sibling subnet under the same parent.",
+    ),
     # Legacy name — kept so downgraded installs still surface the friendly
     # error. Harmless when only the new constraints are present.
     "subnets_no_overlap": (
