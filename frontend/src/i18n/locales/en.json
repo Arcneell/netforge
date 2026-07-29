@@ -133,7 +133,6 @@
   "auth": {
     "signIn": "Sign in",
     "signInWith": "Sign in with {provider}",
-    "signInPrompt": "Sign in to access NetForge.",
     "signOut": "Sign out",
     "loadingSession": "Verifying session…",
     "providers": {
@@ -165,7 +164,7 @@
     }
   },
   "dashboard": {
-    "subtitle": "Overview of your network inventory.",
+    "subtitle": "Where your blocks sit, which ones are filling up, and what changed.",
     "stats": {
       "subnets": "Subnets",
       "vlans": "VLANs",
@@ -199,6 +198,19 @@
         "help": "No IPs recorded — reclaim opportunity or undocumented inventory.",
         "empty": "Every subnet has at least one IP."
       }
+    },
+    "band": {
+      "title": "Address space",
+      "legendBlocks": "Blocks",
+      "legendUsed": "In use",
+      "other": "Outside RFC 1918",
+      "trackMeta": "{n} blocks · {pct} allocated",
+      "trackAria": "{cidr}: {n} subnets, {pct} of the space allocated. Left and right arrows walk the slices.",
+      "summary": "{n} subnets",
+      "cellFree": "Slice free",
+      "empty": "No subnets on file yet. The band fills in as soon as you add the first block.",
+      "emptyCta": "Add a subnet",
+      "truncated": "showing {n} of {total} blocks"
     }
   },
   "site": {

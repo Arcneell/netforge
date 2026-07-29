@@ -3,81 +3,115 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
-   NetForge design tokens.
+   NetForge design tokens — "Rack & Plate".
 
-   The interface aims to disappear: white space and type size carry the
-   hierarchy, borders are hairlines, colour is spent on one accent plus the
-   three status signals. Nothing is decorative.
+   The interface is not trying to disappear. It is a piece of labelled
+   equipment: a light-grey cabinet panel (RAL 7035, the colour every 19" rack
+   in the world is painted), carrying near-white label stock, engraved dark
+   plates, and one accent — the teal of OM4 multimode patch fibre.
+
+   Three rules hold it together:
+     · The plate is always the darkest value in the theme. A plate is recessed,
+       so it stays dark whether the page is light or dark. It carries the
+       primary navigation and anything that names a physical thing.
+     · Teal is ink, never light. No glow, no neon, no gradient.
+     · Legends are monospace, uppercase and tracked out, because that is how
+       every port, panel and cable in this domain is actually labelled.
+
+   Light is the primary theme. Dark is the honest anodised counterpart, not
+   the headline.
 
    Tailwind reads these via rgb(var(--...) / <alpha-value>).
    --------------------------------------------------------------------------- */
 :root {
-  /* Neutrals. The page is a touch off-white so white cards read as surfaces
-     without needing a heavy border or shadow. */
-  --color-bg: 250 250 251;
-  --color-surface: 255 255 255;
-  --color-surface-hover: 245 245 247;
-  --color-muted: 244 244 246;
-  --color-border: 233 233 238;
-  --color-border-strong: 214 214 221;
-  --color-fg: 24 24 27;
-  --color-fg-muted: 98 98 108;
-  --color-fg-subtle: 140 140 152;
+  /* Cabinet grey. Deliberately not off-white — the page is the painted panel,
+     and the content sits on it as label stock. This is the one real risk in
+     the palette: a mid-grey ground is heavier than the SaaS default, and it is
+     what stops six white cards from dissolving into the background. */
+  --color-bg: 220 222 216;
+  --color-surface: 246 246 243;
+  --color-surface-hover: 237 238 233;
+  --color-muted: 208 211 204;
+  --color-border: 193 197 189;
+  --color-border-strong: 154 160 149;
+  --color-fg: 22 25 24;
+  --color-fg-muted: 86 92 88;
+  --color-fg-subtle: 124 130 125;
 
-  /* Indigo — the single brand accent. Used for the primary action, the active
-     nav item, links and focus. Never for decoration. */
-  --color-primary-50: 238 242 255;
-  --color-primary-100: 224 231 255;
-  --color-primary-200: 199 210 254;
-  --color-primary-300: 165 180 252;
-  --color-primary-400: 129 140 248;
-  --color-primary-500: 99 102 241;
-  --color-primary-600: 79 70 229;
-  --color-primary-700: 67 56 202;
-  --color-primary-800: 55 48 163;
-  --color-primary-900: 49 46 129;
-  --color-primary-950: 30 27 75;
+  /* The engraved plate. Same values in both themes — recessed is recessed. */
+  --color-plate: 20 23 22;
+  --color-plate-raised: 31 35 34;
+  --color-plate-fg: 233 236 230;
+  --color-plate-fg-muted: 150 158 153;
+  --color-plate-border: 43 48 46;
 
-  /* Status. Reserved for state — never borrowed for emphasis. */
-  --color-success: 22 143 85;
-  --color-warning: 190 116 8;
-  --color-danger: 208 45 45;
+  /* Teal — OM4 patch fibre. The single accent: primary action, active nav,
+     links, focus, and the fill in the address band. Never decoration. */
+  --color-primary-50: 228 244 242;
+  --color-primary-100: 195 232 228;
+  --color-primary-200: 150 216 210;
+  --color-primary-300: 98 195 188;
+  --color-primary-400: 47 173 166;
+  --color-primary-500: 18 149 142;
+  --color-primary-600: 11 122 116;
+  --color-primary-700: 10 98 94;
+  --color-primary-800: 10 78 75;
+  --color-primary-900: 10 62 60;
+  --color-primary-950: 6 38 36;
+
+  /* Status. Reserved for state — never borrowed for emphasis. Green is the
+     link LED, amber the activity LED; both are quiet next to the teal so a
+     row of status dots doesn't compete with the accent. */
+  --color-success: 16 113 63;
+  --color-warning: 154 99 4;
+  --color-danger: 179 36 28;
 
   color-scheme: light;
 }
 
 .dark {
-  /* Dark is a first-class theme, not an inversion. The page sits a step below
-     the surfaces it carries, borders stay visible enough to define a card
-     without glowing, and no text is pure white — #FAFAFA on near-black is
-     harsh to read for long. */
-  --color-bg: 10 10 12;
-  --color-surface: 21 21 24;
-  --color-surface-hover: 30 30 35;
-  --color-muted: 28 28 32;
-  --color-border: 39 39 45;
-  --color-border-strong: 58 58 66;
-  --color-fg: 240 240 243;
-  --color-fg-muted: 160 160 172;
-  --color-fg-subtle: 118 118 130;
+  /* Anodised. The page is bare aluminium, the surfaces are the panels bolted
+     to it, and the plate drops *below* the page — because in this theme the
+     recess is the only thing darker than the cabinet itself. No text is pure
+     white; #E6E9E5 on near-black is readable for a full shift. */
+  --color-bg: 18 20 21;
+  --color-surface: 27 30 31;
+  --color-surface-hover: 36 40 41;
+  --color-muted: 33 37 38;
+  --color-border: 47 52 53;
+  --color-border-strong: 74 81 82;
+  --color-fg: 230 233 229;
+  --color-fg-muted: 152 160 156;
+  --color-fg-subtle: 112 120 117;
+
+  /* Pushed further below the page than the light theme needs to. At only four
+     steps under `bg` the plate stopped reading as a separate object in dark
+     mode — the sidebar survived on content alone, but the address band
+     dissolved into the page. Twelve steps plus the lip highlight below restores
+     the edge. */
+  --color-plate: 7 9 8;
+  --color-plate-raised: 21 25 24;
+  --color-plate-fg: 226 230 224;
+  --color-plate-fg-muted: 148 156 151;
+  --color-plate-border: 36 41 40;
 
   /* Same ramp in both themes — components pick the right stop per theme via
      `dark:`. Inverting the scale would break every existing `text-primary-700`. */
-  --color-primary-50: 238 242 255;
-  --color-primary-100: 224 231 255;
-  --color-primary-200: 199 210 254;
-  --color-primary-300: 165 180 252;
-  --color-primary-400: 129 140 248;
-  --color-primary-500: 99 102 241;
-  --color-primary-600: 79 70 229;
-  --color-primary-700: 67 56 202;
-  --color-primary-800: 55 48 163;
-  --color-primary-900: 49 46 129;
-  --color-primary-950: 30 27 75;
+  --color-primary-50: 228 244 242;
+  --color-primary-100: 195 232 228;
+  --color-primary-200: 150 216 210;
+  --color-primary-300: 98 195 188;
+  --color-primary-400: 47 173 166;
+  --color-primary-500: 18 149 142;
+  --color-primary-600: 11 122 116;
+  --color-primary-700: 10 98 94;
+  --color-primary-800: 10 78 75;
+  --color-primary-900: 10 62 60;
+  --color-primary-950: 6 38 36;
 
-  --color-success: 52 175 110;
-  --color-warning: 226 149 44;
-  --color-danger: 236 90 90;
+  --color-success: 76 201 138;
+  --color-warning: 224 163 20;
+  --color-danger: 240 98 95;
 
   color-scheme: dark;
 }
@@ -108,43 +142,100 @@ samp,
 }
 
 ::selection {
-  background: rgb(var(--color-primary-500) / 0.18);
+  background: rgb(var(--color-primary-500) / 0.24);
 }
 
+/* Square focus ring — this interface has no round corners to follow. */
 :focus-visible {
-  outline: 2px solid rgb(var(--color-primary-500));
+  outline: 2px solid rgb(var(--color-primary-600));
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 0;
+}
+.dark :focus-visible {
+  outline-color: rgb(var(--color-primary-400));
 }
 
-/* Thin, theme-aware scrollbars. */
+/* Square, theme-aware scrollbars. A rounded pill thumb is the one detail that
+   would give the whole thing away as a web app. */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--color-border-strong)) transparent;
 }
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 *::-webkit-scrollbar-thumb {
   background: rgb(var(--color-border-strong));
-  border-radius: 999px;
-  border: 3px solid transparent;
+  border-radius: 0;
+  border: 4px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--color-fg-subtle));
   background-clip: padding-box;
-  border: 3px solid transparent;
+  border: 4px solid transparent;
 }
 
 @layer components {
   /* -------------------------------------------------------------------------
+     Type
+
+     The display face is Archivo pushed to `wdth: 118` — an expanded cut that
+     reads like the silkscreen legend on an equipment front panel. It is
+     deliberately the *only* place width contrast appears, which is why it can
+     carry a page on its own without a second accent colour.
+     ------------------------------------------------------------------------- */
+  .nf-display {
+    font-family: 'Archivo Variable', 'Archivo', ui-sans-serif, 'Segoe UI', Helvetica, sans-serif;
+    font-stretch: 118%;
+    letter-spacing: -0.015em;
+  }
+
+  /* A number that is the point of its container: a count, a capacity, a total.
+     Tabular and slashed so columns of them line up and 0 never reads as O. */
+  .nf-figure {
+    font-family: 'Archivo Variable', 'Archivo', ui-sans-serif, 'Segoe UI', Helvetica, sans-serif;
+    font-stretch: 118%;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    font-variant-numeric: slashed-zero tabular-nums;
+    @apply text-fg;
+  }
+
+  /* THE LEGEND. Monospace, uppercase, tracked out — how a port, a panel and a
+     cable are labelled in the real world. Every column header, every small
+     caption, every eyebrow in the app is this. It is the structural device
+     that makes two dozen unrelated screens read as one machine. */
+  .nf-legend {
+    @apply font-mono text-2xs font-medium uppercase text-fg-subtle;
+    letter-spacing: 0.14em;
+  }
+
+  /* Same device, a step louder — for legends that name a section rather than
+     a column. */
+  .nf-label {
+    @apply font-mono text-2xs font-medium uppercase text-fg-muted;
+    letter-spacing: 0.12em;
+  }
+
+  /* Section heading. Display face, small, tight — a panel title, not a
+     magazine headline. */
+  .nf-section-title {
+    font-family: 'Archivo Variable', 'Archivo', ui-sans-serif, 'Segoe UI', Helvetica, sans-serif;
+    font-stretch: 118%;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    @apply text-lg text-fg;
+  }
+
+  /* -------------------------------------------------------------------------
      Surfaces
      ------------------------------------------------------------------------- */
 
-  /* The default container. A hairline and the faintest lift — enough to read
-     as a surface on the off-white page, quiet enough to stack six of them. */
+  /* The default container: label stock on the cabinet panel. A hairline plus a
+     single line of light on the bottom lip — no drop shadow, because nothing
+     here floats. */
   .nf-card {
     @apply bg-surface border border-border rounded-lg shadow-xs;
   }
@@ -152,25 +243,38 @@ samp,
     @apply bg-surface border border-border rounded-lg shadow-xs;
   }
 
-  /* Section label above a group of content. Sentence case, not shouted. */
-  .nf-section-title {
-    @apply text-md font-semibold text-fg tracking-[-0.01em];
+  /* An engraved plate. Dark in both themes. Use for anything that names a
+     physical object, and for the primary navigation. */
+  .nf-plate {
+    @apply bg-plate text-plate-fg border border-plate-border;
   }
 
-  /* Small caption for a value's name — table headers, definition labels. */
-  .nf-label {
-    @apply text-xs font-medium text-fg-muted;
+  /* The top lip of a plate, catching a line of light. Drawn as an inset shadow
+     rather than a border so `.nf-chamfer` can clip it — a real border would be
+     sliced off at the cut corner and leave a visible stub. */
+  .nf-plate-lip {
+    box-shadow: inset 0 1px 0 0 rgb(var(--color-plate-fg) / 0.11);
+  }
+
+  /* One chamfered corner — the milled 45° cut on a rack panel. Reserved for
+     the address band and nothing else: it is the accent that says "hardware",
+     and it stops being a signal the moment a second element borrows it. */
+  .nf-chamfer {
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
   }
 
   /* -------------------------------------------------------------------------
      Controls
      ------------------------------------------------------------------------- */
+
+  /* Inputs are milled slots: recessed, square, with the accent taking the
+     border on focus. */
   .nf-input {
-    @apply w-full px-3 py-2 text-base bg-surface border border-border-strong rounded-md
+    @apply w-full px-3 py-2 text-base bg-surface border border-border-strong rounded-md shadow-inset
            text-fg placeholder:text-fg-subtle
-           focus:outline-none focus:border-primary-500 focus:shadow-ring
+           focus:outline-none focus:border-primary-600 focus:shadow-ring
            disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted
-           transition-[border-color,box-shadow] duration-150 ease-soft;
+           transition-[border-color,box-shadow] duration-150 ease-panel;
   }
   .nf-input-control {
     @apply h-9 py-0;
@@ -181,22 +285,26 @@ samp,
     @apply border-danger focus:border-danger;
   }
   .nf-input-invalid:focus {
-    box-shadow: 0 0 0 3px rgb(var(--color-danger) / 0.16);
+    box-shadow: 0 0 0 3px rgb(var(--color-danger) / 0.28);
   }
 
   /* Segmented control — the two-or-three-way view switch that recurs on the
-     subnet, switch, insights and settings pages. One implementation so they
-     stop drifting apart. */
+     subnet, switch, insights and settings pages. The selected segment becomes
+     an engraved plate, which is the same "you are here" language the sidebar
+     uses. One vocabulary, learned once. */
   .nf-segmented {
-    @apply inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border bg-muted;
+    @apply inline-flex items-center gap-0.5 p-0.5 rounded-md border border-border-strong bg-muted shadow-inset;
   }
   .nf-segmented-item {
     @apply inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-sm font-medium
            text-fg-muted hover:text-fg
-           transition-colors duration-150 ease-soft whitespace-nowrap;
+           transition-colors duration-150 ease-panel whitespace-nowrap;
   }
   .nf-segmented-item-active {
-    @apply bg-surface text-fg shadow-xs;
+    @apply bg-plate text-plate-fg;
+  }
+  .nf-segmented-item-active:hover {
+    @apply text-plate-fg;
   }
 
   /* Filter / action bar above a table or list. */
@@ -205,26 +313,26 @@ samp,
   }
 
   .nf-link {
-    @apply text-primary-600 dark:text-primary-400
-           hover:text-primary-700 dark:hover:text-primary-300
-           hover:underline underline-offset-2
-           transition-colors duration-150 ease-soft;
+    @apply text-primary-700 dark:text-primary-300
+           hover:text-primary-800 dark:hover:text-primary-200
+           hover:underline underline-offset-2 decoration-1
+           transition-colors duration-150 ease-panel;
   }
 
   /* A row in a list that navigates somewhere. */
   .nf-list-row {
     @apply flex items-center gap-3 px-4 py-3
-           transition-colors duration-150 ease-soft
+           transition-colors duration-150 ease-panel
            hover:bg-surface-hover focus-within:bg-surface-hover;
   }
 
-  /* Tab in a horizontal tab bar. The active state is an underline in the
-     accent — the lightest way to say "you are here". */
+  /* Tab in a horizontal tab bar. The active state is a 2px accent underline —
+     the lightest way to say "you are here" in a row of peers. */
   .nf-tab {
     @apply relative inline-flex items-center gap-2 h-9 px-1 text-base font-medium
            text-fg-muted hover:text-fg
            border-b-2 border-transparent -mb-px
-           transition-colors duration-150 ease-soft whitespace-nowrap;
+           transition-colors duration-150 ease-panel whitespace-nowrap;
   }
   .nf-tab-active {
     @apply text-fg border-primary-600 dark:border-primary-400;
@@ -240,20 +348,26 @@ samp,
 
      Apply `.nf-stagger` to a page's top-level wrapper — not to table rows,
      which re-render on every refetch and would replay the animation.
+
+     A child marked `.nf-no-enter` opts out. That exists for elements that own
+     their own entrance — the dashboard's address band sweeps its 128 bars from
+     left to right, and layering a fade-up on the same frames blunts both.
      ------------------------------------------------------------------------- */
   .nf-enter {
     /* `backwards`, not `both`: the element holds the start state through its
        delay, then returns to its normal styles once done. With `both` the
        animation's final `transform: none` stays latched and silently defeats
        every hover transform underneath it. */
-    animation: nf-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation: nf-enter 240ms cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
   }
   .nf-stagger > * {
-    /* `backwards`, not `both`: the element holds the start state through its
-       delay, then returns to its normal styles once done. With `both` the
-       animation's final `transform: none` stays latched and silently defeats
-       every hover transform underneath it. */
-    animation: nf-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation: nf-enter 240ms cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
+  }
+  /* Declared after the `> *` rule and before the nth-child delays so it wins on
+     `animation` without the delays reviving it. */
+  .nf-stagger > .nf-no-enter,
+  .nf-no-enter {
+    animation: none;
   }
   .nf-stagger > *:nth-child(1) {
     animation-delay: 0ms;
@@ -276,7 +390,7 @@ samp,
   @keyframes nf-enter {
     from {
       opacity: 0;
-      transform: translateY(6px);
+      transform: translateY(4px);
     }
     to {
       opacity: 1;
@@ -284,11 +398,31 @@ samp,
     }
   }
 
-  /* Interactive card: lifts a hair on hover, settles on press. */
+  /* Interactive panel. Nothing lifts — a panel is bolted down. Instead the
+     accent takes the leading edge, the way a selected module lights its rail
+     contact. */
   .nf-interactive {
-    @apply transition-[transform,box-shadow,border-color] duration-200 ease-soft
-           hover:-translate-y-0.5 hover:shadow-md hover:border-border-strong
-           active:translate-y-0 active:shadow-xs;
+    @apply relative transition-[background-color,border-color] duration-150 ease-panel
+           hover:bg-surface-hover hover:border-border-strong;
+  }
+  .nf-interactive::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    left: -1px;
+    width: 2px;
+    background: rgb(var(--color-primary-600));
+    opacity: 0;
+    transition: opacity 150ms cubic-bezier(0.2, 0.9, 0.25, 1);
+    pointer-events: none;
+  }
+  .nf-interactive:hover::after,
+  .nf-interactive:focus-visible::after {
+    opacity: 1;
+  }
+  .dark .nf-interactive::after {
+    background: rgb(var(--color-primary-400));
   }
 
   /* -------------------------------------------------------------------------

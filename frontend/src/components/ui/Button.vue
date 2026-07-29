@@ -28,8 +28,14 @@ const props = withDefaults(
 
 defineEmits<{ (e: 'click', ev: MouseEvent): void }>()
 
+// Square, flush, with a single line of light on the bottom lip — a panel
+// button, not a floating pill. The accent is deep enough (primary-700) to carry
+// white text at 7:1, which is what lets it stay the only saturated thing on a
+// page full of grey.
 const variantClasses: Record<Variant, string> = {
-  primary: 'bg-primary-600 hover:bg-primary-700 text-white border-transparent shadow-xs',
+  primary:
+    'bg-primary-700 hover:bg-primary-800 text-white border-transparent shadow-xs ' +
+    'dark:bg-primary-600 dark:hover:bg-primary-500',
   secondary:
     'bg-surface hover:bg-surface-hover text-fg border-border-strong shadow-xs ' +
     'dark:bg-surface dark:hover:bg-surface-hover',
@@ -45,8 +51,11 @@ const sizeClasses: Record<Size, string> = {
 
 const classes = computed(() => [
   'inline-flex items-center justify-center font-medium border rounded-md',
-  'transition-[background-color,border-color,box-shadow,color,filter] duration-150 ease-soft',
-  'focus:outline-none focus-visible:outline-none focus-visible:shadow-ring focus-visible:border-primary-500',
+  'transition-[background-color,border-color,box-shadow,color,filter,transform] duration-150 ease-panel',
+  // The press. A real button travels; 1px is enough to feel it and little
+  // enough that it never disturbs the row it sits in.
+  'active:translate-y-px active:shadow-none',
+  'focus:outline-none focus-visible:outline-none focus-visible:shadow-ring focus-visible:border-primary-600',
   'disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
   variantClasses[props.variant],
   sizeClasses[props.size],
