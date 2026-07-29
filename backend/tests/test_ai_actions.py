@@ -237,7 +237,7 @@ async def test_apply_route_maps_integrity_error_to_409(monkeypatch: pytest.Monke
     from fastapi import HTTPException
     from sqlalchemy.exc import IntegrityError
 
-    from app.routers import ai as ai_route
+    from app.routers.ai import drafts as ai_route
 
     # `_require_drafts_enabled` reads settings — patch it to a no-op so we
     # can drive the route handler in isolation.
@@ -264,7 +264,7 @@ async def test_apply_route_maps_unexpected_exception_to_502(monkeypatch: pytest.
     internals (DSNs, file paths, provider payloads) to the client."""
     from fastapi import HTTPException
 
-    from app.routers import ai as ai_route
+    from app.routers.ai import drafts as ai_route
 
     monkeypatch.setattr(ai_route, "_require_drafts_enabled", lambda: None)
 
