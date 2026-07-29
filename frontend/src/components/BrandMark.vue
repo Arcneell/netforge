@@ -4,12 +4,25 @@ withDefaults(
     /** Whether to render the wordmark next to the glyph. */
     showWordmark?: boolean
     size?: number
+    /** Render for a dark plate ground (the sidebar rail) rather than a page. */
+    onPlate?: boolean
   }>(),
-  { showWordmark: true, size: 28 },
+  { showWordmark: true, size: 28, onPlate: false },
 )
-// Mirrors assets/logo.svg + public/favicon.svg — one identity across the site,
-// the browser tab and the app. Three nodes on a diagonal: the smallest honest
-// picture of what NetForge holds.
+// Geometry is kept identical across public/favicon.svg, assets/logo.svg and
+// assets/logo-banner.svg — one identity across the app, the browser tab and the
+// README. Change one, change all four.
+//
+// The mark is a /24 rendered as sixteen cells with seven allocated: the app's
+// own subject, at the smallest size it still reads. It is the same picture the
+// dashboard's address band and the subnet detail grid draw, three scales apart,
+// so the logo is a statement of what the product is rather than an abstraction
+// laid on top of it. The chamfered top-right corner is the milled edge of a
+// rack panel, and the one place in the interface that shape is allowed.
+//
+// The stair silhouette of the filled cells is deliberate: address space fills
+// row-major from the bottom of the range, so a partly-allocated block always
+// looks like this.
 </script>
 
 <template>
@@ -22,20 +35,39 @@ withDefaults(
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <rect width="64" height="64" rx="14" fill="#4F46E5" />
-      <path
-        d="M 21 43 L 32 32 L 43 21"
-        stroke="#FFFFFF"
-        stroke-opacity="0.55"
-        stroke-width="3.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-      <circle cx="21" cy="43" r="5" fill="#FFFFFF" fill-opacity="0.55" />
-      <circle cx="32" cy="32" r="5" fill="#FFFFFF" fill-opacity="0.8" />
-      <circle cx="43" cy="21" r="5.5" fill="#FFFFFF" />
+      <!-- The plate, with its chamfer. -->
+      <path d="M0 0 H50 L64 14 V64 H0 Z" fill="#141716" />
+
+      <!-- Unallocated cells: present, but empty. -->
+      <g fill="#E9ECE6" fill-opacity="0.12">
+        <rect x="33" y="23" width="8" height="8" />
+        <rect x="43" y="23" width="8" height="8" />
+        <rect x="23" y="33" width="8" height="8" />
+        <rect x="33" y="33" width="8" height="8" />
+        <rect x="43" y="33" width="8" height="8" />
+        <rect x="13" y="43" width="8" height="8" />
+        <rect x="23" y="43" width="8" height="8" />
+        <rect x="33" y="43" width="8" height="8" />
+        <rect x="43" y="43" width="8" height="8" />
+      </g>
+
+      <!-- Allocated cells: teal, filling row-major from the top of the block. -->
+      <g fill="#2FADA6">
+        <rect x="13" y="13" width="8" height="8" />
+        <rect x="23" y="13" width="8" height="8" />
+        <rect x="33" y="13" width="8" height="8" />
+        <rect x="43" y="13" width="8" height="8" />
+        <rect x="13" y="23" width="8" height="8" />
+        <rect x="23" y="23" width="8" height="8" />
+        <rect x="13" y="33" width="8" height="8" />
+      </g>
     </svg>
-    <span v-if="showWordmark" class="text-md font-semibold text-fg tracking-[-0.02em]">
+    <span
+      v-if="showWordmark"
+      class="nf-display text-md font-bold uppercase"
+      :class="onPlate ? 'text-plate-fg' : 'text-fg'"
+      style="letter-spacing: 0.02em"
+    >
       NetForge
     </span>
   </span>

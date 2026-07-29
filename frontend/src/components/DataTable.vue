@@ -88,7 +88,10 @@ const detailCols = computed<DataTableColumn[]>(() =>
               v-for="col in columns"
               :key="col.key"
               :class="[
-                'px-5 py-2.5 text-xs font-medium text-fg-muted border-b border-border',
+                // Column headers are legends: this is the position the mono
+                // tracked-out caps were designed for, and it is what makes a
+                // table read as a labelled panel rather than a spreadsheet.
+                'nf-legend px-5 py-3 border-b border-border align-bottom',
                 alignClass(col.align),
                 col.hideOnSm ? 'hidden md:table-cell' : '',
               ]"

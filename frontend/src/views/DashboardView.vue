@@ -4,11 +4,12 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Network, Tags, Router as RouterIcon, Server, ArrowRight } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
+import AddressSpaceBand from '@/components/AddressSpaceBand.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import Badge from '@/components/ui/Badge.vue'
 import SubnetFillBar from '@/components/SubnetFillBar.vue'
 import { auditApi, devicesApi, subnetsApi, switchesApi, vlansApi } from '@/api'
-import type { AuditLog } from '@/api'
+import type { AuditLog, Subnet } from '@/api'
 import type { SubnetCapacityOverview } from '@/api/endpoints/subnets'
 import { useAuth } from '@/composables/useAuth'
 import { formatNumber, formatRelativeTime } from '@/utils/formatters'
@@ -19,6 +20,9 @@ const { isAdmin } = useAuth()
 const loading = ref(true)
 const counts = ref({ subnets: 0, vlans: 0, switches: 0, devices: 0 })
 const recent = ref<AuditLog[]>([])
+// Feeds the address band. 200 is the API's page ceiling; past that the band says
+// so rather than quietly drawing a partial picture.
+const bandSubnets = ref<Subnet[]>([])
 // Capacity overview drives the "where should I look next?" section.
 // Falls back to an empty payload on any error so a flaky `/api/subnets/
 // capacity-overview` (e.g. very early deployment with no DB rows yet)
@@ -29,7 +33,9 @@ async function load() {
   loading.value = true
   try {
     const [subnets, vlans, switches, devices, audit, cap] = await Promise.all([
-      subnetsApi.list({ page_size: 1 }),
+      // One request serves both the band and the subnet count — `total` comes
+      // back on the same envelope, so there's no separate count call.
+      subnetsApi.list({ page_size: 200 }),
       vlansApi.list({ page_size: 1 }),
       switchesApi.list({ page_size: 1 }),
       devicesApi.list({ page_size: 1 }),
@@ -54,6 +60,7 @@ async function load() {
       switches: switches.total,
       devices: devices.total,
     }
+    bandSubnets.value = subnets.items
     recent.value = audit.items
     capacity.value = cap
   } finally {
@@ -75,6 +82,9 @@ const capacityBuckets = computed(() => [
     helpKey: 'dashboard.capacity.full.help',
     emptyKey: 'dashboard.capacity.full.empty',
     tone: 'danger' as const,
+    // The count is the headline of each bucket, so it carries the bucket's
+    // status colour directly rather than sitting next to a coloured chip.
+    figureClass: 'text-danger',
     items: capacity.value?.full ?? [],
   },
   {
@@ -83,6 +93,7 @@ const capacityBuckets = computed(() => [
     helpKey: 'dashboard.capacity.fullest.help',
     emptyKey: 'dashboard.capacity.fullest.empty',
     tone: 'warning' as const,
+    figureClass: 'text-warning',
     items: capacity.value?.fullest ?? [],
   },
   {
@@ -91,6 +102,7 @@ const capacityBuckets = computed(() => [
     helpKey: 'dashboard.capacity.unused.help',
     emptyKey: 'dashboard.capacity.unused.empty',
     tone: 'neutral' as const,
+    figureClass: 'text-fg-muted',
     items: capacity.value?.unused ?? [],
   },
 ])
@@ -130,42 +142,54 @@ const actionTone = {
 </script>
 
 <template>
-  <div class="px-4 py-8 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
+  <div class="px-4 py-7 sm:px-8 max-w-[1400px] mx-auto nf-stagger">
     <PageHeader :title="t('nav.dashboard')" :subtitle="t('dashboard.subtitle')" />
 
-    <!-- Inventory at a glance. Four counts, each a way into its list. -->
-    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+    <!-- The thesis: the address space itself, at real scale.
+
+         `nf-no-enter` opts it out of the page stagger — it owns its own
+         entrance, sweeping its bars left to right, and the sections below rise
+         underneath while that plays. Two motions, one sequence. -->
+    <AddressSpaceBand
+      :subnets="bandSubnets"
+      :loading="loading"
+      :total="counts.subnets"
+      class="nf-no-enter mb-8"
+    />
+
+    <!-- Inventory. One strip of four figures on a hairline grid — the gap-px
+         trick means the same markup gives a clean 2×2 on mobile and a 1×4 on
+         desktop with no per-breakpoint border juggling. -->
+    <section
+      class="grid grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border rounded-lg overflow-hidden shadow-xs mb-8"
+    >
       <RouterLink
         v-for="c in cards"
         :key="c.key"
         :to="c.to"
-        class="group nf-card nf-interactive p-5"
+        class="group nf-interactive bg-surface px-5 py-4 flex items-start gap-3"
       >
-        <div class="flex items-center gap-2 text-fg-muted">
-          <component
-            :is="c.icon"
-            class="w-4 h-4 flex-shrink-0"
-            :stroke-width="1.9"
-            aria-hidden="true"
-          />
-          <span class="text-sm truncate">{{ t(c.labelKey) }}</span>
-          <ArrowRight
-            class="ml-auto w-4 h-4 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 ease-soft"
-            aria-hidden="true"
-          />
+        <div class="min-w-0 flex-1">
+          <p class="nf-legend">{{ t(c.labelKey) }}</p>
+          <p class="nf-figure text-3xl mt-1.5">
+            <Skeleton v-if="loading" width="3rem" height="1.5rem" rounded="md" />
+            <template v-else>{{ formatNumber(c.value) }}</template>
+          </p>
         </div>
-        <p class="text-3xl font-semibold text-fg tracking-[-0.02em] tabular-nums mt-3">
-          <Skeleton v-if="loading" width="3rem" height="1.75rem" rounded="md" />
-          <template v-else>{{ formatNumber(c.value) }}</template>
-        </p>
+        <component
+          :is="c.icon"
+          class="w-4 h-4 flex-shrink-0 text-fg-subtle group-hover:text-fg-muted transition-colors duration-150 ease-panel"
+          :stroke-width="1.75"
+          aria-hidden="true"
+        />
       </RouterLink>
     </section>
 
     <!-- Capacity hot-spots: at capacity / filling up / unused. -->
-    <section v-if="loading || hasCapacity" class="mb-10">
-      <div class="flex items-baseline justify-between gap-4 mb-4">
+    <section v-if="loading || hasCapacity" class="mb-8">
+      <div class="flex items-baseline justify-between gap-x-4 gap-y-1 mb-3 flex-wrap">
         <h2 class="nf-section-title">{{ t('dashboard.capacity.title') }}</h2>
-        <span v-if="capacity" class="text-xs text-fg-muted tabular-nums">
+        <span v-if="capacity" class="nf-legend">
           {{ t('dashboard.capacity.subtitle', { n: capacity.total_subnets }) }}
         </span>
       </div>
@@ -178,14 +202,13 @@ const actionTone = {
         >
           <!-- min-height keeps the three headers the same height so the lists
                below them start on the same line. -->
-          <header class="px-5 pt-4 pb-3 min-h-[5.25rem]">
-            <div class="flex items-center gap-2">
-              <p class="text-base font-medium text-fg">{{ t(bucket.titleKey) }}</p>
-              <Badge v-if="!loading && bucket.items.length > 0" :tone="bucket.tone">
-                {{ bucket.items.length }}
-              </Badge>
-            </div>
-            <p class="text-xs text-fg-muted mt-1">{{ t(bucket.helpKey) }}</p>
+          <header class="px-5 pt-4 pb-3 min-h-[6.5rem]">
+            <p class="nf-legend">{{ t(bucket.titleKey) }}</p>
+            <p class="nf-figure text-2xl mt-1" :class="bucket.figureClass">
+              <Skeleton v-if="loading" width="1.5rem" height="1.25rem" rounded="md" />
+              <template v-else>{{ bucket.items.length }}</template>
+            </p>
+            <p class="text-xs text-fg-muted mt-1.5">{{ t(bucket.helpKey) }}</p>
           </header>
 
           <ul v-if="loading" class="border-t border-border divide-y divide-border" aria-busy="true">
@@ -206,7 +229,7 @@ const actionTone = {
             <li v-for="entry in bucket.items" :key="entry.id">
               <RouterLink
                 :to="`/subnets/${entry.id}`"
-                class="block px-5 py-3 hover:bg-surface-hover transition-colors duration-150 ease-soft"
+                class="block px-5 py-3 hover:bg-surface-hover transition-colors duration-150 ease-panel"
               >
                 <div class="flex items-center justify-between gap-3">
                   <span class="font-mono text-sm text-fg truncate">{{ entry.cidr }}</span>
@@ -228,7 +251,7 @@ const actionTone = {
     </section>
 
     <section v-if="isAdmin">
-      <div class="flex items-baseline justify-between gap-4 mb-4">
+      <div class="flex items-baseline justify-between gap-4 mb-3">
         <h2 class="nf-section-title">{{ t('dashboard.recent.title') }}</h2>
         <RouterLink
           to="/data/audit"

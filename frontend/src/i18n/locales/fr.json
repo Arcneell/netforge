@@ -133,7 +133,6 @@
   "auth": {
     "signIn": "Connexion",
     "signInWith": "Se connecter avec {provider}",
-    "signInPrompt": "Connectez-vous pour accéder à NetForge.",
     "signOut": "Déconnexion",
     "loadingSession": "Vérification de la session…",
     "providers": {
@@ -165,7 +164,7 @@
     }
   },
   "dashboard": {
-    "subtitle": "Vue d'ensemble de votre inventaire réseau.",
+    "subtitle": "Où sont vos blocs, lesquels se remplissent, et ce qui a changé.",
     "stats": {
       "subnets": "Sous-réseaux",
       "vlans": "VLAN",
@@ -199,6 +198,19 @@
         "help": "Aucune IP enregistrée — espace à récupérer ou inventaire à documenter.",
         "empty": "Tous les sous-réseaux ont au moins une IP."
       }
+    },
+    "band": {
+      "title": "Espace d'adressage",
+      "legendBlocks": "Blocs",
+      "legendUsed": "Utilisé",
+      "other": "Hors RFC 1918",
+      "trackMeta": "{n} blocs · {pct} alloué",
+      "trackAria": "{cidr} : {n} sous-réseaux, {pct} de l'espace alloué. Flèches gauche et droite pour parcourir les tranches.",
+      "summary": "{n} sous-réseaux",
+      "cellFree": "Tranche libre",
+      "empty": "Aucun sous-réseau enregistré. La bande se remplit dès le premier bloc créé.",
+      "emptyCta": "Créer un sous-réseau",
+      "truncated": "{n} blocs affichés sur {total}"
     }
   },
   "site": {

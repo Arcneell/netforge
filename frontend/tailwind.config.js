@@ -5,12 +5,28 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // Inter for the whole interface. One variable file, and its tall
-        // x-height keeps 13-14px UI text legible at the densities this app
-        // reaches in tables.
+        // Three faces, three jobs. The pairing is by *width*, not by style:
+        // Archivo runs expanded for display, Plex Sans runs normal for reading,
+        // Plex Mono runs tracked-out for legends.
+        //
+        // Archivo — display only. Never set it directly; use `.nf-display`,
+        // which also pushes the variable `wdth` axis to 118%. That expanded cut
+        // is the silkscreen on an equipment front panel, and it is the single
+        // most recognisable thing about this interface.
+        display: [
+          'Archivo Variable',
+          'Archivo',
+          'ui-sans-serif',
+          'Segoe UI',
+          'Helvetica',
+          'sans-serif',
+        ],
+        // IBM Plex Sans for the body. Chosen over a neutral grotesque because
+        // it was drawn for technical documentation — and because it makes the
+        // mono face a sibling rather than a foreign guest.
         sans: [
-          'Inter Variable',
-          'Inter',
+          'IBM Plex Sans Variable',
+          'IBM Plex Sans',
           'ui-sans-serif',
           'system-ui',
           '-apple-system',
@@ -18,9 +34,8 @@ export default {
           'Roboto',
           'sans-serif',
         ],
-        // Reserved for values that are genuinely code-like: CIDRs, MACs,
-        // firmware strings. Not a decorative choice — it exists so 0 and O
-        // never trade places in an IP address.
+        // Mono is promoted. Beyond code-like values (CIDRs, MACs, firmware) it
+        // now carries every legend and column header — see `.nf-legend`.
         mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
       colors: {
@@ -35,6 +50,18 @@ export default {
         fg: 'rgb(var(--color-fg) / <alpha-value>)',
         'fg-muted': 'rgb(var(--color-fg-muted) / <alpha-value>)',
         'fg-subtle': 'rgb(var(--color-fg-subtle) / <alpha-value>)',
+
+        // The engraved plate. Always the darkest value in the theme — a plate is
+        // recessed, so it stays dark whether the page is light or dark. Carries
+        // the primary navigation and every label that names a physical thing.
+        plate: 'rgb(var(--color-plate) / <alpha-value>)',
+        'plate-raised': 'rgb(var(--color-plate-raised) / <alpha-value>)',
+        'plate-fg': 'rgb(var(--color-plate-fg) / <alpha-value>)',
+        'plate-fg-muted': 'rgb(var(--color-plate-fg-muted) / <alpha-value>)',
+        'plate-border': 'rgb(var(--color-plate-border) / <alpha-value>)',
+
+        // Teal — the single brand accent, taken from the jacket colour of OM4
+        // multimode patch fibre. Ink, never light: no glow, no neon.
         primary: {
           50: 'rgb(var(--color-primary-50) / <alpha-value>)',
           100: 'rgb(var(--color-primary-100) / <alpha-value>)',
@@ -53,24 +80,33 @@ export default {
         danger: 'rgb(var(--color-danger) / <alpha-value>)',
       },
       boxShadow: {
-        // Restraint: elevation only where something genuinely floats.
-        xs: '0 1px 2px 0 rgb(16 24 40 / 0.04)',
-        sm: '0 1px 2px 0 rgb(16 24 40 / 0.06), 0 1px 3px 0 rgb(16 24 40 / 0.04)',
-        md: '0 2px 4px -2px rgb(16 24 40 / 0.06), 0 4px 12px -2px rgb(16 24 40 / 0.08)',
-        lg: '0 4px 6px -2px rgb(16 24 40 / 0.05), 0 12px 24px -4px rgb(16 24 40 / 0.10)',
-        xl: '0 8px 8px -4px rgb(16 24 40 / 0.04), 0 20px 40px -8px rgb(16 24 40 / 0.14)',
+        // Panels don't float — they sit flush and catch a line of light on the
+        // bottom lip. `xs`/`sm` are that lip, not a drop shadow.
+        xs: '0 1px 0 0 rgb(var(--color-border-strong) / 0.38)',
+        sm: '0 1px 0 0 rgb(var(--color-border-strong) / 0.55)',
+        // Reserved for things that genuinely leave the surface: dropdowns,
+        // modals, toasts. Tight and dark rather than wide and soft.
+        md: '0 6px 16px -6px rgb(10 14 13 / 0.30)',
+        lg: '0 12px 28px -8px rgb(10 14 13 / 0.36)',
+        xl: '0 20px 48px -12px rgb(10 14 13 / 0.46)',
+        // Recessed: inputs and the search field read as milled slots.
+        inset: 'inset 0 1px 2px 0 rgb(10 14 13 / 0.13)',
         // Focus ring drawn as a shadow so it doesn't shift layout.
-        ring: '0 0 0 3px rgb(var(--color-primary-500) / 0.16)',
+        ring: '0 0 0 3px rgb(var(--color-primary-500) / 0.30)',
       },
       borderRadius: {
-        DEFAULT: '0.375rem' /* 6px */,
-        md: '0.375rem' /* 6px  — inputs, buttons, badges */,
-        lg: '0.625rem' /* 10px — cards, dropdowns */,
-        xl: '0.75rem' /* 12px — modals */,
-        '2xl': '1rem' /* 16px — mobile sheets */,
+        // Equipment has square corners. 2px is the tool radius of a milled
+        // edge, not a decorative round. Where a corner needs to be interesting
+        // it gets a 45° chamfer instead — see `.nf-chamfer`.
+        DEFAULT: '2px',
+        md: '2px' /* inputs, buttons, badges */,
+        lg: '3px' /* cards, dropdowns */,
+        xl: '4px' /* modals */,
+        '2xl': '8px' /* mobile sheets — thumb-friendly, the one exception */,
       },
       fontSize: {
-        // Deliberate scale. Body is 14px; anything smaller is metadata only.
+        // Body is 14px; anything smaller is metadata only. Unchanged from the
+        // previous scale so table densities across 20+ views stay put.
         '2xs': ['0.6875rem', { lineHeight: '1rem' }] /* 11px */,
         xs: ['0.75rem', { lineHeight: '1.125rem' }] /* 12px */,
         sm: ['0.8125rem', { lineHeight: '1.25rem' }] /* 13px */,
@@ -78,12 +114,15 @@ export default {
         md: ['0.9375rem', { lineHeight: '1.5rem' }] /* 15px */,
         lg: ['1.0625rem', { lineHeight: '1.5rem' }] /* 17px */,
         xl: ['1.25rem', { lineHeight: '1.75rem' }] /* 20px */,
-        '2xl': ['1.5rem', { lineHeight: '2rem' }] /* 24px — page titles */,
-        '3xl': ['1.875rem', { lineHeight: '2.25rem' }] /* 30px */,
-        '4xl': ['2.25rem', { lineHeight: '2.5rem' }] /* 36px — hero figures */,
+        '2xl': ['1.5rem', { lineHeight: '1.875rem' }] /* 24px — page titles */,
+        '3xl': ['1.875rem', { lineHeight: '2.125rem' }] /* 30px */,
+        '4xl': ['2.25rem', { lineHeight: '2.375rem' }] /* 36px — hero figures */,
+        '5xl': ['3rem', { lineHeight: '3rem' }] /* 48px */,
       },
       transitionTimingFunction: {
         soft: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        // Mechanical: fast off the mark, hard stop. A relay, not a spring.
+        panel: 'cubic-bezier(0.2, 0.9, 0.25, 1)',
       },
       keyframes: {
         'fade-in': {
@@ -95,14 +134,19 @@ export default {
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         'scale-fade': {
-          '0%': { opacity: '0', transform: 'scale(0.98)' },
+          // 0.99, not 0.98: a modal that is visibly the wrong size for a frame
+          // reads as elastic, and nothing in this interface is elastic.
+          '0%': { opacity: '0', transform: 'scale(0.99)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
       },
       animation: {
-        'fade-in': 'fade-in 150ms cubic-bezier(0.4, 0, 0.2, 1)',
-        'slide-up-fade': 'slide-up-fade 160ms cubic-bezier(0.4, 0, 0.2, 1)',
-        'scale-fade': 'scale-fade 150ms cubic-bezier(0.4, 0, 0.2, 1)',
+        // All three on the panel curve — fast off the mark, hard stop. Overlays
+        // and menus arriving with the same mechanical timing as the panels
+        // underneath them is most of what makes the motion read as one system.
+        'fade-in': 'fade-in 130ms cubic-bezier(0.2, 0.9, 0.25, 1)',
+        'slide-up-fade': 'slide-up-fade 150ms cubic-bezier(0.2, 0.9, 0.25, 1)',
+        'scale-fade': 'scale-fade 140ms cubic-bezier(0.2, 0.9, 0.25, 1)',
       },
     },
   },

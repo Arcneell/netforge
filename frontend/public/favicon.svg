@@ -1,10 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="NetForge">
   <title>NetForge</title>
-  <rect width="64" height="64" rx="14" fill="#4F46E5"/>
-  <path d="M 21 43 L 32 32 L 43 21"
-        stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="3.5"
-        stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <circle cx="21" cy="43" r="5" fill="#FFFFFF" fill-opacity="0.55"/>
-  <circle cx="32" cy="32" r="5" fill="#FFFFFF" fill-opacity="0.8"/>
-  <circle cx="43" cy="21" r="5.5" fill="#FFFFFF"/>
+  <!-- Mirrors src/components/BrandMark.vue: a /24 as sixteen cells, seven
+       allocated, on a chamfered rack plate. -->
+  <path d="M0 0 H50 L64 14 V64 H0 Z" fill="#141716"/>
+  <g fill="#E9ECE6" fill-opacity="0.12">
+    <rect x="33" y="23" width="8" height="8"/>
+    <rect x="43" y="23" width="8" height="8"/>
+    <rect x="23" y="33" width="8" height="8"/>
+    <rect x="33" y="33" width="8" height="8"/>
+    <rect x="43" y="33" width="8" height="8"/>
+    <rect x="13" y="43" width="8" height="8"/>
+    <rect x="23" y="43" width="8" height="8"/>
+    <rect x="33" y="43" width="8" height="8"/>
+    <rect x="43" y="43" width="8" height="8"/>
+  </g>
+  <g fill="#2FADA6">
+    <rect x="13" y="13" width="8" height="8"/>
+    <rect x="23" y="13" width="8" height="8"/>
+    <rect x="33" y="13" width="8" height="8"/>
+    <rect x="43" y="13" width="8" height="8"/>
+    <rect x="13" y="23" width="8" height="8"/>
+    <rect x="23" y="23" width="8" height="8"/>
+    <rect x="13" y="33" width="8" height="8"/>
+  </g>
 </svg>

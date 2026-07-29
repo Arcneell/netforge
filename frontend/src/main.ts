@@ -8,12 +8,22 @@ import { registerLocaleProvider } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 
-// Self-hosted type. Inter ships as one variable file covering every weight the
-// UI uses. IBM Plex Mono is loaded in two weights and only ever applied to
-// code-like values (CIDRs, MACs, firmware strings).
-import '@fontsource-variable/inter'
+// Self-hosted type, three faces.
+//
+// Archivo is imported from `wdth.css` rather than the default entry point: that
+// build carries the variable *width* axis (62%–125%), which `.nf-display` needs
+// to reach the expanded cut the display type is built on. The wght-only build
+// would silently render at normal width and the whole type system would lose
+// its one point of contrast.
+//
+// IBM Plex Sans carries the body. IBM Plex Mono carries every legend and every
+// code-like value (CIDRs, MACs, firmware strings) — 600 is loaded because the
+// tracked-out uppercase legends need it to hold at 11px.
+import '@fontsource-variable/archivo/wdth.css'
+import '@fontsource-variable/ibm-plex-sans'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource/ibm-plex-mono/600.css'
 
 import '@/assets/tailwind.css'
 

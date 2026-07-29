@@ -3,7 +3,6 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { LogIn } from 'lucide-vue-next'
-import Button from '@/components/ui/Button.vue'
 import BrandMark from '@/components/BrandMark.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import LocaleSwitcher from '@/components/LocaleSwitcher.vue'
@@ -39,33 +38,43 @@ function signIn() {
 
 <template>
   <div class="min-h-screen flex flex-col bg-bg text-fg">
-    <header class="flex items-center justify-between px-6 h-16">
-      <BrandMark />
+    <!-- No brand mark up here: the plate below carries the identity, and showing
+         it twice on a page with one action is just noise. -->
+    <header class="flex items-center justify-end px-6 h-[3.25rem]">
       <div class="flex items-center gap-2">
         <LocaleSwitcher />
         <ThemeToggle />
       </div>
     </header>
 
-    <main class="flex-1 flex items-center justify-center px-4 pb-16">
-      <div class="w-full max-w-[22rem] nf-enter">
-        <div class="text-center">
-          <BrandMark :show-wordmark="false" :size="48" class="mx-auto" />
-          <h1 class="text-2xl font-semibold tracking-[-0.02em] mt-5">{{ $t('app.name') }}</h1>
-          <p class="text-base text-fg-muted mt-1.5">{{ $t('app.tagline') }}</p>
+    <main class="flex-1 flex items-center justify-center px-4 pb-20">
+      <div class="w-full max-w-[23rem] nf-enter">
+        <!-- The front panel. Identity and the single action on one engraved
+             plate, legends left-aligned the way they are on real equipment —
+             the centred stack is the shape every SaaS login already has. -->
+        <div class="nf-plate-lip bg-plate text-plate-fg border border-plate-border rounded-lg">
+          <div class="px-6 pt-6 pb-5">
+            <BrandMark :size="34" on-plate />
+            <p class="text-base text-plate-fg-muted mt-4">{{ $t('app.tagline') }}</p>
+          </div>
+
+          <!-- The action sits below the plate's own hairline: everything above
+               tells you where you are, everything below is what you do. -->
+          <div class="px-6 pb-6 pt-5 border-t border-plate-border">
+            <button
+              type="button"
+              class="w-full inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary-600 hover:bg-primary-500 active:translate-y-px text-white text-base font-medium transition-[background-color,transform] duration-150 ease-panel"
+              @click="signIn"
+            >
+              <LogIn class="w-4 h-4" aria-hidden="true" />
+              {{ $t('auth.signInWith', { provider: providerLabel }) }}
+            </button>
+          </div>
         </div>
 
-        <!-- The card holds only the action. Identity lives above it, on the
-             page, which keeps the one thing you came here to do unmissable. -->
-        <div class="nf-card p-6 mt-8">
-          <p class="text-base text-fg-muted text-center">{{ $t('auth.signInPrompt') }}</p>
-          <Button variant="primary" size="lg" block class="mt-5" @click="signIn">
-            <LogIn class="w-4 h-4" aria-hidden="true" />
-            {{ $t('auth.signInWith', { provider: providerLabel }) }}
-          </Button>
-        </div>
-
-        <p class="mt-6 text-center text-xs text-fg-subtle">v{{ appVersion }}</p>
+        <!-- Spelled out rather than "v0.1.0": the legend style uppercases, and
+             "V0.1.0" reads as a typo. -->
+        <p class="nf-legend mt-4">Version {{ appVersion }}</p>
       </div>
     </main>
   </div>
