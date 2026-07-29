@@ -35,7 +35,11 @@ Permissions-Policy: geolocation=(), microphone=(), camera=()
 
 `WriteRateLimitMiddleware` (see `backend/app/middleware/rate_limit.py`) caps `POST/PUT/PATCH/DELETE` to `RATE_LIMIT_WRITES_PER_WINDOW` per `RATE_LIMIT_WINDOW_SECONDS` per client IP (defaults: 60 writes per 60 seconds). Health probes and `/api/auth/*` are exempt. Reads pass through unconditionally — the dashboard and topology views fire many GETs per page load.
 
-Storage is in-memory and per-worker. When scaling to multiple uvicorn workers, swap to a shared backend (Redis) so a script can't divide its load across workers and bypass the cap.
+Counters live in PostgreSQL (`rate_limit_counters`, migration 0019), so every uvicorn worker and every replica shares one budget — a script cannot divide its load across workers to bypass the cap, and the per-user AI quota (`AI_RATE_LIMIT_CALLS`) survives a restart instead of being handed out fresh. Each hit is a single `INSERT ... ON CONFLICT DO UPDATE ... WHERE hits < limit RETURNING hits`, so concurrent workers cannot lose a count and a *rejected* call does not consume budget. Buckets are tumbling (one row per key per window), which means a client straddling a window boundary can burst up to 2× the limit over a short span; halve `RATE_LIMIT_WINDOW_SECONDS` if that matters. Expired rows are swept opportunistically, at most once per 10 minutes per worker.
+
+Set `RATE_LIMIT_STORE=memory` to opt out and restore the legacy per-process window (single-worker deployments only). Redis is the documented next step if counter traffic ever becomes a measurable share of DB load — `backend/app/services/rate_limit_store.py` exposes a two-function interface (`try_consume` / `purge_expired`) that a Redis `INCR` + `EXPIRE` backend would drop straight into.
+
+**Degradation is deliberately asymmetric.** The write limiter *fails open*: if the counter is unreachable it falls back to a per-worker window and lets the request through, because it guards against load on a database that has already stopped answering, and failing closed would turn a counter hiccup into a total write outage. The AI limiter *fails closed*: it guards spend, and an LLM call we cannot account for is an unbounded bill, so an unreachable counter returns 429 with a short `Retry-After`.
 
 ## XSS
 

@@ -16,6 +16,7 @@ from app.models.device import Device
 from app.models.ip import Ip
 from app.models.link import Link
 from app.models.port import Port, PortVlan
+from app.models.rate_limit import RateLimitCounter
 from app.models.subnet import Subnet
 from app.models.switch import Switch
 from app.models.user import ApiToken, AuditLog, Session, User
@@ -40,6 +41,7 @@ __all__ = [
     "LinkSuggestionStatus",
     "Port",
     "PortVlan",
+    "RateLimitCounter",
     "Room",
     "Session",
     "Site",

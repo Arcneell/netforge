@@ -1,74 +1,140 @@
 """Tests for the per-user AI rate limiter.
 
-The limiter is a sliding-window in-memory counter — we drive its public method
-directly and verify the failure mode + retry-after math. No FastAPI app, no DB.
+Two things are being pinned here:
+
+- The public contract `app/routers/ai/common.py::enforce_rate_limit`
+  depends on — `await consume_ai_quota(user_id)` raising
+  `AIRateLimitExceeded` with a usable `retry_after_seconds`.
+- The fail-CLOSED degradation policy, which is the opposite of the write
+  limiter's. This limiter guards spend: a call we cannot account for is an
+  unbounded bill, so an unreachable counter means 429, not "let it through".
+
+The real shared counter runs against PostgreSQL in
+`tests/integration/test_rate_limit_shared_pg.py`.
 """
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
-from app.services.ai.rate_limit import (
-    AIRateLimitExceeded,
-    _UserCounter,
-    check_and_consume,
-)
+from app.services.ai import rate_limit as rl
+from app.services.ai.rate_limit import AIRateLimitExceeded, consume_ai_quota
+
+from .test_rate_limit_store import FakeEngine
 
 
-def test_consume_allows_calls_up_to_limit() -> None:
-    counter = _UserCounter()
-    for _ in range(5):
-        counter.consume(limit=5, window=60)
+def _settings(store: str, *, calls: int = 3, window: int = 3600) -> SimpleNamespace:
+    return SimpleNamespace(
+        rate_limit_store=store,
+        ai_rate_limit_calls=calls,
+        ai_rate_window_seconds=window,
+        database_url="postgresql+asyncpg://unused/unused",
+    )
 
 
-def test_consume_raises_when_limit_reached() -> None:
-    counter = _UserCounter()
+@pytest.fixture(autouse=True)
+def _clean_memory_window() -> None:
+    """The fallback window is module-global — don't leak state across tests."""
+    rl._MEMORY.clear()
+
+
+# --- Anonymous guard (unchanged, backend-independent) ----------------------
+
+
+async def test_consume_rejects_anonymous() -> None:
+    """user_id == 0 / None must be blocked before we even read settings."""
+    with pytest.raises(AIRateLimitExceeded):
+        await consume_ai_quota(0)
+    with pytest.raises(AIRateLimitExceeded):
+        await consume_ai_quota(None)  # type: ignore[arg-type]
+
+
+# --- RATE_LIMIT_STORE=memory (single-worker opt-out / unit-suite default) --
+
+
+async def test_memory_store_allows_up_to_the_limit_then_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rl, "get_settings", lambda: _settings("memory", calls=3, window=60))
     for _ in range(3):
-        counter.consume(limit=3, window=60)
+        await consume_ai_quota(42)
     with pytest.raises(AIRateLimitExceeded) as exc:
-        counter.consume(limit=3, window=60)
-    # retry_after should be a positive integer at most == window.
+        await consume_ai_quota(42)
     assert 1 <= exc.value.retry_after_seconds <= 60
 
 
-def test_expired_entries_are_dropped_and_quota_recovers() -> None:
-    """Entries older than `window` must not count against the cap.
-
-    We monkey-patch the monotonic source to fast-forward time without sleeping.
-    """
-    counter = _UserCounter()
-    # Burn the quota at t=0
-    counter.consume(limit=2, window=10)
-    counter.consume(limit=2, window=10)
-    # Verify the next one fails
+async def test_memory_store_isolates_users(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rl, "get_settings", lambda: _settings("memory", calls=1))
+    await consume_ai_quota(101)
+    await consume_ai_quota(202)  # different user — must succeed
     with pytest.raises(AIRateLimitExceeded):
-        counter.consume(limit=2, window=10)
-    # Manually expire the deque so the next call succeeds — simulate "window
-    # later" without actually sleeping in the test process.
-    while counter._calls:
-        counter._calls.popleft()
-    counter.consume(limit=2, window=10)
+        await consume_ai_quota(101)  # same user — must fail
 
 
-def test_check_and_consume_rejects_anonymous() -> None:
-    """user_id == 0 / None must be blocked even before talking to settings."""
+async def test_memory_store_never_touches_the_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The opt-out path must stay cheap: no engine, no statement."""
+    monkeypatch.setattr(rl, "get_settings", lambda: _settings("memory", calls=1))
+    monkeypatch.setattr(
+        rl, "try_consume", lambda *_a, **_k: pytest.fail("memory mode hit the DB")
+    )
+    await consume_ai_quota(7)
+
+
+# --- RATE_LIMIT_STORE=database (default) -----------------------------------
+
+
+async def test_shared_counter_is_per_user_and_capped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rl, "get_settings", lambda: _settings("database", calls=2))
+    engine = FakeEngine(limit=2)
+
+    await consume_ai_quota(11, engine=engine)
+    await consume_ai_quota(11, engine=engine)
+    await consume_ai_quota(22, engine=engine)  # other user, own budget
+    with pytest.raises(AIRateLimitExceeded) as exc:
+        await consume_ai_quota(11, engine=engine)
+    assert exc.value.retry_after_seconds >= 1
+    assert engine.counts[("ai_user", "11")] == 2
+
+
+async def test_two_workers_share_one_ai_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The bug this replaces: N workers used to grant N x the quota, and a
+    restart handed everyone a fresh one. Same counter row, one budget."""
+    monkeypatch.setattr(rl, "get_settings", lambda: _settings("database", calls=2))
+    shared = FakeEngine(limit=2)
+    # Distinct engine handles standing in for two processes talking to the
+    # same row would be indistinguishable here; what matters is that the
+    # state lives in the store, not in either caller.
+    await consume_ai_quota(5, engine=shared)
+    await consume_ai_quota(5, engine=shared)
     with pytest.raises(AIRateLimitExceeded):
-        check_and_consume(0)
-    with pytest.raises(AIRateLimitExceeded):
-        check_and_consume(None)  # type: ignore[arg-type]
+        await consume_ai_quota(5, engine=shared)
 
 
-def test_check_and_consume_isolates_users(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two distinct user ids must not share the same counter."""
-    # Force a tiny limit so the assertion is cheap.
-    from app.services.ai import rate_limit as rl
+async def test_fails_closed_when_the_counter_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Spend guard: no counter means no call, not a free call."""
+    monkeypatch.setattr(rl, "get_settings", lambda: _settings("database", calls=20))
+    broken = FakeEngine(limit=20, fail=True)
+    with pytest.raises(AIRateLimitExceeded) as exc:
+        await consume_ai_quota(5, engine=broken)
+    assert exc.value.retry_after_seconds == rl._FAIL_CLOSED_RETRY_AFTER
 
-    fake_settings = type("S", (), {"ai_rate_limit_calls": 1, "ai_rate_window_seconds": 60})()
-    monkeypatch.setattr(rl, "get_settings", lambda: fake_settings)
-    # Reset the module-level dict so this test runs deterministically against
-    # any state left over by other tests in the same process.
-    monkeypatch.setattr(rl, "_USERS", {})
-    rl.check_and_consume(101)
-    rl.check_and_consume(202)  # different user — must succeed
-    with pytest.raises(AIRateLimitExceeded):
-        rl.check_and_consume(101)  # same user — must fail
+
+async def test_fail_closed_does_not_fall_back_to_a_per_process_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard for the obvious "just degrade gracefully" mistake:
+    falling back in-process would silently restore the N x quota bug."""
+    monkeypatch.setattr(rl, "get_settings", lambda: _settings("database", calls=20))
+    broken = FakeEngine(limit=20, fail=True)
+    for _ in range(3):
+        with pytest.raises(AIRateLimitExceeded):
+            await consume_ai_quota(5, engine=broken)
+    assert rl._MEMORY._hits == {}

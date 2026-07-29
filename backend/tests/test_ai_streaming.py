@@ -270,11 +270,14 @@ async def sse_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClie
     to control the event sequence the route has to frame."""
     # AI master flag on (so _require_ai_enabled passes) without touching env.
     monkeypatch.setattr(
-        "app.routers.ai.get_settings",
+        "app.routers.ai.common.get_settings",
         lambda: SimpleNamespace(ai_enabled=True),
     )
     # Don't consume the real per-user rate-limit window.
-    monkeypatch.setattr("app.routers.ai.check_and_consume", lambda _user_id: None)
+    async def _no_quota(_user_id: int, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr("app.routers.ai.common.consume_ai_quota", _no_quota)
 
     # get_current_user feeds both the explicit param and the admin role guard.
     app.dependency_overrides[get_current_user] = _admin_user
@@ -329,7 +332,7 @@ async def test_sse_endpoint_emits_frames(
         yield ("delta", {"text": " world"})
         yield ("done", {"answer": "Hello world", "prompt_tokens": 1, "completion_tokens": 1})
 
-    monkeypatch.setattr("app.routers.ai.run_query_streaming", _fake_stream)
+    monkeypatch.setattr("app.routers.ai.streaming.run_query_streaming", _fake_stream)
 
     resp = await sse_client.post("/api/ai/query/stream", json={"question": "ping?"})
 
@@ -359,7 +362,7 @@ async def test_sse_endpoint_emits_error_frame(
         yield ("delta", {"text": "partial"})
         raise RuntimeError("kaboom")
 
-    monkeypatch.setattr("app.routers.ai.run_query_streaming", _boom_stream)
+    monkeypatch.setattr("app.routers.ai.streaming.run_query_streaming", _boom_stream)
 
     resp = await sse_client.post("/api/ai/query/stream", json={"question": "ping?"})
 

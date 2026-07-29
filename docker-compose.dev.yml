@@ -68,6 +68,9 @@ services:
       SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-28800}
       RATE_LIMIT_WRITES_PER_WINDOW: ${RATE_LIMIT_WRITES_PER_WINDOW:-60}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      # "database" shares the counters across workers/replicas via the
+      # rate_limit_counters table; "memory" is the legacy per-process window.
+      RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-database}
       # PUBLIC_URL drives OAuth/OIDC redirect URIs. When the SPA proxies /api/*,
       # the browser-visible host is the Vite dev server (5173), so callbacks
       # must come back through there to land on the SPA after auth.
