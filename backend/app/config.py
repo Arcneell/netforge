@@ -95,6 +95,15 @@ class Settings(BaseSettings):
     rate_limit_writes_per_window: int = 60
     rate_limit_window_seconds: int = 60
 
+    # Where the counters live. "database" (default) keeps them in the
+    # `rate_limit_counters` table so every uvicorn worker and every replica
+    # shares one budget — without it the effective cap is (workers x limit)
+    # and a restart hands every user a fresh AI quota. "memory" restores the
+    # legacy per-process sliding window: no extra DB round trip per write,
+    # correct only on a single-worker, single-replica deployment.
+    # Applies to both limiters (write-per-IP and AI-per-user).
+    rate_limit_store: str = "database"
+
     # Trusted reverse-proxy networks. The backend only honours `X-Real-IP`
     # when the immediate TCP peer matches one of these CIDRs — otherwise
     # an attacker can spoof the header to bypass per-IP rate limits and

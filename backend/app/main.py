@@ -201,11 +201,16 @@ def create_app() -> FastAPI:
         )
 
     # Rate-limit write methods. Reads are never throttled — dashboards and the
-    # topology view fire many GETs per page load.
+    # topology view fire many GETs per page load. The counter lives in
+    # Postgres so every worker/replica shares one budget; `engine=None`
+    # (RATE_LIMIT_STORE=memory) falls back to the legacy per-process window.
+    from app.db import engine as db_engine
+
     app.add_middleware(
         WriteRateLimitMiddleware,
         max_per_window=settings.rate_limit_writes_per_window,
         window_seconds=settings.rate_limit_window_seconds,
+        engine=db_engine if settings.rate_limit_store == "database" else None,
     )
 
     app.add_middleware(_RequestLogMiddleware)

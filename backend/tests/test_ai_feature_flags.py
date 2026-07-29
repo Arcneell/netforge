@@ -26,14 +26,14 @@ def _settings(*, ai_enabled: bool, drafts: bool = True, sched: bool = True) -> S
 
 
 def test_require_drafts_enabled_passes_when_both_flags_true() -> None:
-    with patch("app.routers.ai.get_settings", return_value=_settings(ai_enabled=True)):
+    with patch("app.routers.ai.common.get_settings", return_value=_settings(ai_enabled=True)):
         # No exception → ok.
         _require_drafts_enabled()
 
 
 def test_require_drafts_enabled_404_when_master_off() -> None:
     with patch(
-        "app.routers.ai.get_settings",
+        "app.routers.ai.common.get_settings",
         return_value=_settings(ai_enabled=False, drafts=True),
     ):
         with pytest.raises(HTTPException) as exc:
@@ -43,7 +43,7 @@ def test_require_drafts_enabled_404_when_master_off() -> None:
 
 def test_require_drafts_enabled_404_when_subflag_off() -> None:
     with patch(
-        "app.routers.ai.get_settings",
+        "app.routers.ai.common.get_settings",
         return_value=_settings(ai_enabled=True, drafts=False),
     ):
         with pytest.raises(HTTPException) as exc:

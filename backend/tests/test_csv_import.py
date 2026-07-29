@@ -18,6 +18,7 @@ import pytest
 
 from app.schemas.imports import ImportReport
 from app.services import csv_import as service
+from app.services.csv_import import persist
 
 
 def _fresh_db() -> AsyncMock:
@@ -258,10 +259,13 @@ async def test_persist_port_replaces_trunk_vlans_via_symmetric_diff() -> None:
         "_port_on_switch": fake_port_on_switch,
         "_vlan_by_id": fake_vlan_by_id,
     }
-    orig = {k: getattr(service, k) for k in monkey_patches}
+    # The resolvers are patched on the module that *defines* `_persist_port`
+    # (`csv_import.persist`), not on the package facade: rebinding a name on
+    # the package would leave the submodule's own globals untouched.
+    orig = {k: getattr(persist, k) for k in monkey_patches}
     try:
         for k, v in monkey_patches.items():
-            setattr(service, k, v)
+            setattr(persist, k, v)
         row = service._PortRow(
             switch_name="SW-A",
             number=2,
@@ -270,7 +274,7 @@ async def test_persist_port_replaces_trunk_vlans_via_symmetric_diff() -> None:
         await service._persist_port(db, row)
     finally:
         for k, v in orig.items():
-            setattr(service, k, v)
+            setattr(persist, k, v)
 
     # Exactly one delete (for Vlan PK 100 / public id 10) — the row
     # for PK 200 / public id 20 stays put.

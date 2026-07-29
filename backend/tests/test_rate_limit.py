@@ -3,6 +3,19 @@
 We build a tiny FastAPI app with a single POST/GET handler and the middleware
 wired with very small limits — no need to spin up the full netforge app to
 test the middleware contract.
+
+Two wirings are covered:
+
+- `engine=None` — the process-local fallback window (`RATE_LIMIT_STORE=memory`).
+  Most of the behavioural contract (which methods/paths are limited, the 429
+  shape, per-IP keying, SSE pass-through) is identical in both modes and is
+  asserted here because it needs no database.
+- `engine=<fake counter>` — the shared DB-backed counter, including the two
+  things that only matter there: two "workers" sharing one budget, and the
+  fail-open degradation when the counter is unreachable.
+
+The DB path runs against real PostgreSQL in
+`tests/integration/test_rate_limit_shared_pg.py`.
 """
 
 from __future__ import annotations
@@ -12,14 +25,22 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.middleware.rate_limit import WriteRateLimitMiddleware
+from app.services import rate_limit_store as store
+
+from .test_rate_limit_store import FakeEngine
 
 
-def _make_app(max_per_window: int = 3, window_seconds: int = 60) -> FastAPI:
+def _make_app(
+    max_per_window: int = 3,
+    window_seconds: int = 60,
+    engine: object | None = None,
+) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
         WriteRateLimitMiddleware,
         max_per_window=max_per_window,
         window_seconds=window_seconds,
+        engine=engine,
     )
 
     @app.get("/things")
@@ -153,3 +174,103 @@ async def test_middleware_does_not_buffer_streaming_responses() -> None:
     await middleware(scope, receive, send)
     # If the middleware buffered, we'd see one b"chunk-1chunk-2chunk-3".
     assert chunks_received == [b"chunk-1", b"chunk-2", b"chunk-3"]
+
+
+# --- Shared DB-backed counter ---------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_two_workers_share_one_budget() -> None:
+    """The headline reason the counter moved to Postgres.
+
+    Two middleware instances stand in for two uvicorn workers / replicas.
+    With the old per-process deque each would have granted 3 writes (6
+    total); against the shared counter the 4th write anywhere is refused.
+    """
+    store.reset_purge_clock()
+    engine = FakeEngine(limit=3)
+    worker_a = _make_app(max_per_window=3, window_seconds=60, engine=engine)
+    worker_b = _make_app(max_per_window=3, window_seconds=60, engine=engine)
+
+    statuses = []
+    async with (
+        AsyncClient(transport=ASGITransport(app=worker_a), base_url="http://a") as ca,
+        AsyncClient(transport=ASGITransport(app=worker_b), base_url="http://b") as cb,
+    ):
+        for client in (ca, cb, ca, cb):
+            r = await client.post("/things", headers={"x-real-ip": "10.0.0.9"})
+            statuses.append(r.status_code)
+
+    assert statuses == [200, 200, 200, 429]
+
+
+@pytest.mark.asyncio
+async def test_db_mode_429_shape_matches_memory_mode() -> None:
+    store.reset_purge_clock()
+    engine = FakeEngine(limit=1)
+    app = _make_app(max_per_window=1, window_seconds=60, engine=engine)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.post("/things")).status_code == 200
+        blocked = await client.post("/things")
+
+    assert blocked.status_code == 429
+    body = blocked.json()
+    assert body["error"]["code"] == "RATE_LIMITED"
+    assert body["error"]["details"]["retry_after_seconds"] >= 1
+    assert int(blocked.headers["Retry-After"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_reads_and_exempt_paths_never_touch_the_counter() -> None:
+    """Perf guard: the DB round trip is only paid by limited write methods."""
+    store.reset_purge_clock()
+    engine = FakeEngine(limit=1)
+    app = _make_app(max_per_window=1, window_seconds=60, engine=engine)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for _ in range(5):
+            await client.get("/things")
+            await client.get("/api/health")
+            await client.post("/api/auth/login")
+    assert engine.sql == []
+
+
+@pytest.mark.asyncio
+async def test_one_round_trip_per_write() -> None:
+    store.reset_purge_clock()
+    engine = FakeEngine(limit=10)
+    app = _make_app(max_per_window=10, window_seconds=60, engine=engine)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for _ in range(3):
+            await client.post("/things")
+    # 3 counter statements + the single throttled purge sweep.
+    assert len(engine.sql) == 4
+    assert engine.deletes == 1
+
+
+@pytest.mark.asyncio
+async def test_fails_open_when_the_counter_is_unavailable() -> None:
+    """A dead counter must not turn into a total write outage — but the
+    process-local fallback still caps a runaway script."""
+    store.reset_purge_clock()
+    engine = FakeEngine(limit=100, fail=True)
+    app = _make_app(max_per_window=2, window_seconds=60, engine=engine)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/things")
+        second = await client.post("/things")
+        third = await client.post("/things")
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert third.status_code == 429  # fallback window, not the DB counter
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_stops_hammering_a_dead_counter() -> None:
+    """One failure parks the DB path so a Postgres outage doesn't cost every
+    write a connection timeout."""
+    store.reset_purge_clock()
+    engine = FakeEngine(limit=100, fail=True)
+    app = _make_app(max_per_window=50, window_seconds=60, engine=engine)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for _ in range(10):
+            assert (await client.post("/things")).status_code == 200
+    assert engine.connects == 1
