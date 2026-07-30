@@ -122,10 +122,38 @@ updates:
           - openapi-typescript
         update-types:
           - major
+      # eslint majors need the vue plugin in the same PR. #177 (eslint 9 -> 10)
+      # installed fine and then crashed at lint time inside
+      # eslint-plugin-vue@9's `no-async-in-computed-properties`, because 9.x
+      # declares `peer eslint@"... || ^9.0.0"` and stops there. 10.10.0 supports
+      # `^10.0.0`, so the pair works — but only as a pair.
+      eslint-toolchain:
+        patterns:
+          - eslint
+          - eslint-plugin-vue
+          - '@vue/eslint-config-*'
+          - typescript-eslint
+          - '@typescript-eslint/*'
+        update-types:
+          - major
       frontend-minor-patch:
         update-types:
           - minor
           - patch
+    ignore:
+      # `@types/node` is a Node version pin wearing a different hat: it declares
+      # the API surface the compiler believes exists. Bumping it to 26 while
+      # ci.yml, frontend/Dockerfile and the dev compose image all run Node 22
+      # means TypeScript accepts calls that are not there at runtime — a
+      # divergence the compiler cannot warn about, because the types are the
+      # thing that would have warned.
+      #
+      # It therefore moves with the Node major, in the same deliberate PR. #178
+      # proposed 22 -> 26 on its own; `test_runtime_version_pins.py` now checks
+      # this pin alongside the other four.
+      - dependency-name: '@types/node'
+        update-types:
+          - version-update:semver-major
 
   # ---------------- Docker (backend image base layer) ----------------
   - package-ecosystem: docker

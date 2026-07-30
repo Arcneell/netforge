@@ -65,6 +65,13 @@ def test_node_major_agrees_everywhere() -> None:
         "docker-compose.dev.yml": _majors(
             r"image:\s*node:(\d[\d.]*)-", _read("docker-compose.dev.yml")
         ),
+        # `@types/node` is a Node pin too: it declares the API surface the
+        # compiler believes exists. Ahead of the runtime, TypeScript accepts
+        # calls that are not there — and the types are the thing that would
+        # otherwise have caught it. PR #178 proposed 22 -> 26 on its own.
+        "frontend/package.json": _majors(
+            r'"@types/node":\s*"[^\d]*(\d[\d.]*)"', _read("frontend/package.json")
+        ),
     }
     _assert_single_major("Node", found)
 
@@ -172,6 +179,10 @@ def test_ignored_runtimes_are_still_multi_pin() -> None:
         "python": r'python-version:\s*"\d',
         "postgres": r"image:\s*postgres:\d",
         "redis": r"image:\s*redis:\d",
+        # `@types/node` has no pin of its own in ci.yml — it is ignored because
+        # it must track the Node *runtime*, whose `node-version` entries here
+        # Dependabot cannot see. Same unreachable pin, one step removed.
+        "@types/node": r'node-version:\s*"\d',
     }
 
     for name in sorted(ignored):
