@@ -8,12 +8,38 @@
 # the SHA and the trailing `# vX` comment in lockstep, so the pinned
 # workflow stays current without manual SHA bookkeeping.
 #
-# ci.yml uses floating tags (`@v4`/`@v3`/...) on purpose: that workflow
+# ci.yml uses floating tags (`@v7`/...) on purpose: that workflow
 # is read-only (`contents: read` only) so a compromised action could not
 # pivot to publish anything; the ergonomic win of automatic updates
 # outweighs the SHA-pinning complexity there. Dependabot still files
 # major-version bumps via this same config (it updates by tag if the
 # workflow uses tags).
+#
+# Runtime and service majors are ignored below. Why, in one sentence: each of
+# them is pinned in more places than Dependabot can see, so a bump it opens is
+# always a partial one.
+#
+#   node 22    frontend/Dockerfile, docker-compose.dev.yml  ← Dependabot sees
+#              ci.yml x3 (`node-version: "22"`)              ← it does not
+#   python 3.12  backend/Dockerfile                          ← sees
+#              ci.yml x4, pyproject `requires-python`        ← does not
+#   postgres 16  docker-compose.yml, docker-compose.dev.yml  ← sees
+#              ci.yml x2 (integration + e2e services)        ← does not
+#
+# PR #155 was exactly this: it moved docker-compose.dev.yml to node:26 and left
+# the other four pins on 22, against the comment in that very file requiring
+# they match. PR #156 moved both compose files to postgres:18 while CI kept
+# proving the SQL on 16 — and 18 cannot even start on a 16 data directory.
+#
+# Ignoring them does not mean never upgrading. It means the upgrade is a
+# deliberate PR that moves every pin at once (and, for postgres, documents the
+# pg_upgrade path in docs/07-deployment.md). Delete the matching `ignore` entry
+# when you do that work. Patch-level fixes still arrive without a PR, because
+# every one of these pins is an imprecise tag that re-resolves on rebuild.
+#
+# Known-good next targets at the time of writing (2026-07-30): node 24 is the
+# Active LTS (22 went to maintenance 2025-10-21, EOL 2027-04-30); 26 does not
+# become LTS until 2026-10-28, so it is the wrong target despite being newest.
 
 version: 2
 
@@ -64,7 +90,36 @@ updates:
     labels:
       - dependencies
       - javascript
+    # Group order matters: a dependency lands in the FIRST group it matches, so
+    # the coupled-major groups have to precede the catch-all below. A minor bump
+    # to vite does not match `vite-toolchain` (wrong update-type) and still falls
+    # through to `frontend-minor-patch`.
     groups:
+      # vite cannot move majors alone. #142 (vite 6 -> 8) failed because vitest
+      # 2 is built against vite 5/6, and `vitest` pins `@vitest/coverage-v8` to
+      # its own exact version — so the three have to arrive together or the PR
+      # is dead on opening. Grouping them turns an unmergeable one-liner into a
+      # PR that can actually be evaluated.
+      vite-toolchain:
+        patterns:
+          - vite
+          - vitest
+          - '@vitest/*'
+          - '@vitejs/*'
+        update-types:
+          - major
+      # Same shape for the type-checking toolchain. #143 (typescript 5.6 -> 6)
+      # needed vue-tsc 3 (2.x supports TS 5 only) and was ultimately blocked by
+      # `openapi-typescript`, whose latest release still declares
+      # `typescript@^5.x` — `npm ci` refuses the tree with ERESOLVE. Keeping all
+      # three in one group means the PR only appears once it can resolve.
+      typescript-toolchain:
+        patterns:
+          - typescript
+          - vue-tsc
+          - openapi-typescript
+        update-types:
+          - major
       frontend-minor-patch:
         update-types:
           - minor
@@ -81,6 +136,16 @@ updates:
     labels:
       - dependencies
       - docker
+    ignore:
+      # `python:3.12-slim` also lives as `python-version: "3.12"` in four ci.yml
+      # jobs and as `requires-python = ">=3.12"` in pyproject.toml, neither of
+      # which Dependabot updates. Note this needs `semver-minor` as well as
+      # `semver-major`: CPython's 3.12 -> 3.13 reads as a minor bump, and it is
+      # the one that would actually land. See the header for the policy.
+      - dependency-name: python
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
 
   # ---------------- Docker (frontend image base layer) ----------------
   - package-ecosystem: docker
@@ -93,6 +158,15 @@ updates:
     labels:
       - dependencies
       - docker
+    ignore:
+      # The `node:22-alpine` build stage has to stay on the same major as the
+      # three `node-version: "22"` entries in ci.yml and the dev compose image.
+      # `nginxinc/nginx-unprivileged` in the runtime stage is deliberately NOT
+      # ignored — it is pinned in this file only, so a bump there is complete on
+      # its own.
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
 
   # ---------------- Docker Compose (root stack images) ----------------
   # The two `docker` ecosystems above only see Dockerfiles. Images pulled
@@ -109,3 +183,19 @@ updates:
     labels:
       - dependencies
       - docker
+    ignore:
+      # A postgres major is a data-directory migration, not an image bump: 18
+      # refuses to start on a directory initialised by 16, and both compose
+      # files mount a persistent volume. It also needs ci.yml's two
+      # `postgres:16-alpine` service containers moved in the same change, or
+      # production runs a version the SQL was never tested against.
+      - dependency-name: postgres
+        update-types:
+          - version-update:semver-major
+      # Same coordination problem as frontend/Dockerfile — see the header.
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
+      # `redis` is deliberately absent: it is pinned here only, holds nothing but
+      # caches, and carries its own AOF/RDB across majors. A major bump there is
+      # complete on its own and safe to take on green CI.
