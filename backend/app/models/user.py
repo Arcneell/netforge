@@ -33,6 +33,22 @@ class AuditAction(str, Enum):
     delete = "delete"
 
 
+class ApiTokenScope(str, Enum):
+    """How much of the owner's role a token is allowed to exercise.
+
+    ``full`` (the historical, still-default behaviour) inherits the owner's
+    role verbatim — an admin's token can do anything the admin can.
+    ``read_only`` caps the token to `UserRole.viewer` for the lifetime of the
+    request it authenticates, regardless of the owner's real role: a leaked
+    CI token minted as ``read_only`` can list/get, never write. Enforcement
+    lives in `app/auth/dependencies.py::get_current_user`, not here — this
+    column is only ever read, never interpreted by the DB.
+    """
+
+    full = "full"
+    read_only = "read_only"
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
@@ -98,8 +114,10 @@ class ApiToken(Base):
       - `revoked_at` is the soft-delete: an active token has `revoked_at = NULL`
         AND (`expires_at` IS NULL OR `expires_at > now()`).
 
-    The token inherits its owner's role: revoking the user's access (or
-    demoting them to viewer) instantly limits what the token can do.
+    A token inherits its owner's role by default (`scope="full"`): revoking
+    the user's access (or demoting them to viewer) instantly limits what the
+    token can do. `scope="read_only"` caps it further, to viewer-level reads
+    only, independent of the owner's actual role — see `ApiTokenScope`.
     """
 
     __tablename__ = "api_tokens"
@@ -118,6 +136,12 @@ class ApiToken(Base):
     # First few chars of the plaintext, kept so admins can recognise a token
     # in the list ("nfp_abcd…") without re-displaying the secret.
     prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope: Mapped[ApiTokenScope] = mapped_column(
+        SAEnum(ApiTokenScope, name="api_token_scope", native_enum=True, create_type=False),
+        nullable=False,
+        default=ApiTokenScope.full,
+        server_default=ApiTokenScope.full.value,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

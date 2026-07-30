@@ -10,6 +10,7 @@ export type {
   ApiToken,
   ApiTokenCreate,
   ApiTokenCreated,
+  ApiTokenScope,
 } from './endpoints/auth'
 
 export { healthApi } from './endpoints/health'

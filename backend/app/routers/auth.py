@@ -114,11 +114,17 @@ async def create_my_token(
     db: AsyncSession = Depends(get_db_session),
 ) -> ApiTokenCreated:
     """Mint a new API token for the calling user. The plaintext is returned
-    **once** in the response body — never again. The token inherits the
-    caller's role, so demoting / disabling the user immediately limits what
-    the token can do."""
+    **once** in the response body — never again. A `full`-scope token (the
+    default) inherits the caller's role, so demoting / disabling the user
+    immediately limits what the token can do. A `read_only`-scope token is
+    capped to viewer-level reads for its whole lifetime, regardless of the
+    caller's role — see `app.auth.dependencies.get_current_user`."""
     row, plaintext = await token_service.create_token(
-        db, user, name=payload.name, expires_at=payload.expires_at
+        db,
+        user,
+        name=payload.name,
+        expires_at=payload.expires_at,
+        scope=payload.scope,
     )
     return ApiTokenCreated(
         **ApiTokenRead.model_validate(row).model_dump(),

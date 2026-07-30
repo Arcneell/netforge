@@ -15,7 +15,7 @@ from app.auth.sessions import (
 )
 from app.config import Settings, get_settings
 from app.db import get_session as get_db_session
-from app.models.user import User, UserRole
+from app.models.user import ApiTokenScope, User, UserRole
 
 # Module-level singletons: the authlib OAuth registry and the configured
 # provider are built once at first use.
@@ -72,9 +72,12 @@ async def get_current_user(
     if bearer:
         from app.services import api_tokens as token_service
 
-        user = await token_service.verify_token(db, bearer)
-        if user is None:
+        result = await token_service.verify_token(db, bearer)
+        if result is None:
             raise _auth_required()
+        user, scope = result
+        if scope is ApiTokenScope.read_only:
+            user = _capped_to_viewer(user)
     else:
         session_id = get_session_id_from_cookie(request, settings)
         if not session_id:
@@ -97,6 +100,28 @@ async def get_current_user(
     current_user_id_var.set(user.id)
 
     return user
+
+
+def _capped_to_viewer(user: User) -> User:
+    """Return a transient copy of `user` with its role forced to viewer.
+
+    Used for requests authenticated by a `read_only` API token: the effective
+    role must drop to viewer for THIS request only, so every existing
+    `require_role(...)` check downstream rejects writes without any change
+    on its part. The copy is a brand-new, never-added-to-a-session `User`
+    instance — it is never attached to `db`, so nothing about it can ever be
+    flushed. The real row (and the real user's real role) is untouched.
+    """
+    return User(
+        id=user.id,
+        provider=user.provider,
+        subject=user.subject,
+        email=user.email,
+        display_name=user.display_name,
+        role=UserRole.viewer,
+        last_login_at=user.last_login_at,
+        created_at=user.created_at,
+    )
 
 
 def require_role(*roles: UserRole):
