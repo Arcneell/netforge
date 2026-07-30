@@ -3,7 +3,7 @@ name: ci
 # Pull-request + main-push gate. Keeps merges green:
 #   - backend:      lint + unit tests (AsyncMock, no DB) + coverage report
 #   - frontend:     i18n parity + unit tests w/ coverage + lint + prod build
-#   - integration:  backend tests against real Postgres 16 + Redis 7 services
+#   - integration:  backend tests against real Postgres 16 + Redis 8 services
 #   - e2e:          Playwright critical flows against a live backend + Vite
 #   - docker-build: both production images build cleanly (no push)
 #   - audit:        dependency vulnerability scan
@@ -101,7 +101,7 @@ jobs:
       - name: Production build (runs vue-tsc + vite build)
         run: npm run build
 
-  # Backend integration tests against a real Postgres 16 and a real Redis 7 —
+  # Backend integration tests against a real Postgres 16 and a real Redis 8 —
   # the unit job above stays mock-only and dependency-free on purpose; this one
   # exercises what mocks can't: the SQL (GiST exclusion, triggers, INET/CIDR
   # operators) and the rate-limit Lua script (atomicity under concurrency, the
@@ -130,7 +130,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: redis:8-alpine
         ports:
           - 6379:6379
         options: >-

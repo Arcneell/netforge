@@ -96,7 +96,7 @@ default. Sites with a stricter posture can disable individual surfaces via
 | --- | --- |
 | Backend | Python 3.12 · FastAPI · SQLAlchemy 2.0 async · Alembic |
 | Database | PostgreSQL 16 — `INET` / `CIDR` / `MACADDR`, GiST exclusion, triggers |
-| Cache | Redis 7 — **optional**; sessions, heavy reads, shared rate-limit counters |
+| Cache | Redis 8 — **optional**; sessions, heavy reads, shared rate-limit counters |
 | Frontend | Vue 3 · Vite · TypeScript · Tailwind · Pinia · vue-i18n |
 | Topology | Cytoscape.js (dagre + fcose layouts) |
 | Auth | OIDC (any IdP) or GitHub OAuth — pluggable · personal access tokens |

@@ -44,7 +44,7 @@ services:
     # exactly as it did before this service existed (see backend/app/cache.py).
     # Turning it on is what makes repeated topology / search / dashboard reads
     # and the per-request session lookup cheap.
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

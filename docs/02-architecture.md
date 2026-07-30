@@ -32,7 +32,7 @@ is a cache the stack runs fine without.
                │ TCP 5432                     │ TCP 6379
                ▼                              ▼
 ┌──────────────────────────────┐ ┌──────────────────────────────┐
-│      postgres:16 container   │ │      redis:7 container       │
+│      postgres:16 container   │ │      redis:8 container       │
 │  - Volume /var/lib/postgre…  │ │  - OPTIONAL (REDIS_URL)      │
 │  - System of record          │ │  - Session + read cache      │
 │  - Daily backup to Veeam     │ │  - Shared rate-limit counters│
@@ -60,7 +60,7 @@ is a cache the stack runs fine without.
 - **Responsibilities**: persistent storage. System of record for everything.
 
 ### `redis` (optional)
-- **Image**: `redis:7-alpine`.
+- **Image**: `redis:8-alpine`.
 - **Port**: 6379 (not exposed outside the Docker network — Redis has no
   authentication by default, and the cache holds session records).
 - **Volumes**: `netforge_redisdata:/data` (`appendonly yes`).
