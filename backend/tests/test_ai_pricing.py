@@ -13,11 +13,27 @@ def test_known_model_returns_exact_rate() -> None:
     assert get_rate("gemini", "gemini-2.5-flash") == (0.075, 0.30)
 
 
+def test_new_default_models_have_pricing_entries() -> None:
+    """The factory's defaults were bumped to claude-sonnet-5 / gpt-5.5 —
+    both need a pricing row so the Usage dashboard doesn't silently fall
+    back to "n/a" for every call made with the new defaults."""
+    assert get_rate("anthropic", "claude-sonnet-5") == (3.00, 15.00)
+    assert get_rate("anthropic", "claude-opus-5") == (5.00, 25.00)
+    assert get_rate("openai", "gpt-5.5") == (5.00, 30.00)
+
+
+def test_cache_multipliers_match_the_documented_ratios() -> None:
+    from app.services.ai.pricing import CACHE_READ_MULTIPLIER, CACHE_WRITE_MULTIPLIER
+
+    assert pytest.approx(1.25) == CACHE_WRITE_MULTIPLIER
+    assert pytest.approx(0.10) == CACHE_READ_MULTIPLIER
+
+
 def test_unknown_model_falls_back_to_provider_default() -> None:
     """A brand-new model the operator wired up before the table caught up
     should not break the page — fall back to a reasonable provider default."""
     assert get_rate("anthropic", "claude-future-model-99") == (3.00, 15.00)
-    assert get_rate("openai", "gpt-5") == (2.50, 10.00)
+    assert get_rate("openai", "gpt-future-model-99") == (5.00, 30.00)
 
 
 def test_unknown_provider_returns_none() -> None:

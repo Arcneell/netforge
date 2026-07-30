@@ -7,7 +7,7 @@ Only the two schedulable kinds are accepted.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +16,9 @@ from app.config import get_settings
 from app.db import get_session as get_db
 from app.models.ai import AIRunKind, AISchedule, InsightSeverity
 from app.models.user import UserRole
+from app.routers.ai.common import _require_ai_enabled
 from app.schemas.ai import AIScheduleRead, AIScheduleUpsert
+from app.services.errors import http_error
 from app.utils.ssrf import UnsafeOutboundURL, check_outbound_url_async
 
 router = APIRouter()
@@ -32,6 +34,7 @@ _SCHEDULABLE_KINDS = {"advisor", "suggest_links"}
 async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[AIScheduleRead]:
     """List configured schedules. UI tolerates an empty list — kinds without
     a row have never been configured and default to disabled."""
+    _require_ai_enabled()
     rows = (
         (await db.execute(select(AISchedule).order_by(AISchedule.kind.asc())))
         .scalars()
@@ -52,10 +55,12 @@ async def upsert_schedule(
 ) -> AIScheduleRead:
     """Create or update the schedule row for `kind`. Bounds enforced by the
     DB check constraint + pydantic; we just route the call."""
+    _require_ai_enabled()
     if kind not in _SCHEDULABLE_KINDS:
-        raise HTTPException(
+        http_error(
             status.HTTP_400_BAD_REQUEST,
-            detail=f"kind must be one of {sorted(_SCHEDULABLE_KINDS)}",
+            "UNKNOWN_SCHEDULE_KIND",
+            f"kind must be one of {sorted(_SCHEDULABLE_KINDS)}",
         )
 
     # Validate the webhook URL at write time (scheme http(s), host present,
@@ -71,10 +76,11 @@ async def upsert_schedule(
                 allow_private=get_settings().webhook_allow_private_targets,
             )
         except UnsafeOutboundURL as exc:
-            raise HTTPException(
+            http_error(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"webhook_url rejected: {exc}",
-            ) from exc
+                "WEBHOOK_URL_REJECTED",
+                f"webhook_url rejected: {exc}",
+            )
 
     kind_enum = AIRunKind(kind)
     row = (

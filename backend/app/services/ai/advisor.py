@@ -33,6 +33,7 @@ from app.models.ai import (
 )
 from app.services.ai.context import build_topology_context_cached
 from app.services.ai.providers import get_provider
+from app.services.ai.retry import call_with_retry
 from app.services.ai.types import AIProviderError, ToolDef
 
 SYSTEM_PROMPT = """You are a senior network architect reviewing a NetForge inventory
@@ -166,20 +167,24 @@ async def run_advisor(
 
     t0 = time.monotonic()
     error: str | None = None
+    error_exc: AIProviderError | None = None
     try:
-        completion = await provider.call(
-            system=system,
-            # Snapshot is the only thing in the user message — passing it as
-            # `cache_prefix` so re-runs against unchanged infra hit the
-            # Anthropic prompt cache.
-            prompt="",
-            cache_prefix=f"Network snapshot:\n```json\n{payload}\n```",
-            tools=[ADVISOR_TOOL],
-            max_tokens=settings.ai_max_output_tokens,
-            temperature=0.3,
+        completion = await call_with_retry(
+            lambda: provider.call(
+                system=system,
+                # Snapshot is the only thing in the user message — passing it
+                # as `cache_prefix` so re-runs against unchanged infra hit the
+                # Anthropic prompt cache.
+                prompt="",
+                cache_prefix=f"Network snapshot:\n```json\n{payload}\n```",
+                tools=[ADVISOR_TOOL],
+                max_tokens=settings.ai_max_output_tokens,
+                temperature=0.3,
+            )
         )
     except AIProviderError as exc:
         error = str(exc)
+        error_exc = exc
         completion = None
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -199,8 +204,12 @@ async def run_advisor(
 
     if not completion or not completion.tool_call:
         await db.commit()
-        if error:
-            raise AIProviderError(error)
+        if error_exc:
+            # Re-raise the ORIGINAL exception (not a re-wrapped generic
+            # AIProviderError) so its concrete type — e.g.
+            # `AIProviderRateLimitError` — survives to the router, which
+            # maps it to a 429 instead of a generic 502.
+            raise error_exc
         raise AIProviderError("provider returned no tool call")
 
     raw_items = completion.tool_call.input.get("insights", []) or []
@@ -303,7 +312,7 @@ async def list_latest_insights(
         .scalars()
         .all()
     )
-    return run_id, created_at, items
+    return run_id, created_at, list(items)
 
 
 # Number of previous successful advisor runs we look back through when

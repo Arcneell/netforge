@@ -24,6 +24,7 @@ from app.config import get_settings
 from app.models.ai import AIRunKind, AIRunLog
 from app.services.ai.context import build_topology_context_cached
 from app.services.ai.providers import get_provider
+from app.services.ai.retry import call_with_retry
 from app.services.ai.types import (
     AIProviderError,
     StreamDelta,
@@ -202,17 +203,21 @@ async def run_query(
 
     t0 = time.monotonic()
     error: str | None = None
+    error_exc: AIProviderError | None = None
     try:
-        completion = await provider.call(
-            system=system,
-            prompt=dynamic_suffix,
-            cache_prefix=cache_prefix,
-            tools=[QUERY_TOOL],
-            max_tokens=settings.ai_max_output_tokens,
-            temperature=0.2,
+        completion = await call_with_retry(
+            lambda: provider.call(
+                system=system,
+                prompt=dynamic_suffix,
+                cache_prefix=cache_prefix,
+                tools=[QUERY_TOOL],
+                max_tokens=settings.ai_max_output_tokens,
+                temperature=0.2,
+            )
         )
     except AIProviderError as exc:
         error = str(exc)
+        error_exc = exc
         completion = None
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -231,8 +236,8 @@ async def run_query(
     await db.commit()
 
     if not completion or not completion.tool_call:
-        if error:
-            raise AIProviderError(error)
+        if error_exc:
+            raise error_exc
         raise AIProviderError("provider returned no tool call")
 
     answer = str(completion.tool_call.input.get("answer", "")).strip()
@@ -331,40 +336,51 @@ async def run_query_streaming(
     full_text = ""
     final_usage = None
     error: str | None = None
+    elapsed_ms = 0
     try:
-        async for chunk in provider.stream_call(
-            system=system,
-            prompt=dynamic_suffix,
-            cache_prefix=cache_prefix,
-            max_tokens=settings.ai_max_output_tokens,
-            temperature=0.2,
-        ):
-            if isinstance(chunk, StreamDelta):
-                full_text += chunk.text
-                yield ("delta", {"text": chunk.text})
-            elif isinstance(chunk, StreamDone):
-                final_usage = chunk.usage
-                full_text = chunk.text or full_text
-    except AIProviderError as exc:
-        error = str(exc)
-        yield ("error", {"message": error})
-    elapsed_ms = int((time.monotonic() - t0) * 1000)
-
-    # Persist the run log — same shape as the non-streaming endpoint so the
-    # Usage dashboard accounts for streaming + non-streaming calls together.
-    run = AIRunLog(
-        user_id=user_id,
-        kind=AIRunKind.nl_query,
-        provider=provider.name,
-        model=provider.model,
-        prompt_tokens=final_usage.prompt_tokens if final_usage else 0,
-        completion_tokens=final_usage.completion_tokens if final_usage else 0,
-        latency_ms=elapsed_ms,
-        success=error is None,
-        error=error,
-    )
-    db.add(run)
-    await db.commit()
+        try:
+            async for chunk in provider.stream_call(
+                system=system,
+                prompt=dynamic_suffix,
+                cache_prefix=cache_prefix,
+                max_tokens=settings.ai_max_output_tokens,
+                temperature=0.2,
+            ):
+                if isinstance(chunk, StreamDelta):
+                    full_text += chunk.text
+                    yield ("delta", {"text": chunk.text})
+                elif isinstance(chunk, StreamDone):
+                    final_usage = chunk.usage
+                    full_text = chunk.text or full_text
+        except AIProviderError as exc:
+            error = str(exc)
+            yield ("error", {"message": error})
+    finally:
+        # try/finally (rather than "just run this after the try") so the
+        # AIRunLog still gets persisted when the client disconnects
+        # mid-stream: an async generator being torn down early (the
+        # consumer stops iterating, e.g. Starlette closing the response
+        # because the client hung up) raises `GeneratorExit` at whichever
+        # `yield` is currently suspended — a `BaseException`, so it isn't
+        # caught by `except AIProviderError` above, and it doesn't fall
+        # through to code placed after a bare try/except. Without this
+        # `finally`, a disconnected Ask-AI stream silently dropped its
+        # usage/cost accounting even though the provider was still billed
+        # for the tokens it had already generated.
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        run = AIRunLog(
+            user_id=user_id,
+            kind=AIRunKind.nl_query,
+            provider=provider.name,
+            model=provider.model,
+            prompt_tokens=final_usage.prompt_tokens if final_usage else 0,
+            completion_tokens=final_usage.completion_tokens if final_usage else 0,
+            latency_ms=elapsed_ms,
+            success=error is None,
+            error=error,
+        )
+        db.add(run)
+        await db.commit()
 
     if error is None:
         yield (

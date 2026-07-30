@@ -18,9 +18,11 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
+from app.config import get_settings
 from app.services.ai.types import (
     AICompletion,
     AIProviderError,
+    AIProviderRateLimitError,
     StreamChunk,
     StreamDelta,
     StreamDone,
@@ -28,6 +30,27 @@ from app.services.ai.types import (
     ToolCall,
     ToolDef,
 )
+
+# Same rationale as the Anthropic provider — no dedicated settings field
+# exists yet, so read one via getattr with this constant as the fallback.
+_DEFAULT_TIMEOUT_SECONDS = 120.0
+
+
+def _client_timeout_seconds() -> float:
+    return getattr(get_settings(), "ai_request_timeout_seconds", _DEFAULT_TIMEOUT_SECONDS)
+
+
+def _translate_provider_error(exc: Exception, *, context: str) -> AIProviderError:
+    """Map an SDK exception to our typed hierarchy — `openai.RateLimitError`
+    is the 429 signal; everything else stays a generic `AIProviderError`."""
+    try:
+        import openai
+    except ImportError:  # pragma: no cover - env-dependent
+        return AIProviderError(f"{context}: {exc}")
+
+    if isinstance(exc, openai.RateLimitError):
+        return AIProviderRateLimitError(f"{context} (rate limited): {exc}")
+    return AIProviderError(f"{context}: {exc}")
 
 
 class OpenAIProvider:
@@ -53,7 +76,7 @@ class OpenAIProvider:
             raise AIProviderError(
                 "openai SDK not installed (`pip install openai`)"
             ) from exc
-        self._client = AsyncOpenAI(api_key=self._api_key)
+        self._client = AsyncOpenAI(api_key=self._api_key, timeout=_client_timeout_seconds())
         return self._client
 
     async def call(
@@ -104,7 +127,7 @@ class OpenAIProvider:
             resp = await client.chat.completions.create(**kwargs)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
         except Exception as exc:
-            raise AIProviderError(f"openai API call failed: {exc}") from exc
+            raise _translate_provider_error(exc, context="openai API call failed") from exc
 
         choice = resp.choices[0] if resp.choices else None
         if choice is None:
@@ -207,4 +230,4 @@ class OpenAIProvider:
         except AIProviderError:
             raise
         except Exception as exc:
-            raise AIProviderError(f"openai stream failed: {exc}") from exc
+            raise _translate_provider_error(exc, context="openai stream failed") from exc

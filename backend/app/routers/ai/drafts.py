@@ -8,7 +8,7 @@ until an admin explicitly applies it.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,12 +19,17 @@ from app.models.ai import AIActionDraft
 from app.models.user import User, UserRole
 from app.routers.ai.common import (
     _GENERIC_502_DETAIL,
+    _RATE_LIMITED_DETAIL,
     _require_drafts_enabled,
     enforce_rate_limit,
     logger,
 )
 from app.schemas.ai import ActionDraftCreate, ActionDraftRead
-from app.services.ai import AIProviderError, AIUnsupportedFeatureError
+from app.services.ai import (
+    AIProviderError,
+    AIProviderRateLimitError,
+    AIUnsupportedFeatureError,
+)
 from app.services.ai.actions import apply_draft, draft_action, reject_draft
 from app.services.ai.locale import language_instruction as _lang_for
 from app.services.errors import http_error, match_constraint
@@ -58,19 +63,22 @@ async def create_draft(
             language_instruction=_lang_for(accept_language),
         )
     except AIUnsupportedFeatureError as exc:
-        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+        http_error(status.HTTP_501_NOT_IMPLEMENTED, "AI_UNSUPPORTED_FEATURE", str(exc))
+    except AIProviderRateLimitError as exc:
+        logger.warning("draft_action rate limited: %s", exc)
+        http_error(status.HTTP_429_TOO_MANY_REQUESTS, "AI_RATE_LIMITED", _RATE_LIMITED_DETAIL)
     except AIProviderError as exc:
         # 422 — the call itself worked, the model just couldn't produce a
-        # valid draft. Keeping 502 for true provider/HTTP failures.
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
-    except Exception as exc:
+        # valid draft (unsupported intent, invalid payload, …) — that
+        # reasoning is useful to the operator, so it stays in `message`.
+        # A genuine provider/HTTP failure lands here too (after the
+        # one-retry backoff already failed) — its detail goes to the
+        # server log; the client sees a stable code either way.
+        logger.warning("draft_action rejected: %s", exc)
+        http_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "AI_DRAFT_INVALID", str(exc))
+    except Exception:
         logger.exception("draft_action crashed")
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            detail=_GENERIC_502_DETAIL,
-        ) from exc
+        http_error(status.HTTP_502_BAD_GATEWAY, "AI_PROVIDER_ERROR", _GENERIC_502_DETAIL)
     return ActionDraftRead.model_validate(draft)
 
 
@@ -164,7 +172,7 @@ async def reject_draft_route(
     try:
         draft = await reject_draft(db, draft_id=draft_id, user_id=user.id)
     except LookupError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc))
     except ValueError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        http_error(status.HTTP_409_CONFLICT, "DRAFT_INVALID", str(exc))
     return ActionDraftRead.model_validate(draft)

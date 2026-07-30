@@ -15,11 +15,18 @@ between submodules.
 from __future__ import annotations
 
 import logging
+from typing import NoReturn
 
 from fastapi import HTTPException, status
 
 from app.config import get_settings
 from app.services.ai.rate_limit import AIRateLimitExceeded, consume_ai_quota
+from app.services.ai.types import (
+    AIProviderError,
+    AIProviderRateLimitError,
+    AIUnsupportedFeatureError,
+)
+from app.services.errors import http_error
 
 logger = logging.getLogger("netforge.ai")
 
@@ -29,6 +36,13 @@ logger = logging.getLogger("netforge.ai")
 # (connection strings, file paths, provider error payloads).
 _GENERIC_502_DETAIL = (
     "AI request failed unexpectedly — details are in the server logs."
+)
+
+# Client-facing detail for a 429 caused by the *provider* rate-limiting us
+# (as opposed to our own per-user quota — see `enforce_rate_limit`, which
+# has its own message carrying `retry_after_seconds`).
+_RATE_LIMITED_DETAIL = (
+    "The AI provider is rate limiting requests right now — try again in a moment."
 )
 
 
@@ -68,3 +82,33 @@ async def enforce_rate_limit(user_id: int, *, retry_after_header: bool = True) -
                 else None
             ),
         ) from exc
+
+
+def raise_ai_error(exc: Exception, *, context: str) -> NoReturn:
+    """Translate a caught AI-layer exception into the canonical
+    `{"error": {"code", "message"}}` shape every other router already uses
+    (see `app/services/errors.py`), and never echo raw provider text to the
+    client — SDK error bodies can carry internals (endpoints, request ids,
+    occasionally more). The exception detail always goes to the server log;
+    `context` is a short label for that log line (e.g. "nl-query").
+
+    Call this from a single `except Exception as exc:` at the bottom of a
+    route's try block — it discriminates the AI exception hierarchy itself:
+    - `AIUnsupportedFeatureError` -> 501 (message is a static "not
+      implemented" string, safe to show as-is).
+    - `AIProviderRateLimitError` -> 429, so the client can back off and
+      retry, distinct from the generic 502 below.
+    - `AIProviderError` (anything else from a provider) -> 502, generic
+      message.
+    - Anything else -> 502, generic message, full traceback logged.
+    """
+    if isinstance(exc, AIUnsupportedFeatureError):
+        http_error(status.HTTP_501_NOT_IMPLEMENTED, "AI_UNSUPPORTED_FEATURE", str(exc))
+    if isinstance(exc, AIProviderRateLimitError):
+        logger.warning("%s: rate limited by provider: %s", context, exc)
+        http_error(status.HTTP_429_TOO_MANY_REQUESTS, "AI_RATE_LIMITED", _RATE_LIMITED_DETAIL)
+    if isinstance(exc, AIProviderError):
+        logger.warning("%s: provider error: %s", context, exc)
+        http_error(status.HTTP_502_BAD_GATEWAY, "AI_PROVIDER_ERROR", _GENERIC_502_DETAIL)
+    logger.exception("%s crashed", context)
+    http_error(status.HTTP_502_BAD_GATEWAY, "AI_PROVIDER_ERROR", _GENERIC_502_DETAIL)

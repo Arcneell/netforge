@@ -18,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
 from app.models.user import User, UserRole
-from app.routers.ai.common import _require_ai_enabled, enforce_rate_limit, logger
+from app.routers.ai.common import (
+    _GENERIC_502_DETAIL,
+    _require_ai_enabled,
+    enforce_rate_limit,
+    logger,
+)
 from app.routers.ai.conversations import swap_in_persisted_history
 from app.schemas.ai import QueryRequest
 from app.services.ai.conversations import append_turn
@@ -95,6 +100,17 @@ async def ask_ai_stream(
                     latency = data.get("latency_ms")
                     if isinstance(latency, int):
                         done_latency_ms = latency
+                if event_name == "error" and isinstance(data, dict):
+                    # `run_query_streaming` already caught the provider
+                    # failure and is handing us its message verbatim — same
+                    # leak risk as the non-streaming endpoint's raw
+                    # `str(exc)`, just over SSE instead of an HTTP body.
+                    # Sanitize before it hits the wire; the real detail goes
+                    # to the server log only.
+                    logger.warning(
+                        "nl-query stream: provider error: %s", data.get("message")
+                    )
+                    data = {"message": _GENERIC_502_DETAIL}
                 # SSE wire format: `event:` line is optional, `data:` line
                 # carries the JSON body, blank line terminates the frame.
                 yield f"event: {event_name}\ndata: {_json.dumps(data)}\n\n"
@@ -103,9 +119,9 @@ async def ask_ai_stream(
                 # the next provider delta. Cheap insurance against the event
                 # loop holding multiple chunks in one tick.
                 await _asyncio.sleep(0)
-        except Exception as exc:
+        except Exception:
             logger.exception("nl-query stream crashed")
-            yield f"event: error\ndata: {_json.dumps({'message': str(exc)})}\n\n"
+            yield f"event: error\ndata: {_json.dumps({'message': _GENERIC_502_DETAIL})}\n\n"
         finally:
             # Persist the assistant turn even on partial / interrupted
             # streams — the operator sees what the model managed to

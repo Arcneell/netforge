@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.services.ai.types import (
     AICompletion,
     AIProviderError,
+    AIProviderRateLimitError,
     AIUnsupportedFeatureError,
     StreamChunk,
     ToolDef,
@@ -45,7 +46,7 @@ class AIProvider(Protocol):
     """
 
     name: str  # "anthropic" | "openai" | "gemini"
-    model: str  # e.g. "claude-sonnet-4-6"
+    model: str  # e.g. "claude-sonnet-5"
 
     async def call(
         self,
@@ -94,7 +95,7 @@ def get_provider(name: str | None = None) -> AIProvider:
     if chosen == "anthropic":
         from app.services.ai.providers.anthropic import AnthropicProvider
 
-        model = settings.ai_model or "claude-sonnet-4-6"
+        model = settings.ai_model or "claude-sonnet-5"
         key = (chosen, model)
         with _PROVIDER_CACHE_LOCK:
             cached = _PROVIDER_CACHE.get(key)
@@ -109,7 +110,7 @@ def get_provider(name: str | None = None) -> AIProvider:
     if chosen == "openai":
         from app.services.ai.providers.openai import OpenAIProvider
 
-        model = settings.ai_model or "gpt-4o"
+        model = settings.ai_model or "gpt-5.5"
         key = (chosen, model)
         with _PROVIDER_CACHE_LOCK:
             cached = _PROVIDER_CACHE.get(key)
@@ -124,6 +125,10 @@ def get_provider(name: str | None = None) -> AIProvider:
     if chosen == "gemini":
         from app.services.ai.providers.gemini import GeminiProvider
 
+        # 2.5-pro is the newest Gemini Pro that is generally available, but it
+        # shuts down 2026-10-16; Google's named replacement
+        # (gemini-3.1-pro-preview) is still preview-only, so it isn't a safe
+        # default. Set AI_MODEL explicitly to move before the shutdown.
         model = settings.ai_model or "gemini-2.5-pro"
         key = (chosen, model)
         with _PROVIDER_CACHE_LOCK:
@@ -143,6 +148,7 @@ __all__ = [
     "AICompletion",
     "AIProvider",
     "AIProviderError",
+    "AIProviderRateLimitError",
     "AIUnsupportedFeatureError",
     "ToolDef",
     "get_provider",

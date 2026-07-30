@@ -7,21 +7,15 @@ scan is additionally rate-limited because it burns a full LLM call.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
 from app.models.user import User, UserRole
-from app.routers.ai.common import (
-    _GENERIC_502_DETAIL,
-    _require_ai_enabled,
-    enforce_rate_limit,
-    logger,
-)
+from app.routers.ai.common import _require_ai_enabled, enforce_rate_limit, raise_ai_error
 from app.schemas.ai import LinkSuggestionRead, ScanReportRead
 from app.schemas.link import LinkRead
-from app.services.ai import AIProviderError, AIUnsupportedFeatureError
 from app.services.ai.locale import language_instruction as _lang_for
 from app.services.ai.suggest_links import (
     accept_suggestion,
@@ -30,6 +24,7 @@ from app.services.ai.suggest_links import (
     reject_suggestion,
     run_suggest_links,
 )
+from app.services.errors import http_error
 
 router = APIRouter()
 
@@ -53,19 +48,8 @@ async def scan_links(
             user_id=user.id,
             language_instruction=_lang_for(accept_language),
         )
-    except AIUnsupportedFeatureError as exc:
-        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
-    except AIProviderError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     except Exception as exc:
-        # Full traceback goes to the server log; the client only gets a
-        # generic message — exception reprs can leak internals (DSNs,
-        # file paths, provider payloads).
-        logger.exception("suggest-links scan crashed")
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            detail=_GENERIC_502_DETAIL,
-        ) from exc
+        raise_ai_error(exc, context="suggest-links scan")
 
     return ScanReportRead(**report.__dict__)
 
@@ -96,9 +80,9 @@ async def accept(
     try:
         _, link = await accept_suggestion(db, suggestion_id=suggestion_id, user_id=user.id)
     except LookupError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc))
     except ValueError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        http_error(status.HTTP_409_CONFLICT, "SUGGESTION_INVALID_STATE", str(exc))
     return LinkRead.model_validate(link)
 
 
@@ -118,7 +102,7 @@ async def reject(
             db, suggestion_id=suggestion_id, user_id=user.id
         )
     except LookupError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc))
     except ValueError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        http_error(status.HTTP_409_CONFLICT, "SUGGESTION_INVALID_STATE", str(exc))
     return LinkSuggestionRead.model_validate(suggestion)

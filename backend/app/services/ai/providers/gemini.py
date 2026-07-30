@@ -17,9 +17,11 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
+from app.config import get_settings
 from app.services.ai.types import (
     AICompletion,
     AIProviderError,
+    AIProviderRateLimitError,
     StreamChunk,
     StreamDelta,
     StreamDone,
@@ -27,6 +29,34 @@ from app.services.ai.types import (
     ToolCall,
     ToolDef,
 )
+
+# Same rationale as the other two providers — no dedicated settings field
+# exists yet, so read one via getattr with this constant as the fallback.
+# google-genai's `HttpOptions.timeout` is in MILLISECONDS.
+_DEFAULT_TIMEOUT_SECONDS = 120.0
+
+
+def _client_timeout_ms() -> int:
+    seconds = getattr(get_settings(), "ai_request_timeout_seconds", _DEFAULT_TIMEOUT_SECONDS)
+    return int(seconds * 1000)
+
+
+def _translate_provider_error(exc: Exception, *, context: str) -> AIProviderError:
+    """Map an SDK exception to our typed hierarchy.
+
+    `google.genai.errors.ClientError` carries the HTTP status on `.code` —
+    429 is the rate-limit signal we care about. `ServerError` (5xx) stays a
+    generic `AIProviderError`; Gemini doesn't expose an "overloaded" 5xx the
+    way Anthropic does.
+    """
+    try:
+        from google.genai import errors as genai_errors
+    except ImportError:  # pragma: no cover - env-dependent
+        return AIProviderError(f"{context}: {exc}")
+
+    if isinstance(exc, genai_errors.ClientError) and getattr(exc, "code", None) == 429:
+        return AIProviderRateLimitError(f"{context} (rate limited): {exc}")
+    return AIProviderError(f"{context}: {exc}")
 
 # Gemini's function-declaration schema only accepts a subset of JSON Schema.
 # Anthropic / OpenAI happily eat `additionalProperties`, `$schema`, `title`,
@@ -214,7 +244,10 @@ class GeminiProvider:
             raise AIProviderError(
                 "google-genai SDK not installed (`pip install google-genai`)"
             ) from exc
-        self._client = genai.Client(api_key=self._api_key)
+        self._client = genai.Client(
+            api_key=self._api_key,
+            http_options=gtypes.HttpOptions(timeout=_client_timeout_ms()),
+        )
         self._gtypes = gtypes
         return self._client, self._gtypes
 
@@ -273,7 +306,7 @@ class GeminiProvider:
             )
             elapsed_ms = int((time.monotonic() - t0) * 1000)
         except Exception as exc:
-            raise AIProviderError(f"gemini API call failed: {exc}") from exc
+            raise _translate_provider_error(exc, context="gemini API call failed") from exc
 
         tool_call: ToolCall | None = None
         text_chunks: list[str] = []
@@ -421,7 +454,7 @@ class GeminiProvider:
                         completion_tokens=getattr(meta, "candidates_token_count", 0) or 0,
                     )
         except Exception as exc:
-            raise AIProviderError(f"gemini stream failed: {exc}") from exc
+            raise _translate_provider_error(exc, context="gemini stream failed") from exc
 
         if block_reason is not None:
             raise AIProviderError(

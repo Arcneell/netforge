@@ -85,7 +85,7 @@ def test_concrete_providers_lazily_build_clients(monkeypatch: pytest.MonkeyPatch
     # module sys-side via the module-level attribute lookup.
     import sys
 
-    fake_module = SimpleNamespace(AsyncAnthropic=lambda api_key: sentinel)
+    fake_module = SimpleNamespace(AsyncAnthropic=lambda api_key, **_kwargs: sentinel)
     monkeypatch.setitem(sys.modules, "anthropic", fake_module)
 
     c1 = provider._get_client()
