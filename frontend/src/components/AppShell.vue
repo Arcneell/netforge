@@ -4,6 +4,7 @@ import { RouterView } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import AppTopbar from '@/components/AppTopbar.vue'
 import ToastContainer from '@/components/ui/Toast.vue'
+import NavigationProgress from '@/components/NavigationProgress.vue'
 import GlobalSearch from '@/components/GlobalSearch.vue'
 import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp.vue'
 import { useGlobalShortcuts } from '@/composables/useShortcuts'
@@ -19,6 +20,7 @@ useGlobalShortcuts({
 
 <template>
   <div class="flex h-full bg-bg text-fg">
+    <NavigationProgress />
     <AppSidebar />
     <div class="flex-1 flex flex-col min-w-0">
       <AppTopbar @open-search="searchOpen = true" />

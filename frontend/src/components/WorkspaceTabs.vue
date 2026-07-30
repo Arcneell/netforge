@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
+import { prefetchRoute, prefetchRoutesWhenIdle } from '@/composables/useRoutePrefetch'
 
 /**
  * Sub-navigation for a workspace — a group of related pages that used to be
@@ -11,7 +13,15 @@ export interface WorkspaceTab {
   label: string
 }
 
-defineProps<{ tabs: WorkspaceTab[] }>()
+const props = defineProps<{ tabs: WorkspaceTab[] }>()
+
+// Tabs within a workspace get clicked in sequence far more often than sidebar
+// entries do, so warm the whole strip as soon as the browser is idle rather than
+// waiting for a hover on each one. Every route is lazy and Vue Router blocks on
+// the import — see `composables/useRoutePrefetch.ts`.
+onMounted(() => {
+  prefetchRoutesWhenIdle(props.tabs.map((t) => t.to))
+})
 </script>
 
 <template>
@@ -32,6 +42,8 @@ defineProps<{ tabs: WorkspaceTab[] }>()
           :class="['nf-tab', isActive ? 'nf-tab-active' : '']"
           :aria-current="isActive ? 'page' : undefined"
           @click="navigate"
+          @mouseenter="prefetchRoute(tab.to)"
+          @focus="prefetchRoute(tab.to)"
         >
           {{ tab.label }}
         </a>
