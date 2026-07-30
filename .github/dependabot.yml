@@ -79,6 +79,19 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # `pydantic-core` cannot move on its own, ever. `pydantic` pins it to an
+      # exact version, so the only thing that bumps it is a pydantic release —
+      # and when one lands, pip-compile picks the matching core automatically.
+      #
+      # It is a transitive dependency: it appears in requirements.lock.txt but
+      # not in pyproject.toml, which is why Dependabot sees it as bumpable at all.
+      # #158, #179 and #194 all proposed 2.46.4 -> 2.47.0; all three produced a
+      # lockfile pip then refused, and the audit job's drift check caught each one.
+      #
+      # Not restricted to majors: the proposal that keeps returning is a *minor*.
+      # Lift this if pydantic ever stops pinning core exactly.
+      - dependency-name: pydantic-core
 
   # ---------------- Node.js (frontend) ----------------
   - package-ecosystem: npm
