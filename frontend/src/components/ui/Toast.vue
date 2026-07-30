@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { CheckCircle2, AlertTriangle, Info, XCircle, X } from 'lucide-vue-next'
+import { CheckCircle2, AlertTriangle, Info, XCircle, X } from '@lucide/vue'
 import { useUiStore } from '@/stores/ui'
 import type { ToastKind } from '@/stores/ui'
 

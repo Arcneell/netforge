@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UploadCloud, Upload, Info, X, FileText, Archive, HelpCircle } from 'lucide-vue-next'
+import { UploadCloud, Upload, Info, X, FileText, Archive, HelpCircle } from '@lucide/vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'

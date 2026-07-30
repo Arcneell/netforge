@@ -12,7 +12,7 @@ import {
   Sparkles,
   Trash2,
   Webhook as WebhookIcon,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Button from '@/components/ui/Button.vue'

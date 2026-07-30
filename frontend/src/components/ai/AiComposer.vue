@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { Send } from 'lucide-vue-next'
+import { Send } from '@lucide/vue'
 import Button from '@/components/ui/Button.vue'
 
 /** The one place on the page that takes input. */

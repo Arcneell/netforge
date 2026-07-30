@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { Download, Upload, Info } from 'lucide-vue-next'
+import { Download, Upload, Info } from '@lucide/vue'
 import Button from '@/components/ui/Button.vue'
 import Select from '@/components/ui/Select.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'

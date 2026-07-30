@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Network, Tags, Router as RouterIcon, Server, ArrowRight } from 'lucide-vue-next'
+import { Network, Tags, Router as RouterIcon, Server, ArrowRight } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import AddressSpaceBand from '@/components/AddressSpaceBand.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'

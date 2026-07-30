@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Network, Server, Tags, Router as RouterIcon } from 'lucide-vue-next'
+import { Network, Server, Tags, Router as RouterIcon } from '@lucide/vue'
 import type { QueryEntityRef } from '@/api'
 
 /** The "sources" chip row under an answer: every record the model leaned on,

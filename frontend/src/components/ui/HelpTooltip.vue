@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { HelpCircle } from 'lucide-vue-next'
+import { HelpCircle } from '@lucide/vue'
 
 /**
  * Tiny "?" affordance that surfaces contextual help on hover, focus, or

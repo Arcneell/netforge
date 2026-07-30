@@ -12,7 +12,7 @@ import {
   Settings,
   Sparkles,
   X,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
 import { useAuth } from '@/composables/useAuth'

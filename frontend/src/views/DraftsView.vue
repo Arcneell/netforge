@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AlertTriangle, Check, ClipboardList, Send, X as XIcon } from 'lucide-vue-next'
+import { AlertTriangle, Check, ClipboardList, Send, X as XIcon } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'

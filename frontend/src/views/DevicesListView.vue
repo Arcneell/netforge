@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2, Search, X } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, Search, X } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'

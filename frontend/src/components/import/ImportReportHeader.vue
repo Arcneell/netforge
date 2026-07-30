@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AlertTriangle, ArrowRight, CheckCircle2, Info } from 'lucide-vue-next'
+import { AlertTriangle, ArrowRight, CheckCircle2, Info } from '@lucide/vue'
 import Badge from '@/components/ui/Badge.vue'
 
 /**

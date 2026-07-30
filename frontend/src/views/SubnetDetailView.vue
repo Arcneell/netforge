@@ -10,7 +10,7 @@ import {
   Pencil,
   Sparkles,
   Table as TableIcon,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import Button from '@/components/ui/Button.vue'

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AlertTriangle, History, Plus } from 'lucide-vue-next'
+import { AlertTriangle, History, Plus } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'

@@ -2,7 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { LogIn } from 'lucide-vue-next'
+import { LogIn } from '@lucide/vue'
 import BrandMark from '@/components/BrandMark.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import LocaleSwitcher from '@/components/LocaleSwitcher.vue'

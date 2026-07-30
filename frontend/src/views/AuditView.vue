@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Download, Eye, PlusCircle, PencilLine, Trash2, ListFilter } from 'lucide-vue-next'
+import { Download, Eye, PlusCircle, PencilLine, Trash2, ListFilter } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import Pagination from '@/components/Pagination.vue'

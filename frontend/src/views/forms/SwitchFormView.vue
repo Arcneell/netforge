@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Eye, EyeOff } from 'lucide-vue-next'
+import { Eye, EyeOff } from '@lucide/vue'
 import FormPage from '@/components/FormPage.vue'
 import FormSection from '@/components/FormSection.vue'
 import Input from '@/components/ui/Input.vue'

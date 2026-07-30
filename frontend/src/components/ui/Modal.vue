@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, toRef, useId, watch } from 'vue'
-import { X } from 'lucide-vue-next'
+import { X } from '@lucide/vue'
 
 import { useScrollLock } from '@/composables/useScrollLock'
 import { pushModal, popModal, isTopmostModal } from '@/composables/useModalStack'

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, Bot, Sparkles } from 'lucide-vue-next'
+import { ArrowRight, Bot, Sparkles } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
 import AiTurnBubble from '@/components/ai/AiTurnBubble.vue'
 import type { AiTurn } from '@/composables/useAiChat'
