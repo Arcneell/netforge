@@ -27,6 +27,12 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
+  // `nav-latency.spec.ts` measures wall-clock navigation time. It is a tool for
+  // working on routing / route prefetching, not a gate: timings on a runner
+  // sharing a box with Docker are noisy enough that any useful threshold would
+  // flake for reasons unrelated to the code. Opt in explicitly:
+  //   E2E_NAV_LATENCY=1 npx playwright test e2e/nav-latency.spec.ts --reporter=list
+  testIgnore: process.env.E2E_NAV_LATENCY ? undefined : /nav-latency\.spec\.ts/,
   // Fails fast with a clear message if the docker-compose dev stack isn't up
   // — see e2e/global-setup.ts for why this is a globalSetup ping rather than
   // a `webServer` entry (docker-compose here, not a single spawnable process).

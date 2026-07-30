@@ -16,6 +16,18 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
+      // Pre-transform the route components at server start instead of on the
+      // first click. Every route is `() => import(...)` and Vue Router does not
+      // navigate until the import resolves, so a cold transform is dead time the
+      // user spends looking at the previous page. Measured here: ~0.7-0.9s to
+      // serve a view's top-level module cold versus ~0.23s warm, and each view
+      // pulls ~30 more modules that pay the same toll on first request.
+      //
+      // Dev only — Vite ignores this for `build`, where the equivalent win comes
+      // from the prefetching in `composables/useRoutePrefetch.ts`.
+      warmup: {
+        clientFiles: ['./src/views/**/*.vue', './src/components/AppShell.vue'],
+      },
       proxy: {
         '/api': {
           target: backendUrl,

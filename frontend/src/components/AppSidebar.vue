@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
   Database,
@@ -16,6 +16,7 @@ import {
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
 import { useAuth } from '@/composables/useAuth'
+import { prefetchRoute, prefetchRoutesWhenIdle } from '@/composables/useRoutePrefetch'
 import BrandMark from '@/components/BrandMark.vue'
 
 interface NavItem {
@@ -75,6 +76,18 @@ const visibleGroups = computed(() =>
 // Labels are hidden on the desktop rail when collapsed, but the mobile drawer
 // is always full width — it slides in over the content and has room.
 const showLabels = computed(() => !sidebarCollapsed.value || mobileNavOpen.value)
+
+// Warm the primary nav's chunks once the browser is idle. Every route is
+// lazy-loaded, and Vue Router will not navigate until the import resolves — so
+// without this the first click on any entry stares at the old page while the
+// chunk downloads. See `composables/useRoutePrefetch.ts`.
+//
+// Hover/focus prefetch below covers the pointer case; this one covers the first
+// click on something never hovered, which is every touch tap and every keyboard
+// user tabbing to an entry and pressing Enter.
+onMounted(() => {
+  prefetchRoutesWhenIdle(visibleGroups.value.flatMap((g) => g.items.map((i) => i.to)))
+})
 
 // Close the mobile drawer whenever the user navigates — otherwise tapping a
 // nav item just toggles the route under a still-open overlay.
@@ -171,6 +184,8 @@ watch(
                 :title="showLabels ? undefined : $t(item.labelKey)"
                 :aria-current="(item.to === '/' ? isExactActive : isActive) ? 'page' : undefined"
                 @click="navigate"
+                @mouseenter="prefetchRoute(item.to)"
+                @focus="prefetchRoute(item.to)"
               >
                 <!-- The lit rail contact. Flush to the plate's left edge, 2px,
                      accent — the whole "you are here" signal, no pill, no tint
