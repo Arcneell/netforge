@@ -62,15 +62,25 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_SCOPE: ${OIDC_SCOPE:-openid email profile}
+      OIDC_REQUIRE_EMAIL_VERIFIED: ${OIDC_REQUIRE_EMAIL_VERIFIED:-true}
       # ---- Sessions / rate limiting ----
       # Same defaults as the backend's own, but forwarded so a local .env can
       # actually shorten sessions or tighten limits while testing.
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-netforge_session}
       SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-28800}
       RATE_LIMIT_WRITES_PER_WINDOW: ${RATE_LIMIT_WRITES_PER_WINDOW:-60}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
       # "database" shares the counters across workers/replicas via the
       # rate_limit_counters table; "memory" is the legacy per-process window.
       RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-database}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32,::1/128,172.16.0.0/12}
+      WEBHOOK_ALLOW_PRIVATE_TARGETS: ${WEBHOOK_ALLOW_PRIVATE_TARGETS:-false}
+      AI_WEBHOOK_SIGNING_SECRET: ${AI_WEBHOOK_SIGNING_SECRET:-}
+      # ---- CSV import ----
+      CSV_IMPORT_MAX_ROWS: ${CSV_IMPORT_MAX_ROWS:-50000}
+      # ---- Audit log retention ----
+      # 0 = unlimited retention (default). See .env.example.
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-0}
       # PUBLIC_URL drives OAuth/OIDC redirect URIs. When the SPA proxies /api/*,
       # the browser-visible host is the Vite dev server (5173), so callbacks
       # must come back through there to land on the SPA after auth.
@@ -112,7 +122,15 @@ services:
     restart: unless-stopped
     working_dir: /app
     depends_on:
-      - backend
+      # NOTE: `condition: service_healthy` (used elsewhere in this file)
+      # isn't available here — the `backend` service in this dev compose has
+      # no `healthcheck:` block (unlike docker-compose.yml's prod backend).
+      # `service_started` still orders container start before the Vite dev
+      # server's `npm install` finishes, which is the only guarantee this
+      # dependency needs — the SPA proxies /api/* to whatever's listening
+      # once the browser actually hits it.
+      backend:
+        condition: service_started
     environment:
       # Inside the docker network, the backend is reachable by service name.
       # `vite.config.ts` reads VITE_BACKEND_URL to wire the /api proxy.

@@ -24,6 +24,8 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_DB: netforge
       POSTGRES_USER: netforge
@@ -37,10 +39,16 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/arcneell/netforge-backend:${NETFORGE_VERSION:-latest}
+    # `latest` moves under you on every `docker compose pull` — pin an
+    # explicit NETFORGE_VERSION (e.g. v0.1.0) once you're past first setup so
+    # a stack restart never silently upgrades production. This default just
+    # tracks the version this compose file shipped with.
+    image: ghcr.io/arcneell/netforge-backend:${NETFORGE_VERSION:-v0.1.0}
     build:
       context: ./backend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,10 +70,14 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_SCOPE: ${OIDC_SCOPE:-openid email profile}
+      # See .env.example — refuses OIDC logins whose email the IdP did not
+      # verify. Only flip to false for a known-good IdP that omits the claim.
+      OIDC_REQUIRE_EMAIL_VERIFIED: ${OIDC_REQUIRE_EMAIL_VERIFIED:-true}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       # ---- Sessions ----
       SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:?missing SESSION_SIGNING_KEY in .env}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-netforge_session}
       SESSION_COOKIE_SECURE: "true"
       SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-28800}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:?missing BOOTSTRAP_ADMIN_EMAIL in .env}
@@ -75,6 +87,19 @@ services:
       # "database" shares the counters across workers/replicas via the
       # rate_limit_counters table; "memory" is the legacy per-process window.
       RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-database}
+      # Only honour X-Real-IP from these CIDRs (see .env.example) — narrow
+      # this if the backend sits behind more than the bundled nginx.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32,::1/128,172.16.0.0/12}
+      # ---- Outbound webhooks ----
+      # SECURITY: leave false. true disables SSRF protection on admin-configured
+      # webhook targets — see .env.example.
+      WEBHOOK_ALLOW_PRIVATE_TARGETS: ${WEBHOOK_ALLOW_PRIVATE_TARGETS:-false}
+      AI_WEBHOOK_SIGNING_SECRET: ${AI_WEBHOOK_SIGNING_SECRET:-}
+      # ---- CSV import ----
+      CSV_IMPORT_MAX_ROWS: ${CSV_IMPORT_MAX_ROWS:-50000}
+      # ---- Audit log retention ----
+      # 0 = unlimited retention (default). See .env.example.
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-0}
       # ---- Observability ----
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-text}
@@ -100,10 +125,14 @@ services:
       AI_SCHEDULER_ENABLED: ${AI_SCHEDULER_ENABLED:-true}
 
   frontend:
-    image: ghcr.io/arcneell/netforge-frontend:${NETFORGE_VERSION:-latest}
+    # See the backend image note above — pin NETFORGE_VERSION explicitly for
+    # any real deployment.
+    image: ghcr.io/arcneell/netforge-frontend:${NETFORGE_VERSION:-v0.1.0}
     build:
       context: ./frontend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       backend:
         condition: service_healthy

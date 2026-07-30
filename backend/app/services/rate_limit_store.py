@@ -84,11 +84,16 @@ from app.models.rate_limit import RateLimitCounter
 
 logger = logging.getLogger("netforge")
 
-# Scope values. Namespacing the two limiters inside one table keeps the
+# Scope values. Namespacing the limiters inside one table keeps the
 # migration count down and makes "who is being throttled right now?" a
 # single query for an operator.
 SCOPE_WRITE_IP = "write_ip"
 SCOPE_AI_USER = "ai_user"
+# Expensive GET endpoints (CSV/ZIP/PDF exports) — see
+# `app/middleware/rate_limit.py`. Kept as its own scope, not folded into
+# SCOPE_WRITE_IP, so an export binge doesn't eat into (or get eaten by) a
+# user's write budget.
+SCOPE_READ_EXPENSIVE_IP = "read_expensive_ip"
 
 # Core table object: everything here is Core, not ORM. There is no identity
 # map, no flush and no session to attach to — the whole point is one
@@ -356,6 +361,7 @@ class InProcessWindows:
 
 __all__ = [
     "SCOPE_AI_USER",
+    "SCOPE_READ_EXPENSIVE_IP",
     "SCOPE_WRITE_IP",
     "CircuitBreaker",
     "Decision",

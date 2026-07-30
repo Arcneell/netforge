@@ -28,7 +28,15 @@ class GitHubProvider(AuthProvider):
             access_token_url="https://github.com/login/oauth/access_token",
             authorize_url="https://github.com/login/oauth/authorize",
             api_base_url="https://api.github.com/",
-            client_kwargs={"scope": "read:user user:email"},
+            # PKCE (RFC 7636, S256). GitHub's classic OAuth apps don't
+            # require it and silently ignore the extra `code_challenge*` /
+            # `code_verifier` parameters, but sending it is free defence in
+            # depth against authorization-code interception and costs
+            # nothing here — authlib generates the verifier, carries it in
+            # the same signed `netforge_oauth_state` session cookie already
+            # used for the `state` param, and replays it at the token
+            # exchange automatically once `code_challenge_method` is set.
+            client_kwargs={"scope": "read:user user:email", "code_challenge_method": "S256"},
         )
         self._oauth = oauth
 

@@ -12,12 +12,19 @@ from app.auth.github import GitHubProvider
 from app.auth.oidc import OIDCProvider
 from app.config import Settings
 
+# A non-placeholder signing key, used everywhere a test is exercising
+# something other than the placeholder-key guard itself (that guard now
+# fires unconditionally for github/oidc — see test_make_provider_refuses_*
+# below — so any other github/oidc test needs a real key to get past it).
+_REAL_SIGNING_KEY = "c0ffee" * 12
+
 
 def test_make_provider_github() -> None:
     settings = Settings(
         auth_provider="github",
         github_client_id="id",
         github_client_secret="secret",
+        session_signing_key=_REAL_SIGNING_KEY,
     )
     provider = make_provider(settings, OAuth())
     assert isinstance(provider, GitHubProvider)
@@ -30,6 +37,7 @@ def test_make_provider_oidc() -> None:
         oidc_issuer_url="https://idp.example.com",
         oidc_client_id="id",
         oidc_client_secret="secret",
+        session_signing_key=_REAL_SIGNING_KEY,
     )
     provider = make_provider(settings, OAuth())
     assert isinstance(provider, OIDCProvider)
@@ -43,7 +51,12 @@ def test_make_provider_rejects_unknown_name() -> None:
 
 
 def test_make_provider_github_requires_credentials() -> None:
-    settings = Settings(auth_provider="github", github_client_id="", github_client_secret="")
+    settings = Settings(
+        auth_provider="github",
+        github_client_id="",
+        github_client_secret="",
+        session_signing_key=_REAL_SIGNING_KEY,
+    )
     with pytest.raises(RuntimeError, match="GitHub"):
         make_provider(settings, OAuth())
 
@@ -54,6 +67,7 @@ def test_make_provider_oidc_requires_issuer() -> None:
         oidc_issuer_url="",
         oidc_client_id="id",
         oidc_client_secret="secret",
+        session_signing_key=_REAL_SIGNING_KEY,
     )
     with pytest.raises(RuntimeError, match="OIDC"):
         make_provider(settings, OAuth())
@@ -64,6 +78,7 @@ def test_make_provider_is_case_insensitive() -> None:
         auth_provider="GitHub",
         github_client_id="id",
         github_client_secret="secret",
+        session_signing_key=_REAL_SIGNING_KEY,
     )
     provider = make_provider(settings, OAuth())
     assert provider.name == "github"
@@ -239,9 +254,12 @@ def test_make_provider_accepts_real_signing_key_in_production() -> None:
     assert isinstance(provider, GitHubProvider)
 
 
-def test_make_provider_allows_placeholder_signing_key_in_dev() -> None:
-    """Local HTTP dev (secure=false) keeps working out-of-the-box with the
-    default key — the guard only bites in production mode."""
+def test_make_provider_refuses_placeholder_signing_key_even_over_http() -> None:
+    """Regression: the guard used to only fire when SESSION_COOKIE_SECURE
+    was true, so a real-IdP deployment that terminates TLS upstream (or
+    simply forgot to flip the flag) could boot with the well-known default
+    key and never get warned. A placeholder key must be refused for a real
+    IdP (github/oidc) regardless of SESSION_COOKIE_SECURE."""
     settings = Settings(
         auth_provider="github",
         github_client_id="id",
@@ -249,8 +267,45 @@ def test_make_provider_allows_placeholder_signing_key_in_dev() -> None:
         session_cookie_secure=False,
         session_signing_key="dev-signing-key-change-me",
     )
+    with pytest.raises(RuntimeError, match="SESSION_SIGNING_KEY"):
+        make_provider(settings, OAuth())
+
+
+def test_make_provider_refuses_dev_compose_placeholder_signing_key_for_real_idp() -> None:
+    """`dev-signing-key-not-for-prod` is the value docker-compose.dev.yml
+    injects for the dev stack. It must be treated as a placeholder too —
+    someone who copies the dev compose env over to github/oidc must not
+    silently inherit a publicly-known signing key."""
+    settings = Settings(
+        auth_provider="oidc",
+        oidc_issuer_url="https://idp.example.com",
+        oidc_client_id="id",
+        oidc_client_secret="secret",
+        session_signing_key="dev-signing-key-not-for-prod",
+    )
+    with pytest.raises(RuntimeError, match="SESSION_SIGNING_KEY"):
+        make_provider(settings, OAuth())
+
+
+def test_make_provider_dev_keeps_working_with_default_signing_key() -> None:
+    """AUTH_PROVIDER=dev has no OAuth round-trip to protect, so it must keep
+    booting out-of-the-box with the shipped default key — this is the local
+    dev experience the placeholder-key guard must not break."""
+    settings = Settings(
+        auth_provider="dev",
+        session_cookie_secure=False,
+        session_signing_key="dev-signing-key-change-me",
+    )
     provider = make_provider(settings, OAuth())
-    assert isinstance(provider, GitHubProvider)
+    assert isinstance(provider, DevAuthProvider)
+
+    settings_compose_default = Settings(
+        auth_provider="dev",
+        session_cookie_secure=False,
+        session_signing_key="dev-signing-key-not-for-prod",
+    )
+    provider2 = make_provider(settings_compose_default, OAuth())
+    assert isinstance(provider2, DevAuthProvider)
 
 
 def test_make_provider_dev_refuses_wildcard_bind_public_url() -> None:

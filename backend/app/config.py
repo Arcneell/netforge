@@ -85,6 +85,15 @@ class Settings(BaseSettings):
     # docker network, a dev box on localhost). Production deployments
     # should leave it False.
     webhook_allow_private_targets: bool = False
+    # Optional shared secret used to HMAC-sign AI scheduler webhook payloads
+    # (X-Netforge-Signature header). Empty = payloads are sent unsigned.
+    ai_webhook_signing_secret: str = ""
+    # Background catch-up sweep for `webhook_outbox` rows that the fast
+    # dispatch path (post-commit, in-process) never marked `dispatched_at`
+    # for — see `services/webhooks.py::_sweep_outbox_once`. Mirrors
+    # `ai_scheduler_enabled` below: disable to keep the fast path (and the
+    # durable outbox write itself) working, just without the retry loop.
+    webhook_outbox_sweep_enabled: bool = True
 
     # ------------------------------------------------------------------
     # Rate limiting
@@ -158,6 +167,29 @@ class Settings(BaseSettings):
     # notification). Disable to keep the AI features available manually but
     # never auto-fire.
     ai_scheduler_enabled: bool = True
+
+    # ------------------------------------------------------------------
+    # CSV import
+    # ------------------------------------------------------------------
+    # Hard cap on data rows per CSV (header excluded). `BULK_MAX_TOTAL_BYTES`
+    # already bounds upload *weight*, but a pathological file (e.g. a huge
+    # number of very short rows) could still stay under that byte cap while
+    # producing hundreds of thousands of rows — each one a resolver lookup
+    # plus a flush/SAVEPOINT round trip. Refused with a clean 400 rather than
+    # a slow request or an OOM.
+    csv_import_max_rows: int = 50_000
+
+    # ------------------------------------------------------------------
+    # Audit log retention
+    # ------------------------------------------------------------------
+    # Days after which `audit_log` rows are purged, mirroring the rolling
+    # windows already applied to `webhook_deliveries` (services/webhooks.py)
+    # and `ai_run_logs` (services/ai/scheduler.py). 0 (default) disables the
+    # purge — unlike those two tables, an audit trail is exactly the data an
+    # operator would NOT want silently aged out, so unlimited retention is
+    # the conservative default. Set to e.g. 365 to cap disk growth once you
+    # know your compliance/retention policy.
+    audit_log_retention_days: int = 0
 
     # Observability
     log_level: str = "info"

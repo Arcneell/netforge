@@ -3,6 +3,12 @@
 # Run via cron (02:30 recommended). Requires docker compose to be up.
 set -euo pipefail
 
+# The dump contains the full inventory (and, transitively, session/audit
+# data) — without this, files created below inherit the host's default
+# permissions, which on most distros is world-readable. 077 means only the
+# owner (whoever cron runs this as) can read the dump and its directory.
+umask 077
+
 BACKUP_DIR="${BACKUP_DIR:-/mnt/veeam/netforge}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
 COMPOSE_FILE="${COMPOSE_FILE:-/opt/netforge/docker-compose.yml}"
