@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="T extends string | number | boolean">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { Check, ChevronDown } from 'lucide-vue-next'
+import { Check, ChevronDown } from '@lucide/vue'
 
 /**
  * Dropdown with a listbox we render ourselves.

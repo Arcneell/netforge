@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Search, LogOut, ChevronDown, Menu } from 'lucide-vue-next'
+import { Search, LogOut, ChevronDown, Menu } from '@lucide/vue'
 import { useAuth } from '@/composables/useAuth'
 import { useUiStore } from '@/stores/ui'
 import ThemeToggle from '@/components/ThemeToggle.vue'

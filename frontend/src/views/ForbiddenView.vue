@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { ShieldAlert } from 'lucide-vue-next'
+import { ShieldAlert } from '@lucide/vue'
 import Button from '@/components/ui/Button.vue'
 
 const router = useRouter()

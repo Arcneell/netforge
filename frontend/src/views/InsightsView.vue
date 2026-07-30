@@ -15,7 +15,7 @@ import {
   Sparkles,
   Tags,
   Router as RouterIcon,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'

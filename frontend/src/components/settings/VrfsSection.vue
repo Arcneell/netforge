@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2 } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2 } from '@lucide/vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'

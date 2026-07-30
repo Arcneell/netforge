@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Pencil, Server, Table as TableIcon } from 'lucide-vue-next'
+import { Pencil, Server, Table as TableIcon } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import Button from '@/components/ui/Button.vue'

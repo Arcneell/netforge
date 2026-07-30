@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AlertTriangle, Sparkles, Wand2 } from 'lucide-vue-next'
+import { AlertTriangle, Sparkles, Wand2 } from '@lucide/vue'
 import Modal from '@/components/ui/Modal.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'

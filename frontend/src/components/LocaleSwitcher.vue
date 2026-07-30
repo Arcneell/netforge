@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Languages } from 'lucide-vue-next'
+import { Languages } from '@lucide/vue'
 import { useUiStore } from '@/stores/ui'
 import { SUPPORTED_LOCALES, type Locale } from '@/i18n'
 

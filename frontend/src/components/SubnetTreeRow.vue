@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, ChevronRight, FolderTree, Network } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, FolderTree, Network } from '@lucide/vue'
 import VlanBadge from '@/components/VlanBadge.vue'
 import Badge from '@/components/ui/Badge.vue'
 import SubnetFillBar from '@/components/SubnetFillBar.vue'

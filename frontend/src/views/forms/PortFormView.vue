@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { X } from 'lucide-vue-next'
+import { X } from '@lucide/vue'
 import FormPage from '@/components/FormPage.vue'
 import FormSection from '@/components/FormSection.vue'
 import Button from '@/components/ui/Button.vue'

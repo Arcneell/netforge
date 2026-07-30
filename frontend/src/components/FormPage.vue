@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { AlertTriangle } from 'lucide-vue-next'
+import { AlertTriangle } from '@lucide/vue'
 import Breadcrumb, { type BreadcrumbItem } from '@/components/Breadcrumb.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'

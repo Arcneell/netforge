@@ -1,7 +1,7 @@
 <script setup lang="ts" generic="T extends { id: number | string }">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Inbox, ChevronRight } from 'lucide-vue-next'
+import { Inbox, ChevronRight } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 

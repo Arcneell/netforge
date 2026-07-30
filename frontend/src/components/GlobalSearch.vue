@@ -13,7 +13,7 @@ import {
   DoorOpen,
   Tag,
   Globe,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { searchApi } from '@/api'
 import type { SearchResult } from '@/api'
 import { useDebounce } from '@/composables/useDebounce'

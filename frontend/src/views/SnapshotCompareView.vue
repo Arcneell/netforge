@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, Diff, Search, TriangleAlert } from 'lucide-vue-next'
+import { ArrowRight, Diff, Search, TriangleAlert } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'

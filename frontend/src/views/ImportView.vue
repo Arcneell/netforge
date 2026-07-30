@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Download, UploadCloud, Wand2 } from 'lucide-vue-next'
+import { Download, UploadCloud, Wand2 } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import Button from '@/components/ui/Button.vue'
 import Segmented, { type SegmentedOption } from '@/components/ui/Segmented.vue'

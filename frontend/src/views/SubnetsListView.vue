@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { List, Network, Plus, Pencil, Search, Trash2, X } from 'lucide-vue-next'
+import { List, Network, Plus, Pencil, Search, Trash2, X } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import EmptyState from '@/components/EmptyState.vue'

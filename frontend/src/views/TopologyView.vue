@@ -18,7 +18,7 @@ import {
   Trash2,
   TriangleAlert,
   X as XIcon,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'

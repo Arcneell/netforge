@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { Bot, User as UserIcon } from 'lucide-vue-next'
+import { Bot, User as UserIcon } from '@lucide/vue'
 import AiEntityChips from '@/components/ai/AiEntityChips.vue'
 import AiMessageBody from '@/components/ai/AiMessageBody.vue'
 import type { AiTurn } from '@/composables/useAiChat'

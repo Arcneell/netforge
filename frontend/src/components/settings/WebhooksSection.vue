@@ -12,7 +12,7 @@ import {
   Send,
   Trash2,
   AlertTriangle,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Input from '@/components/ui/Input.vue'

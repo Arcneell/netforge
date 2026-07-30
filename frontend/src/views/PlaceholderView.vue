@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Construction } from 'lucide-vue-next'
+import { Construction } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 
 defineProps<{

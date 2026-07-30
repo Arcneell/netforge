@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { History, Trash2 } from 'lucide-vue-next'
+import { History, Trash2 } from '@lucide/vue'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
 import EmptyState from '@/components/EmptyState.vue'
