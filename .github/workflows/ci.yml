@@ -295,7 +295,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: docker build ${{ matrix.component.name }} (no push, cached)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.component.context }}
           push: false
