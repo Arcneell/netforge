@@ -107,7 +107,8 @@ async def rotate_secret(
         not_found("Webhook", webhook_id)
     new_secret = generate_secret()
     row.secret = new_secret
-    await db.commit()
+    with catch_integrity_errors():
+        await db.commit()
     await db.refresh(row)
     return WebhookCreated(
         secret=new_secret, **WebhookRead.model_validate(row).model_dump()

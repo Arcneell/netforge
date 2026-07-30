@@ -36,6 +36,13 @@ async def export_audit(
     """Stream the audit log as CSV. Same filters as `GET /api/audit`. Admin-only
     because the audit log is — `/api/audit` already requires admin and we
     keep the same surface here."""
+    # Naive datetimes coming in via query string are treated as UTC so they
+    # can be compared against the timezone-aware `created_at` column
+    # without TypeErrors (same mechanic as `routers/snapshots.py::compare`).
+    if from_ is not None and from_.tzinfo is None:
+        from_ = from_.replace(tzinfo=UTC)
+    if to is not None and to.tzinfo is None:
+        to = to.replace(tzinfo=UTC)
     filename = (
         f"netforge-audit-{datetime.now(UTC).strftime('%Y-%m-%d')}.csv"
     )

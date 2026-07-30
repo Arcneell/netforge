@@ -287,6 +287,10 @@ async def _persist_port(db: AsyncSession, row: _PortRow) -> None:
         wanted_ids: list[int] = []
         for vid in row.trunk_vlans:
             vlan = await _vlan_by_id(db, vid, column="trunk_vlans")
+            if vlan is None:
+                # Only reachable if `vid` were None — the helper raises
+                # _RefError for an unknown id. Kept so the checker can narrow.
+                raise _RefError("trunk_vlans", vid, f"VLAN {vid} not found")
             if vlan.id == port.native_vlan_id:
                 raise _RefError(
                     "trunk_vlans",

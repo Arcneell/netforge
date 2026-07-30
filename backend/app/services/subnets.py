@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from ipaddress import IPv4Address, IPv4Network
 
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ip import Ip
@@ -25,23 +25,7 @@ from app.models.subnet import Subnet
 from app.schemas.common import PageParams
 from app.schemas.subnet import SubnetCreate, SubnetIpEntry, SubnetUpdate
 from app.services.errors import business_rule, catch_integrity_errors, not_found
-
-
-def _ip_text(value: object) -> str:
-    """Canonicalise whatever asyncpg returns for an INET column to a bare
-    dotted-quad.
-
-    asyncpg decodes `inet` to `ipaddress.IPv4Interface` by default, and
-    `str(IPv4Interface('10.0.0.1/32'))` returns `'10.0.0.1/32'` — the
-    trailing `/32` is what made the previous boundary subtract miss every
-    row (Codex P1 on #76). Strip the mask and re-parse with
-    `IPv4Address` so we always end up with the bare dotted-quad we use
-    everywhere else (next_free_ip, list_subnet_ips, …).
-    """
-    text = str(value)
-    if "/" in text:
-        text = text.split("/", 1)[0]
-    return str(IPv4Address(text))
+from app.services.net_text import ip_text as _ip_text
 
 # Hard cap on /N scans: 4096 host addresses (i.e. /20). Anything larger is a
 # planning error in a documentation tool — surface a 400 rather than try to
@@ -91,9 +75,16 @@ async def list_subnets(
         # Free-text search across CIDR + description. The CIDR cast picks
         # up partial matches like "10.20." or "/24"; description picks up
         # everything operators jot in there. Trigram GIN indexes on both
-        # columns (migration 0012) keep this O(log N) instead of seq scan.
+        # columns (migration 0012) keep this O(log N) instead of seq scan —
+        # but only if the cast here matches the index expression exactly.
+        # Migration 0012 builds `ix_subnets_cidr_text_trgm` on `(cidr::text)`,
+        # which Postgres parses as a cast to `text` (oid 25). `cast(col,
+        # String)` compiles to `CAST(col AS VARCHAR)` — a *different*
+        # expression (varchar, oid 1043) that the planner won't match to
+        # the index, silently falling back to a seq scan. `Text` compiles
+        # to `CAST(col AS TEXT)`, which matches.
         pattern = f"%{q.strip()}%"
-        text_filter = cast(Subnet.cidr, String).ilike(pattern) | Subnet.description.ilike(pattern)
+        text_filter = cast(Subnet.cidr, Text).ilike(pattern) | Subnet.description.ilike(pattern)
         base = base.where(text_filter)
         count_q = count_q.where(text_filter)
 
@@ -192,8 +183,10 @@ async def get_subnet(db: AsyncSession, subnet_id: int) -> Subnet:
 
 
 def _validate_dhcp_range(cidr: str, payload: dict) -> None:
-    """Reject DHCP ranges that fall outside the CIDR (DB has no such trigger)."""
+    """Reject DHCP ranges that fall outside the CIDR, or a start after the
+    end (DB has no such trigger)."""
     network = IPv4Network(str(cidr), strict=False)
+    canon: dict[str, str] = {}
     for key in ("gateway", "dhcp_range_start", "dhcp_range_end"):
         addr = payload.get(key)
         if addr is None:
@@ -204,12 +197,26 @@ def _validate_dhcp_range(cidr: str, payload: dict) -> None:
         # mask suffix — would raise on every PATCH that touched any other
         # field on a DHCP-enabled subnet.
         addr_text = _ip_text(addr)
+        canon[key] = addr_text
         if IPv4Address(addr_text) not in network:
             business_rule(
                 "ADDRESS_OUT_OF_SUBNET",
                 f"{key} ({addr_text}) is not contained in {cidr}.",
                 details={"field": key, "address": addr_text, "cidr": str(cidr)},
             )
+
+    start = canon.get("dhcp_range_start")
+    end = canon.get("dhcp_range_end")
+    if (
+        start is not None
+        and end is not None
+        and IPv4Address(start) > IPv4Address(end)
+    ):
+        business_rule(
+            "INVALID_DHCP_RANGE",
+            f"dhcp_range_start ({start}) must not be after dhcp_range_end ({end}).",
+            details={"dhcp_range_start": start, "dhcp_range_end": end},
+        )
 
 
 async def _validate_parent(

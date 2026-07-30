@@ -7,9 +7,14 @@ add/remove operations.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from sqlalchemy import delete, func, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.device import Device
+from app.models.ip import Ip
 from app.models.port import Port, PortVlan
 from app.models.vlan import Vlan
 from app.schemas.common import PageParams
@@ -68,6 +73,26 @@ async def list_tagged_vlans(db: AsyncSession, port_id: int) -> list[Vlan]:
 async def update_port(db: AsyncSession, port_id: int, payload: PortUpdate) -> Port:
     port = await get_port(db, port_id)
     patch = payload.model_dump(exclude_unset=True)
+
+    # Existence checks up front for every FK the payload touches. Without
+    # these, a bad id sails through to the UPDATE and Postgres raises a FK
+    # violation on commit — `catch_integrity_errors` catches it, but there's
+    # no named constraint in `_CONSTRAINT_CODES` to match against a
+    # multi-column ports UPDATE, so it fell back to a generic 409
+    # INTEGRITY_VIOLATION instead of a clean, actionable 404.
+    if patch.get("native_vlan_id") is not None and await db.get(
+        Vlan, patch["native_vlan_id"]
+    ) is None:
+        not_found("VLAN", patch["native_vlan_id"])
+    if patch.get("connected_device_id") is not None and await db.get(
+        Device, patch["connected_device_id"]
+    ) is None:
+        not_found("Device", patch["connected_device_id"])
+    if patch.get("connected_ip_id") is not None and await db.get(
+        Ip, patch["connected_ip_id"]
+    ) is None:
+        not_found("IP", patch["connected_ip_id"])
+
     # Mirror the invariant `add_tagged_vlan` enforces: a port can't have
     # the same VLAN as both native and tagged. Without this guard an
     # admin can PUT a native_vlan_id that is already in the port's
@@ -133,6 +158,8 @@ async def remove_tagged_vlan(db: AsyncSession, port_id: int, vlan_pk: int) -> No
             PortVlan.port_id == port_id, PortVlan.vlan_id == vlan_pk
         )
     )
-    if result.rowcount == 0:
+    # `execute()` is typed as returning Result, but a DELETE always yields a
+    # CursorResult, which is what carries `rowcount`.
+    if cast("CursorResult[Any]", result).rowcount == 0:
         not_found("Tagged VLAN", f"{port_id}/{vlan_pk}")
     await db.commit()

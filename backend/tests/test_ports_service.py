@@ -11,7 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
+from app.models.device import Device
+from app.models.ip import Ip
 from app.models.port import Port
+from app.models.vlan import Vlan
 from app.schemas.port import PortUpdate
 from app.services import ports as service
 
@@ -78,3 +81,96 @@ async def test_update_port_keeps_existing_native_vlan_when_payload_omits_it() ->
     db.execute.assert_not_called()
     assert port.label == "uplink"
     assert port.native_vlan_id == 7
+
+
+# --- FK existence checks (Fix #14) ------------------------------------------
+#
+# Before this fix, a bad native_vlan_id / connected_device_id /
+# connected_ip_id sailed through to the UPDATE and Postgres raised a FK
+# violation on commit — caught by `catch_integrity_errors` but with no
+# named constraint to match, so it fell back to a generic 409
+# INTEGRITY_VIOLATION instead of an explicit 404 naming which id was bad.
+
+
+def _mock_db_with_get_side_effect(get_side_effect) -> AsyncMock:
+    db = AsyncMock()
+    db.get = AsyncMock(side_effect=get_side_effect)
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+    return db
+
+
+@pytest.mark.asyncio
+async def test_update_port_404s_on_missing_native_vlan() -> None:
+    port = Port(id=10, switch_id=1, number=2)
+
+    async def get_side_effect(model, pk):
+        if model is Port:
+            return port
+        if model is Vlan:
+            return None
+        raise AssertionError(f"unexpected db.get({model}, {pk})")
+
+    db = _mock_db_with_get_side_effect(get_side_effect)
+    with pytest.raises(HTTPException) as exc:
+        await service.update_port(db, 10, PortUpdate(native_vlan_id=999))
+    assert exc.value.status_code == 404
+    db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_port_404s_on_missing_connected_device() -> None:
+    port = Port(id=10, switch_id=1, number=2)
+
+    async def get_side_effect(model, pk):
+        if model is Port:
+            return port
+        if model is Device:
+            return None
+        raise AssertionError(f"unexpected db.get({model}, {pk})")
+
+    db = _mock_db_with_get_side_effect(get_side_effect)
+    with pytest.raises(HTTPException) as exc:
+        await service.update_port(db, 10, PortUpdate(connected_device_id=999))
+    assert exc.value.status_code == 404
+    db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_port_404s_on_missing_connected_ip() -> None:
+    port = Port(id=10, switch_id=1, number=2)
+
+    async def get_side_effect(model, pk):
+        if model is Port:
+            return port
+        if model is Ip:
+            return None
+        raise AssertionError(f"unexpected db.get({model}, {pk})")
+
+    db = _mock_db_with_get_side_effect(get_side_effect)
+    with pytest.raises(HTTPException) as exc:
+        await service.update_port(db, 10, PortUpdate(connected_ip_id=999))
+    assert exc.value.status_code == 404
+    db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_port_allows_existing_fk_targets() -> None:
+    port = Port(id=10, switch_id=1, number=2)
+    vlan = Vlan(id=5, vlan_id=100, name="VLAN-100")
+
+    async def get_side_effect(model, pk):
+        if model is Port:
+            return port
+        if model is Vlan:
+            return vlan
+        raise AssertionError(f"unexpected db.get({model}, {pk})")
+
+    db = _mock_db_with_get_side_effect(get_side_effect)
+    clash_result = MagicMock()
+    clash_result.scalar_one_or_none = MagicMock(return_value=None)
+    db.execute = AsyncMock(return_value=clash_result)
+
+    out = await service.update_port(db, 10, PortUpdate(native_vlan_id=5))
+    assert out.native_vlan_id == 5
+    db.commit.assert_awaited_once()

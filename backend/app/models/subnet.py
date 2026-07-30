@@ -52,6 +52,11 @@ class Subnet(Base, TimestampMixin):
     ips: Mapped[list[Ip]] = relationship(
         back_populates="subnet",
         cascade="all, delete-orphan",
+        # `ips.subnet_id` is already ON DELETE CASCADE at the DB level —
+        # tell the ORM not to issue its own per-row DELETE/UPDATE on the
+        # children when the parent goes away (or is detached from the
+        # collection) and let Postgres handle it in one statement.
+        passive_deletes=True,
     )
     parent: Mapped[Subnet | None] = relationship(
         "Subnet",

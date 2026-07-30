@@ -15,6 +15,7 @@ service-level query is brittle; the focused tests above are what matters.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -67,6 +68,16 @@ def _install_db(
     db.rollback = AsyncMock()
     db.flush = AsyncMock()
     db.add = MagicMock()
+
+    @asynccontextmanager
+    async def _fake_savepoint():
+        # Stand-in for `AsyncSession.begin_nested()` — the CSV import driver
+        # wraps its apply phase in a SAVEPOINT (see
+        # services/csv_import/driver.py::_run_apply_pass). Nothing here
+        # exercises a real rollback-on-error, so a no-op is enough.
+        yield
+
+    db.begin_nested = _fake_savepoint
 
     async def _override() -> AsyncIterator:
         yield db

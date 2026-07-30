@@ -22,10 +22,11 @@ class Site(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     address: Mapped[str | None] = mapped_column(Text)
 
-    rooms: Mapped[list[Room]] = relationship(
-        back_populates="site",
-        cascade="all, delete-orphan",
-    )
+    # No delete cascade here: `rooms.site_id` is ON DELETE RESTRICT (a site
+    # with rooms must not be deletable via silent cascade), so the ORM
+    # relationship stays a plain association — `delete_site` relies on the
+    # DB raising IntegrityError → 409 (see services/sites.py).
+    rooms: Mapped[list[Room]] = relationship(back_populates="site")
     subnets: Mapped[list[Subnet]] = relationship(back_populates="site")
 
 

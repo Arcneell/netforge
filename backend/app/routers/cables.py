@@ -9,19 +9,26 @@ from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
 from app.models.user import UserRole
 from app.schemas.cable import CableCreate, CableRead, CableUpdate
+from app.schemas.common import Page, PageParams
 from app.services import cables as service
 from app.services.errors import not_found
 
 router = APIRouter(prefix="/cables", tags=["cables"])
 
 
-@router.get("", response_model=list[CableRead], dependencies=[Depends(get_current_user)])
+@router.get("", response_model=Page[CableRead], dependencies=[Depends(get_current_user)])
 async def list_cables(
+    page: PageParams = Depends(),
     in_stock: bool = Query(default=False, description="Only cables with no link assigned."),
     db: AsyncSession = Depends(get_db),
-) -> list[CableRead]:
-    rows = await service.list_cables(db, in_stock_only=in_stock)
-    return [CableRead.model_validate(r) for r in rows]
+) -> Page[CableRead]:
+    items, total = await service.list_cables(db, page, in_stock_only=in_stock)
+    return Page[CableRead](
+        items=[CableRead.model_validate(r) for r in items],
+        total=total,
+        page=page.page,
+        page_size=page.page_size,
+    )
 
 
 @router.get("/{cable_id}", response_model=CableRead, dependencies=[Depends(get_current_user)])

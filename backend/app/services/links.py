@@ -9,6 +9,7 @@ the DB stays clean.
 from __future__ import annotations
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.link import Link
@@ -64,12 +65,17 @@ async def create_link(db: AsyncSession, payload: LinkCreate) -> Link:
 
     # Refuse to create a second link for a port that's already an endpoint
     # of another one. The DB has `UniqueConstraint(port_a_id, port_b_id)`
-    # but no constraint that a single port appears in at most one Link —
-    # a physical port can only realise one cable, so the AI suggest-links
-    # accept path AND any direct POST /api/links must surface this clash
-    # explicitly instead of producing a non-physical topology. (LOW-sev
-    # find from the backend scan; long-term fix is two partial unique
-    # indexes on port_a_id / port_b_id at the DB level.)
+    # but that only rejects the exact same pair reinserted — a physical
+    # port can only realise one cable, so the AI suggest-links accept path
+    # AND any direct POST /api/links must surface this clash explicitly
+    # instead of producing a non-physical topology.
+    #
+    # This SELECT runs outside any lock, so it's a fast, friendly check —
+    # not the authority. Two concurrent requests wiring the same port to
+    # two different peers can both pass it before either commits. The
+    # `links_validate_port_exclusivity` trigger (migration 0022) is what
+    # actually closes that race at the DB level; its violation is caught
+    # below and mapped to the same 400 this pre-check returns.
     existing = await db.execute(
         select(Link.id, Link.port_a_id, Link.port_b_id).where(
             or_(
@@ -98,8 +104,24 @@ async def create_link(db: AsyncSession, payload: LinkCreate) -> Link:
 
     link = Link(**data)
     db.add(link)
-    with catch_integrity_errors():
+    try:
         await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        msg = str(getattr(exc, "orig", exc))
+        if "links_port_exclusivity" in msg:
+            # Closes the TOCTOU race the pre-check above can't: two
+            # concurrent requests can both pass that SELECT before either
+            # commits. Same code/message as the non-racing case above, so
+            # the caller can't tell which path caught it.
+            business_rule(
+                "PORT_ALREADY_LINKED",
+                "One or both ports are already an endpoint of another link.",
+            )
+        # Anything else (e.g. the exact-pair `links_ports_uniq` duplicate)
+        # goes through the shared mapping for a stable 409.
+        with catch_integrity_errors():
+            raise
     await db.refresh(link)
     return link
 

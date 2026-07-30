@@ -45,4 +45,8 @@ class Switch(Base, TimestampMixin):
     ports: Mapped[list[Port]] = relationship(
         back_populates="switch",
         cascade="all, delete-orphan",
+        # `ports.switch_id` is already ON DELETE CASCADE — let Postgres
+        # handle the child deletes in one statement instead of the ORM
+        # emitting one DELETE per port.
+        passive_deletes=True,
     )

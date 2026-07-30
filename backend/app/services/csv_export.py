@@ -10,10 +10,11 @@ import csv
 import io
 import json
 import zipfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,6 +27,7 @@ from app.models.subnet import Subnet
 from app.models.switch import Switch
 from app.models.user import AuditLog, User
 from app.models.vlan import Vlan
+from app.services.errors import business_rule
 
 ENTITIES = (
     "sites",
@@ -63,7 +65,10 @@ def _sanitize_cell(value: str) -> str:
     return value
 
 
-def _line(writer: csv.writer, buffer: io.StringIO, cells: list[str]) -> str:
+def _line(writer: Any, buffer: io.StringIO, cells: list[str]) -> str:
+    # `writer` is a `csv.writer(...)` instance. The stdlib exposes no public
+    # name for that type (`csv.writer` is the factory function, not a class),
+    # so it stays `Any` rather than reaching into `_csv`.
     """Write one CSV line, return what was just written and clear the buffer.
 
     Every cell goes through `_sanitize_cell` — this is the single choke
@@ -96,6 +101,12 @@ async def stream_export(db: AsyncSession, entity: str) -> AsyncIterator[str]:
 
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+
+    # Declared once up front: each `elif` branch below reuses these two names
+    # for a differently-shaped query and result set, and without a widening
+    # declaration the checker pins them to whichever branch it reads first.
+    q: Select[Any]
+    rows: Sequence[Any]
 
     if entity == "sites":
         yield "﻿" + _line(writer, buf, ["code", "name", "address"])
@@ -417,6 +428,15 @@ async def stream_audit_export(
         )
 
 
+# Hard cap on the uncompressed content `build_zip` buffers in memory. Tuned
+# well above the realistic v1 dataset (< 200 switches, a few thousand IPs —
+# a few MB uncompressed) so normal installs never come close, while still
+# refusing runaway growth with a clean 400 instead of silently ballooning
+# worker RSS until the worker OOMs. Not a full streaming rewrite (see the
+# docstring below for why that's not worth it yet) — just a backstop.
+EXPORT_ZIP_MAX_UNCOMPRESSED_BYTES = 200 * 1024 * 1024  # 200 MiB
+
+
 async def build_zip(db: AsyncSession) -> bytes:
     """Bundle every entity's CSV export into a single ZIP archive.
 
@@ -432,8 +452,14 @@ async def build_zip(db: AsyncSession) -> bytes:
         slow "data descriptor" extension), which would mean either two
         passes over each entity or shelling out to a streaming-zip lib.
         Not worth the complexity for v1.
+
+    `EXPORT_ZIP_MAX_UNCOMPRESSED_BYTES` bounds that in-memory buffer: an
+    install with an unexpectedly huge inventory (or a future entity added
+    to `ENTITIES` without updating this comment) gets a clean 400 instead
+    of an unbounded allocation.
     """
     buf = io.BytesIO()
+    total_bytes = 0
     with zipfile.ZipFile(
         buf, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=6
     ) as zf:
@@ -441,5 +467,14 @@ async def build_zip(db: AsyncSession) -> bytes:
             chunks: list[str] = []
             async for chunk in stream_export(db, entity):
                 chunks.append(chunk)
-            zf.writestr(f"{entity}.csv", "".join(chunks).encode("utf-8"))
+            encoded = "".join(chunks).encode("utf-8")
+            total_bytes += len(encoded)
+            if total_bytes > EXPORT_ZIP_MAX_UNCOMPRESSED_BYTES:
+                business_rule(
+                    "EXPORT_TOO_LARGE",
+                    f"Export exceeds the {EXPORT_ZIP_MAX_UNCOMPRESSED_BYTES} byte "
+                    "in-memory cap for a single ZIP bundle.",
+                    details={"max": EXPORT_ZIP_MAX_UNCOMPRESSED_BYTES},
+                )
+            zf.writestr(f"{entity}.csv", encoded)
     return buf.getvalue()

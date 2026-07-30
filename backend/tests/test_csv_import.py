@@ -12,6 +12,7 @@ testcontainers-based suite (same gating as the audit listener tests).
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,6 +20,21 @@ import pytest
 from app.schemas.imports import ImportReport
 from app.services import csv_import as service
 from app.services.csv_import import persist
+
+
+@asynccontextmanager
+async def _fake_savepoint():
+    """Stand-in for `AsyncSession.begin_nested()`.
+
+    The driver's apply phase wraps every row (and the whole fast pass) in a
+    SAVEPOINT so a later row's `IntegrityError` doesn't cascade — see
+    `services/csv_import/driver.py::_run_apply_pass`. These unit tests mock
+    the session entirely, so there's no real transaction to nest; a bare
+    no-op context manager is enough to let `async with db.begin_nested():`
+    run. Real SAVEPOINT rollback-on-error semantics are covered by the
+    testcontainers-based integration suite.
+    """
+    yield
 
 
 def _fresh_db() -> AsyncMock:
@@ -29,6 +45,7 @@ def _fresh_db() -> AsyncMock:
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
     db.add = lambda *a, **kw: None
+    db.begin_nested = _fake_savepoint
     return db
 
 
@@ -47,6 +64,40 @@ def test_parse_csv_strips_bom_and_whitespace() -> None:
 
 def test_parse_csv_handles_empty_payload() -> None:
     assert service._parse_csv(b"") == []
+
+
+def test_parse_csv_flags_row_with_too_many_columns_instead_of_crashing() -> None:
+    """Fix #4: `csv.DictReader` stuffs any column beyond the header count
+    under the `None` key as a *list* (its `restkey` default). The old
+    `(v or "").strip()` assumed every value was a string and blew up with
+    `AttributeError: 'list' object has no attribute 'strip'` on a single
+    malformed row — turning one bad CSV line into a 500 for the whole
+    import. The row must now come back flagged instead of raising."""
+    rows = service._parse_csv(
+        _csv("code;name", "HQ;Headquarters;extra1;extra2")
+    )
+    assert len(rows) == 1
+    assert service.TOO_MANY_COLUMNS_KEY in rows[0]
+
+
+@pytest.mark.asyncio
+async def test_import_row_with_too_many_columns_reports_clean_error() -> None:
+    """End-to-end through `run_import`: a malformed row must surface as a
+    normal `ImportErrorRow` in the report, not crash the whole request."""
+    db = _fresh_db()
+    report = await service.run_import(
+        db,
+        "sites",
+        _csv("code;name", "HQ;Headquarters;extra1"),
+        dry_run=False,
+    )
+    assert report.applied is False
+    assert report.ok_rows == 0
+    assert len(report.error_rows) == 1
+    assert report.error_rows[0].line == 2
+    assert "columns" in report.error_rows[0].error.lower()
+    db.flush.assert_not_called()
+    db.commit.assert_not_called()
 
 
 # --- Sites import: happy path + validation error ------------------------- #
@@ -353,10 +404,17 @@ def test_link_row_accepts_blank_speed_mbps() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ok_rows_only_counts_rows_persisted_before_failure() -> None:
-    # Apply phase: first row succeeds, second hits a _RefError, third+ never
-    # attempted. Buggy code reported `ok_rows = len(parsed) - 1` (i.e. 2 of 3
-    # "ok"), miscounting the third row that never even ran.
+async def test_apply_phase_collects_every_row_error_in_one_pass() -> None:
+    """Apply phase: row 1 succeeds, row 2 hits a `_RefError`, row 3 succeeds.
+
+    Fix (backend audit): the apply phase used to `break` at the first
+    row-level error, so an operator with several bad rows in one CSV had to
+    fix-and-reupload once per bad row. `_RefError` never touches the DB in a
+    way that can abort the transaction, so the driver now keeps going and
+    reports every row's outcome in a single pass — row 3 is attempted and
+    succeeds even though row 2 failed. The whole import still rolls back
+    (any error means `applied=False`); only the *report* is now complete.
+    """
     db = _fresh_db()
     scalar_result = AsyncMock()
     scalar_result.scalar_one_or_none = lambda: None
@@ -383,8 +441,110 @@ async def test_ok_rows_only_counts_rows_persisted_before_failure() -> None:
         service.SPECS["sites"] = original
 
     assert report.parsed_rows == 3
-    assert report.ok_rows == 1
+    # Rows 1 and 3 both succeeded — row 3 was NOT skipped just because row 2
+    # failed in between.
+    assert report.ok_rows == 2
     assert len(report.error_rows) == 1
     assert report.error_rows[0].line == 3  # 2nd data row = file line 3
     assert report.applied is False
+    db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_apply_phase_retries_with_savepoints_after_integrity_error() -> None:
+    """An `IntegrityError` (unlike `_RefError`) comes from a real `flush()`
+    and poisons the whole PostgreSQL transaction — the fast pass can't just
+    keep going past it without a SAVEPOINT already in place. The driver
+    rolls back to the file-level SAVEPOINT it wrapped the fast pass in and
+    replays the file with a SAVEPOINT around every row, so row 3 is still
+    attempted (and still counted) even though row 2 hit a duplicate-key
+    violation.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    db = _fresh_db()
+    scalar_result = AsyncMock()
+    scalar_result.scalar_one_or_none = lambda: None
+    db.execute = AsyncMock(return_value=scalar_result)
+
+    async def fake_persist(_db: object, model: object) -> None:
+        if model.code == "B":  # type: ignore[attr-defined]
+            raise IntegrityError(
+                "INSERT INTO sites ...", {}, Exception("duplicate key value violates unique constraint \"sites_code_key\"")
+            )
+
+    monkeyed = service._ImportSpec(service._SiteRow, fake_persist)
+    original = service.SPECS["sites"]
+    service.SPECS["sites"] = monkeyed
+    try:
+        report = await service.run_import(
+            db,
+            "sites",
+            _csv("code;name", "A;Alpha", "B;Bravo", "C;Charlie"),
+            dry_run=False,
+        )
+    finally:
+        service.SPECS["sites"] = original
+
+    assert report.parsed_rows == 3
+    assert report.ok_rows == 2  # A and C, despite B failing in between
+    assert len(report.error_rows) == 1
+    assert report.error_rows[0].line == 3  # 2nd data row ("B") = file line 3
+    assert "already exists" in report.error_rows[0].error
+    assert report.applied is False
+    db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_csv_over_max_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`CSV_IMPORT_MAX_ROWS` bounds row *count* — the byte-size caps in
+    `parsing.py` bound upload *weight*, but a file of many short rows can
+    stay small in bytes while still producing an enormous number of
+    resolver lookups and flush round trips."""
+    from fastapi import HTTPException
+
+    from app.config import get_settings
+
+    monkeypatch.setenv("CSV_IMPORT_MAX_ROWS", "2")
+    get_settings.cache_clear()
+    try:
+        db = _fresh_db()
+        with pytest.raises(HTTPException) as exc:
+            await service.run_import(
+                db,
+                "sites",
+                _csv("code;name", "A;Alpha", "B;Bravo", "C;Charlie"),
+                dry_run=False,
+            )
+        assert exc.value.status_code == 400
+        assert exc.value.detail["error"]["code"] == "TOO_MANY_ROWS"
+    finally:
+        monkeypatch.delenv("CSV_IMPORT_MAX_ROWS", raising=False)
+        get_settings.cache_clear()
+
+
+def test_parse_csv_flags_row_with_replacement_character() -> None:
+    """A byte that isn't valid UTF-8 gets `errors="replace"`-repaired by the
+    decoder instead of crashing the import — but that repair must be
+    detectable so the caller can warn instead of staying silent about it."""
+    rows = service._parse_csv(b"code;name\r\n\xffX;Foo\r\n")
+    assert service.REPLACEMENT_CHAR in rows[0]["code"]
+    assert service._rows_with_invalid_encoding(rows) == [0]
+    assert service._rows_with_invalid_encoding([{"code": "HQ"}]) == []
+
+
+@pytest.mark.asyncio
+async def test_import_report_warns_on_invalid_encoding() -> None:
+    db = _fresh_db()
+    scalar_result = AsyncMock()
+    scalar_result.scalar_one_or_none = lambda: None
+    db.execute = AsyncMock(return_value=scalar_result)
+
+    # Header is clean UTF-8-sig; the data row's first byte (0xFF) is not
+    # valid UTF-8 and gets replaced.
+    content = "code;name\r\n".encode("utf-8-sig") + b"\xffX;Bad Bytes\r\n"
+    report = await service.run_import(db, "sites", content, dry_run=True)
+    assert len(report.warnings) == 1
+    assert "line 2" in report.warnings[0]
+    assert "U+FFFD" in report.warnings[0]
     db.rollback.assert_awaited_once()
