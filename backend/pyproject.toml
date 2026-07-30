@@ -18,6 +18,11 @@ dependencies = [
     "httpx>=0.28",
     "python-multipart>=0.0.18",
     "itsdangerous>=2.2",
+    # Optional at *runtime* (REDIS_URL empty disables every consumer — see
+    # app/cache.py) but a hard install dependency so the image ships one
+    # artefact regardless of whether an operator turns the cache on. Pure
+    # Python, no native deps; ~1 MB installed.
+    "redis>=5.2",
     # AI integration — three providers, all optional at runtime. The factory
     # only imports the one matching AI_PROVIDER so a deployment can leave the
     # unused SDKs uninstalled if it really wants to slim the image.

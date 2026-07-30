@@ -8,13 +8,21 @@ Why a separate limiter from the global write-rate-limiter:
 
 Where the counter lives
 -----------------------
-In `rate_limit_counters` (PostgreSQL), scope `ai_user`. The counter used to
-be a process-local `deque`, which had two bugs that mattered *because this
-limiter guards money*: with N workers/replicas every user got N x their
-quota, and a restart (deploy, crash, scale event) handed everyone a fresh
-quota. A one-hour window makes the restart case especially bad — a
-crash-looping container effectively removes the cap. See
-`app/services/rate_limit_store.py` for the schema/algorithm rationale.
+In a shared store under scope `ai_user`: `rate_limit_counters` (PostgreSQL) by
+default, or Redis when `RATE_LIMIT_STORE=redis`. The counter used to be a
+process-local `deque`, which had two bugs that mattered *because this limiter
+guards money*: with N workers/replicas every user got N x their quota, and a
+restart (deploy, crash, scale event) handed everyone a fresh quota. A one-hour
+window makes the restart case especially bad — a crash-looping container
+effectively removes the cap. See `app/services/rate_limit_store.py` for the
+algorithm rationale shared by both backends.
+
+One caveat specific to this limiter: a Redis with no persistence configured
+loses every counter on restart, which is the *exact* bug the move off the
+in-process deque fixed — just at a different layer. Postgres has durability by
+construction. If you run `RATE_LIMIT_STORE=redis` and the AI features are on,
+keep Redis' default AOF/RDB persistence enabled (the bundled compose service
+does) rather than running it as a pure in-memory cache.
 
 Degradation policy: FAIL CLOSED
 -------------------------------
@@ -55,10 +63,13 @@ from app.services.rate_limit_store import (
     InProcessWindows,
     maybe_purge_expired,
     try_consume,
+    try_consume_redis,
 )
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
+
+    from app.config import Settings
 
 logger = logging.getLogger("netforge")
 
@@ -95,10 +106,14 @@ async def consume_ai_quota(user_id: int, *, engine: AsyncEngine | None = None) -
     limit = settings.ai_rate_limit_calls
     window = settings.ai_rate_window_seconds
 
-    if settings.rate_limit_store != "database":
+    if settings.rate_limit_store == "memory":
         decision = _MEMORY.consume(str(user_id), limit=limit, window_seconds=window)
         if not decision.allowed:
             raise AIRateLimitExceeded(retry_after_seconds=decision.retry_after_seconds)
+        return
+
+    if settings.rate_limit_store == "redis":
+        await _consume_via_redis(user_id, limit=limit, window=window, settings=settings)
         return
 
     if engine is None:
@@ -126,6 +141,46 @@ async def consume_ai_quota(user_id: int, *, engine: AsyncEngine | None = None) -
         raise AIRateLimitExceeded(retry_after_seconds=_FAIL_CLOSED_RETRY_AFTER) from exc
 
     await maybe_purge_expired(engine)
+    if not decision.allowed:
+        raise AIRateLimitExceeded(retry_after_seconds=decision.retry_after_seconds)
+
+
+async def _consume_via_redis(
+    user_id: int, *, limit: int, window: int, settings: Settings
+) -> None:
+    """`RATE_LIMIT_STORE=redis` branch. Fails closed, like the Postgres one.
+
+    No `maybe_purge_expired` counterpart: Redis retires each bucket with the
+    `EXPIRE` set when it is created.
+    """
+    from app.cache import get_client
+
+    client = get_client()
+    if client is None:
+        # Unreachable through normal boot — `Settings` refuses to start with
+        # RATE_LIMIT_STORE=redis and no REDIS_URL. Kept because the failure
+        # mode if it ever happened would be an uncapped spend path, and this
+        # limiter's whole contract is to fail closed instead.
+        logger.warning(
+            "ai_rate_limit.fail_closed user_id=%s reason=redis_not_configured", user_id
+        )
+        raise AIRateLimitExceeded(retry_after_seconds=_FAIL_CLOSED_RETRY_AFTER)
+    try:
+        decision = await try_consume_redis(
+            client,
+            namespace=settings.cache_key_prefix,
+            scope=SCOPE_AI_USER,
+            key=str(user_id),
+            limit=limit,
+            window_seconds=window,
+        )
+    except Exception as exc:
+        logger.warning(
+            "ai_rate_limit.fail_closed user_id=%s reason=counter_unavailable",
+            user_id,
+            exc_info=True,
+        )
+        raise AIRateLimitExceeded(retry_after_seconds=_FAIL_CLOSED_RETRY_AFTER) from exc
     if not decision.allowed:
         raise AIRateLimitExceeded(retry_after_seconds=decision.retry_after_seconds)
 

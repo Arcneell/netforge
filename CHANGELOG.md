@@ -8,6 +8,46 @@ for how to pin a deployment in the meantime.
 
 ## [Unreleased]
 
+### Added
+- **Optional Redis cache (`REDIS_URL`).** The compose stack gained a `redis`
+  service and the backend three consumers for it. Set `REDIS_URL=` (empty) and
+  every one of them falls back to Postgres, so the stack behaves exactly as it
+  did without Redis; a Redis that goes down mid-flight is treated as a cache
+  miss, never an error.
+  - **Session cache.** `get_current_user` cost two SELECTs on *every*
+    authenticated request (`sessions`, then `users`) — the only fixed cost paid
+    unconditionally by every endpoint. Those are now cached per session digest.
+    Sessions live in a table precisely so revocation is immediate, so the
+    trade-off is bounded on three sides: logout evicts its own entry, the TTL is
+    short (`CACHE_SESSION_TTL_SECONDS`, default 30s), and nothing is cached once
+    a session enters its sliding-renewal window (where a hit would skip
+    `touch_session`). Bearer-token requests are deliberately never cached —
+    `verify_token` writes `last_used_at`, and a revoked token must stop working
+    now.
+  - **Read cache** for `/api/topology`, `/api/search`, `/api/subnets/tree` and
+    `/api/subnets/capacity-overview` — the reads whose cost is assembly rather
+    than row fetching. Correctness does not rely on invalidation: keys embed a
+    single-query fingerprint (`count(*)` plus a per-table discriminator) of the
+    inventory, so a write changes the key. The SPA flow of "POST a switch, then
+    immediately refetch the topology" cannot be served the pre-write graph,
+    which is the failure mode a generation-counter design would have had.
+    `CACHE_READ_TTL_SECONDS` is a memory bound, not a staleness bound.
+  - `/api/health` now reports `cache: disabled | ok | down`. A down cache
+    deliberately leaves `status: "ok"` — every consumer degrades to Postgres, so
+    the app is still healthy.
+- **`RATE_LIMIT_STORE=redis`**, a third counter backend alongside `database`
+  (default) and `memory`. Same fleet-wide budget as the Postgres store with the
+  same tumbling-bucket semantics — including "a rejected call does not consume
+  budget" — via an atomic Lua check-and-increment, taking the counter off the
+  DB's write path. The bucket boundary comes from the Redis server clock, so
+  replicas with NTP skew still agree on which bucket they are incrementing, and
+  `EXPIRE` retires buckets so there is no `purge_expired` equivalent to run.
+  Both limiters keep their existing (and opposite) degradation policies: fail
+  open for the write limiter, fail closed for the AI spend limiter.
+  `Settings` now refuses to boot on an unrecognised `RATE_LIMIT_STORE`, or on
+  `redis` without a `REDIS_URL`, rather than silently degrading to the
+  per-process window.
+
 ### Changed
 - **The topology view is rebuilt, front and back.** The graph now draws four
   node kinds instead of one: sites and rooms as compound group boxes, with

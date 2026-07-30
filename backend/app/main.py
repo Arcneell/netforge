@@ -63,7 +63,13 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     catch-up net for the fast dispatch path in `services/webhooks.py`, not
     an opt-in feature. Test environments override the lifespan by passing
     their own `lifespan=` argument when building the app.
+
+    Shutdown also releases the Redis connection pool. Nothing *starts* it —
+    `app/cache.py` builds the client lazily on first use and is a no-op when
+    `REDIS_URL` is unset — so this is purely so a clean stop doesn't leave
+    sockets for the server to time out.
     """
+    from app.cache import close_client
     from app.services.ai.scheduler import start_scheduler, stop_scheduler
     from app.services.webhooks import start_outbox_sweep, stop_outbox_sweep
 
@@ -74,6 +80,7 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     finally:
         await stop_outbox_sweep()
         await stop_scheduler()
+        await close_client()
 
 
 class _RequestLogMiddleware:
@@ -230,9 +237,11 @@ def create_app() -> FastAPI:
     # Rate-limit write methods, plus a short list of expensive export GETs
     # (see `_EXPENSIVE_GET_PREFIXES` in the middleware). Ordinary reads —
     # dashboards, the topology view — fire many GETs per page load and stay
-    # unthrottled. The counter lives in Postgres so every worker/replica
-    # shares one budget; `engine=None` (RATE_LIMIT_STORE=memory) falls back
-    # to the legacy per-process window.
+    # unthrottled. The counter lives outside the process so every
+    # worker/replica shares one budget: Postgres by default, Redis when
+    # RATE_LIMIT_STORE=redis. Passing neither backend
+    # (RATE_LIMIT_STORE=memory) falls back to the legacy per-process window.
+    from app.cache import get_client as get_redis_client
     from app.db import engine as db_engine
 
     app.add_middleware(
@@ -240,6 +249,10 @@ def create_app() -> FastAPI:
         max_per_window=settings.rate_limit_writes_per_window,
         window_seconds=settings.rate_limit_window_seconds,
         engine=db_engine if settings.rate_limit_store == "database" else None,
+        redis_client=(
+            get_redis_client() if settings.rate_limit_store == "redis" else None
+        ),
+        cache_key_prefix=settings.cache_key_prefix,
     )
 
     app.add_middleware(_RequestLogMiddleware)

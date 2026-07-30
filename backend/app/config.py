@@ -2,8 +2,14 @@
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Accepted values for `RATE_LIMIT_STORE`. Validated at construction so a typo
+# ("redi", "postgres") fails loudly at boot rather than silently selecting the
+# per-process fallback — which would look fine on a single-worker dev box and
+# quietly multiply the effective cap by the worker count in production.
+RATE_LIMIT_STORES = frozenset({"memory", "database", "redis"})
 
 
 class Settings(BaseSettings):
@@ -76,6 +82,49 @@ class Settings(BaseSettings):
     bootstrap_admin_email: str = ""
 
     # ------------------------------------------------------------------
+    # Redis / caching
+    # ------------------------------------------------------------------
+    # Connection URL for the optional Redis service, e.g.
+    # redis://redis:6379/0 (or rediss:// for TLS, redis://:password@host/0
+    # when the server has `requirepass`). Empty (the default) disables every
+    # Redis-backed feature below and the stack behaves exactly as it did
+    # before Redis existed — see `app/cache.py`.
+    redis_url: str = ""
+    # Caps both connect and command time, in seconds. Deliberately
+    # sub-second: every cache call sits on a request's critical path and the
+    # fallback (query Postgres) is always available, so waiting on a wedged
+    # Redis is never the better trade.
+    redis_timeout_seconds: float = 0.5
+    # Prefixes every key so one Redis instance can serve several NetForge
+    # deployments (staging + prod, or a multi-tenant host) without collisions.
+    cache_key_prefix: str = "netforge"
+
+    # Cache the resolved (session -> user) pair, which every authenticated
+    # request otherwise costs two SELECTs to rebuild (`sessions` then
+    # `users`, see `auth/dependencies.py`). This is the single biggest fixed
+    # cost on the request path because it is paid by *every* endpoint.
+    #
+    # SECURITY: the `sessions` table exists so revocation is immediate
+    # (logout, force-out, account disable) — see `auth/sessions.py`. Caching
+    # that lookup trades a slice of that immediacy for latency. Two things
+    # bound the exposure: logout / session deletion evict the key explicitly,
+    # and the TTL below caps how long any revocation path we did NOT wire
+    # explicitly (an admin editing `users.role` straight in psql) can be
+    # served stale. Keep it small; 30s is already enough to absorb the burst
+    # of parallel GETs a single page load fires.
+    cache_sessions_enabled: bool = True
+    cache_session_ttl_seconds: int = 30
+
+    # Cache the expensive read endpoints (topology graph, subnet
+    # utilization, global search). Correctness does not depend on
+    # invalidation: the cache key embeds a cheap one-query fingerprint of the
+    # inventory tables, so any write changes the key and no reader can be
+    # served a stale payload — see `services/read_cache.py`. The TTL is only
+    # a memory bound.
+    cache_reads_enabled: bool = True
+    cache_read_ttl_seconds: int = 300
+
+    # ------------------------------------------------------------------
     # Outbound webhooks
     # ------------------------------------------------------------------
     # Webhook URLs are admin-supplied. By default the backend refuses to
@@ -104,12 +153,16 @@ class Settings(BaseSettings):
     rate_limit_writes_per_window: int = 60
     rate_limit_window_seconds: int = 60
 
-    # Where the counters live. "database" (default) keeps them in the
-    # `rate_limit_counters` table so every uvicorn worker and every replica
-    # shares one budget — without it the effective cap is (workers x limit)
-    # and a restart hands every user a fresh AI quota. "memory" restores the
-    # legacy per-process sliding window: no extra DB round trip per write,
-    # correct only on a single-worker, single-replica deployment.
+    # Where the counters live. One of "database", "redis", "memory".
+    #
+    # "database" (default) keeps them in the `rate_limit_counters` table so
+    # every uvicorn worker and every replica shares one budget — without it
+    # the effective cap is (workers x limit) and a restart hands every user a
+    # fresh AI quota. "redis" keeps the same shared-budget guarantee with an
+    # atomic INCR + EXPIRE instead of a Postgres UPSERT, taking the counter
+    # off the DB's write path entirely (requires REDIS_URL). "memory"
+    # restores the legacy per-process sliding window: no extra round trip per
+    # write, correct only on a single-worker, single-replica deployment.
     # Applies to both limiters (write-per-IP and AI-per-user).
     rate_limit_store: str = "database"
 
@@ -203,6 +256,33 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @model_validator(mode="after")
+    def _check_rate_limit_store(self) -> "Settings":
+        """Refuse to boot on a rate-limit store that cannot work.
+
+        Same posture as the CORS wildcard guard in `main.create_app` and the
+        PUBLIC_URL guard in `auth/dev.py`: a misconfiguration that silently
+        degrades a shared counter to a per-process one is exactly the class of
+        bug that looks fine in dev and breaks the cap in production, so it is
+        worth a hard failure at startup.
+        """
+        store = self.rate_limit_store.strip().lower()
+        if store not in RATE_LIMIT_STORES:
+            raise ValueError(
+                f"RATE_LIMIT_STORE={self.rate_limit_store!r} is not one of "
+                f"{sorted(RATE_LIMIT_STORES)}."
+            )
+        if store == "redis" and not self.redis_url.strip():
+            raise ValueError(
+                'RATE_LIMIT_STORE="redis" requires REDIS_URL to be set. Point it at '
+                "your Redis instance (e.g. redis://redis:6379/0), or switch "
+                'RATE_LIMIT_STORE back to "database".'
+            )
+        # Normalise so the `== "database"` / `== "redis"` comparisons at the
+        # call sites don't have to care that an operator wrote "Database".
+        self.rate_limit_store = store
+        return self
 
 
 @lru_cache(maxsize=1)

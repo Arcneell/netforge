@@ -2,7 +2,9 @@
 
 ## Overview
 
-Netforge follows a classic 3-tier architecture, containerized as 3 Docker services orchestrated by `docker compose`.
+Netforge follows a classic 3-tier architecture, containerized as Docker services
+orchestrated by `docker compose`. Three of them are the tiers; a fourth, `redis`,
+is a cache the stack runs fine without.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -26,14 +28,15 @@ Netforge follows a classic 3-tier architecture, containerized as 3 Docker servic
 │  - Business logic (services/)                                │
 │  - SQLAlchemy 2.0 async ORM                                  │
 │  - Alembic migrations                                        │
-└───────────────────────────────┬─────────────────────────────┘
-                                │ TCP 5432 (docker network)
-                                ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    postgres:16 container                     │
-│  - Persistent volume /var/lib/postgresql/data                │
-│  - Daily backup (external cron) to Veeam repo                │
-└─────────────────────────────────────────────────────────────┘
+└──────────────┬──────────────────────────────┬───────────────┘
+               │ TCP 5432                     │ TCP 6379
+               ▼                              ▼
+┌──────────────────────────────┐ ┌──────────────────────────────┐
+│      postgres:16 container   │ │      redis:7 container       │
+│  - Volume /var/lib/postgre…  │ │  - OPTIONAL (REDIS_URL)      │
+│  - System of record          │ │  - Session + read cache      │
+│  - Daily backup to Veeam     │ │  - Shared rate-limit counters│
+└──────────────────────────────┘ └──────────────────────────────┘
 ```
 
 ## Services
@@ -54,7 +57,32 @@ Netforge follows a classic 3-tier architecture, containerized as 3 Docker servic
 - **Image**: `postgres:16-alpine`.
 - **Port**: 5432 (not exposed outside the Docker network).
 - **Volumes**: `netforge_pgdata:/var/lib/postgresql/data`.
-- **Responsibilities**: persistent storage.
+- **Responsibilities**: persistent storage. System of record for everything.
+
+### `redis` (optional)
+- **Image**: `redis:7-alpine`.
+- **Port**: 6379 (not exposed outside the Docker network — Redis has no
+  authentication by default, and the cache holds session records).
+- **Volumes**: `netforge_redisdata:/data` (`appendonly yes`).
+- **Responsibilities**: three caches, none of which is a system of record.
+  1. **Session cache** — the `(session cookie → user)` resolution every
+     authenticated request otherwise costs two SELECTs to rebuild. Short TTL
+     (`CACHE_SESSION_TTL_SECONDS`, default 30s) plus explicit eviction on
+     logout, because instant revocation is the reason sessions live in a table
+     rather than in a JWT.
+  2. **Read cache** — the expensive assembled reads (`/api/topology`,
+     `/api/search`, `/api/subnets/tree`, `/api/subnets/capacity-overview`).
+     Keys embed a one-query fingerprint of the inventory tables, so a write
+     changes the key: a reader can never be served a pre-write payload, and
+     there is no invalidation step to get wrong.
+  3. **Rate-limit counters** — only when `RATE_LIMIT_STORE=redis`. Same
+     fleet-wide budget as the Postgres default, via an atomic Lua
+     check-and-increment instead of an UPSERT.
+
+  Set `REDIS_URL=` (empty) and every one of those falls back to Postgres; the
+  stack behaves exactly as it did before this service existed. See
+  `backend/app/cache.py` for the degradation policy — a Redis outage is always
+  a cache miss, never an error.
 
 ## Repository layout
 

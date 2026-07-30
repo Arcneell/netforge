@@ -8,17 +8,27 @@ one process: with N uvicorn workers or N replicas the effective limit
 becomes N x the configured value, and every restart hands every user a
 fresh AI quota (the one that costs real money in LLM tokens).
 
-Why PostgreSQL and not Redis
-----------------------------
-Postgres is already a hard dependency of the stack, so a self-hoster gets
-the shared counter for free — no new service to deploy, monitor, secure or
-back up. The cost is one extra statement on the write path (see "Cost"
-below), which is cheap next to the transaction the request is about to run
-anyway. Redis is the natural next step if the counter traffic ever becomes
-a measurable share of DB load: the interface here (`try_consume` /
-`purge_expired`) is deliberately narrow enough that a Redis implementation
-would be a drop-in `INCR` + `EXPIRE`, and only the two call sites would
-need rewiring.
+Two shared backends: PostgreSQL (default) and Redis
+---------------------------------------------------
+Postgres is a hard dependency of the stack, so `RATE_LIMIT_STORE=database`
+gives a self-hoster the shared counter for free — no new service to deploy,
+monitor, secure or back up. The cost is one extra statement on the write
+path (see "Cost" below), which is cheap next to the transaction the request
+is about to run anyway. That is why it stays the default.
+
+`RATE_LIMIT_STORE=redis` (`try_consume_redis`) is the same contract with the
+counter moved off the DB's write path: one `EVAL` per limited request doing
+the check-and-increment that `try_consume` expresses as an UPSERT. Worth it
+once counter traffic is a measurable share of DB load, or when the write
+limiter's per-IP budget is being hit often enough that the *rejections* — no
+DB work of their own, yet still a Postgres round trip — start to matter.
+Both functions return the same `Decision`, so the two call sites
+(`middleware/rate_limit.py`, `services/ai/rate_limit.py`) only pick a
+backend; their degradation policies are unchanged.
+
+Redis needs no equivalent of `purge_expired`: `EXPIRE` retires a bucket on
+its own, which is the one piece of housekeeping the Postgres store has to do
+by hand.
 
 Why tumbling buckets and not a true sliding window
 --------------------------------------------------
@@ -74,7 +84,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from threading import Lock
-from typing import cast
+from typing import Any, cast
 
 from sqlalchemy import Table, delete, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -195,6 +205,122 @@ async def try_consume(
         hits=int(row[0]),
         retry_after_seconds=seconds_until_next_bucket(window_seconds),
     )
+
+
+# Check-and-increment for the Redis backend, as one atomic script.
+#
+# Why a Lua script and not INCR-then-compare from Python: the naive form is a
+# read-modify-write across two round trips, so two workers hitting the same key
+# at the same instant can both see `cur < limit` and both increment past it.
+# `INCR` first and roll back on overflow is worse — a rejected call would
+# consume budget, breaking the semantics the Postgres store preserves via the
+# `WHERE hits < :limit` on its DO UPDATE.
+#
+# The bucket boundary comes from `TIME`, i.e. the *Redis server* clock, for the
+# same reason `try_consume` uses `now()` from the Postgres server: replicas with
+# a little NTP skew must still agree on which bucket they are incrementing.
+# `TIME` makes the script non-deterministic, which is fine on Redis >= 5 (effects
+# replication is the default there and Lua scripts may read the clock).
+#
+# NOT Redis Cluster safe: the key actually touched is `KEYS[1] .. ':' .. bucket`,
+# derived inside the script, so it is not a declared key. NetForge ships a single
+# Redis instance (docker-compose.yml) and primary/replica works fine; a Cluster
+# deployment would need the bucket computed client-side, at the cost of using the
+# app's clock instead of the server's.
+#
+# `EXPIRE` is set to the time remaining in the *current* bucket rather than a
+# full window, so a bucket never outlives its own window. That is the whole of
+# the Redis backend's housekeeping — there is no `purge_expired` equivalent.
+_CONSUME_LUA = """
+local window = tonumber(ARGV[1])
+local limit = tonumber(ARGV[2])
+local now = tonumber(redis.call('TIME')[1])
+local bucket = math.floor(now / window)
+local remaining = (bucket + 1) * window - now
+if remaining < 1 then remaining = 1 end
+local key = KEYS[1] .. ':' .. bucket
+local current = tonumber(redis.call('GET', key) or '0')
+if current >= limit then
+  return {-1, remaining}
+end
+local hits = redis.call('INCR', key)
+if hits == 1 then
+  redis.call('EXPIRE', key, remaining)
+end
+return {hits, remaining}
+"""
+
+# `register_script` wraps the body so calls go out as EVALSHA (with an automatic
+# re-EVAL if the server forgot the script, e.g. after a restart or SCRIPT FLUSH),
+# instead of shipping ~700 bytes of Lua on every limited request. Cached against
+# the client it was registered on so a test that swaps clients cannot reuse a
+# script bound to the previous one.
+_script_client: Any = None
+_script: Any = None
+
+
+def _consume_script(client: Any) -> Any:
+    global _script_client, _script
+    if _script is None or _script_client is not client:
+        _script = client.register_script(_CONSUME_LUA)
+        _script_client = client
+    return _script
+
+
+def reset_redis_script_cache() -> None:
+    """Test hook — forget the registered script and the client it was bound to."""
+    global _script_client, _script
+    _script_client = None
+    _script = None
+
+
+def redis_bucket_key(namespace: str, scope: str, key: str) -> str:
+    """Base key for a `(scope, key)` counter. The bucket number is appended by
+    `_CONSUME_LUA`, so this is a prefix and never a real key on its own."""
+    return f"{namespace}:rl:{scope}:{key}"
+
+
+async def try_consume_redis(
+    client: Any,
+    *,
+    namespace: str,
+    scope: str,
+    key: str,
+    limit: int,
+    window_seconds: int,
+) -> Decision:
+    """Redis-backed twin of `try_consume` — same contract, same `Decision`.
+
+    `namespace` is `CACHE_KEY_PREFIX`, threaded in by the caller rather than
+    read from settings here so this module keeps no dependency on
+    `app.cache` (which imports `CircuitBreaker` from it).
+
+    `client` is typed loosely on purpose: annotating it as `redis.asyncio.Redis`
+    would make this module unimportable wherever the optional dependency is
+    absent, and every caller already holds a concrete client.
+
+    Raises whatever the client raises when Redis is unreachable — deciding what
+    that means is the caller's job, exactly as with `try_consume`.
+    """
+    if limit <= 0:
+        # Mirrors `try_consume`: a zero/negative cap means "nothing is
+        # allowed", and short-circuiting avoids creating a key that could
+        # never be under the cap.
+        return Decision(
+            allowed=False, hits=0, retry_after_seconds=seconds_until_next_bucket(window_seconds)
+        )
+    window = max(1, int(window_seconds))
+    hits, remaining = await _consume_script(client)(
+        keys=[redis_bucket_key(namespace, scope, key)],
+        args=[window, limit],
+    )
+    hits = int(hits)
+    retry_after = max(1, int(remaining))
+    if hits < 0:
+        # Already at or above the cap for this bucket. Nothing was written, so
+        # a rejected call does not extend the penalty.
+        return Decision(allowed=False, hits=limit, retry_after_seconds=retry_after)
+    return Decision(allowed=True, hits=hits, retry_after_seconds=retry_after)
 
 
 async def purge_expired(engine: AsyncEngine) -> int:
@@ -368,7 +494,10 @@ __all__ = [
     "InProcessWindows",
     "maybe_purge_expired",
     "purge_expired",
+    "redis_bucket_key",
     "reset_purge_clock",
+    "reset_redis_script_cache",
     "seconds_until_next_bucket",
     "try_consume",
+    "try_consume_redis",
 ]

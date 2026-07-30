@@ -3,7 +3,7 @@ name: ci
 # Pull-request + main-push gate. Keeps merges green:
 #   - backend:      lint + unit tests (AsyncMock, no DB) + coverage report
 #   - frontend:     i18n parity + unit tests w/ coverage + lint + prod build
-#   - integration:  backend tests against a real Postgres 16 service
+#   - integration:  backend tests against real Postgres 16 + Redis 7 services
 #   - e2e:          Playwright critical flows against a live backend + Vite
 #   - docker-build: both production images build cleanly (no push)
 #   - audit:        dependency vulnerability scan
@@ -101,11 +101,12 @@ jobs:
       - name: Production build (runs vue-tsc + vite build)
         run: npm run build
 
-  # Backend integration tests against a real Postgres 16 — the unit job above
-  # stays mock-only and DB-free on purpose; this one exercises the SQL that
-  # mocks can't (GiST exclusion, triggers, INET/CIDR operators). The tests
-  # apply `alembic upgrade head` themselves on the URL below, so no migration
-  # step is needed here.
+  # Backend integration tests against a real Postgres 16 and a real Redis 7 —
+  # the unit job above stays mock-only and dependency-free on purpose; this one
+  # exercises what mocks can't: the SQL (GiST exclusion, triggers, INET/CIDR
+  # operators) and the rate-limit Lua script (atomicity under concurrency, the
+  # server-clock bucket, EXPIRE). The tests apply `alembic upgrade head`
+  # themselves on the URL below, so no migration step is needed here.
   integration:
     runs-on: ubuntu-latest
     defaults:
@@ -128,6 +129,15 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -143,12 +153,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Integration tests (real Postgres)
+      - name: Integration tests (real Postgres + real Redis)
         env:
-          # The integration suite keys off this variable: it points at the
-          # service container published on localhost above and is the URL
-          # the tests run `alembic upgrade head` against.
+          # The integration suite keys off these variables: each points at the
+          # matching service container published on localhost above. Modules
+          # skip at collection when their variable is absent, so a missing one
+          # silently shrinks the suite — keep both set here.
           NETFORGE_INTEGRATION_DB_URL: postgresql+asyncpg://netforge:netforge@localhost:5432/netforge
+          NETFORGE_INTEGRATION_REDIS_URL: redis://localhost:6379/0
         run: pytest -q tests/integration
 
   # Playwright E2E on the critical flows (add IP, create switch, topology).

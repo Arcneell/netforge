@@ -15,9 +15,16 @@ export interface paths {
          * Health
          * @description Healthcheck consumed by Docker, Zabbix, etc.
          *
-         *     Returns `{ status, db, uptime_s }`. If the DB is unreachable the endpoint
-         *     still returns 200 with `db: "down"` so that clients can distinguish
-         *     app-down from db-down — this matches the behaviour described in docs/07.
+         *     Returns `{ status, db, cache, uptime_s }`. If the DB is unreachable the
+         *     endpoint still returns 200 with `db: "down"` so that clients can
+         *     distinguish app-down from db-down — this matches the behaviour described in
+         *     docs/07.
+         *
+         *     `cache` reports Redis: `"disabled"` when `REDIS_URL` is unset (the
+         *     default — not a fault), `"ok"` when it answers PING, `"down"` otherwise.
+         *     A down cache is deliberately NOT reflected in `status`: every consumer of
+         *     it degrades to querying Postgres (see `app/cache.py`), so the app is still
+         *     healthy. Alert on the field, don't page on the status.
          */
         get: operations["health_api_health_get"];
         put?: never;

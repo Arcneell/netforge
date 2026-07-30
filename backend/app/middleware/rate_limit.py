@@ -24,19 +24,22 @@ instead of duplicating the auth path here.
 
 Where the counter lives
 -----------------------
-In `rate_limit_counters` (PostgreSQL), not in this process. The previous
-in-memory `deque` was per worker, so a deployment with N uvicorn workers or
-N replicas enforced N x the configured cap and a script could simply spread
-its load across workers. See `app/services/rate_limit_store.py` for the
-schema/algorithm rationale (tumbling buckets, single atomic UPSERT, why
-Postgres rather than Redis).
+Outside this process, so the cap is a fleet-wide budget rather than a
+per-worker one: either in `rate_limit_counters` (PostgreSQL,
+`RATE_LIMIT_STORE=database`, the default) or in Redis
+(`RATE_LIMIT_STORE=redis`). The previous in-memory `deque` was per worker, so
+a deployment with N uvicorn workers or N replicas enforced N x the configured
+cap and a script could simply spread its load across workers. See
+`app/services/rate_limit_store.py` for the algorithm rationale shared by both
+backends (tumbling buckets, one atomic check-and-increment) and for when
+Redis is worth the extra service.
 
-Cost on the hot path: exactly one extra statement — one round trip on an
-AUTOCOMMIT connection — for each POST/PUT/PATCH/DELETE and each expensive
-export GET. Ordinary reads are never rate-limited: the dashboard and
-topology views fire several GETs per page load and we don't want to
-penalise normal browsing. Exempt paths (health, auth) skip the counter
-entirely, so probes cost nothing.
+Cost on the hot path: exactly one extra round trip — an AUTOCOMMIT statement
+on Postgres, or one EVALSHA on Redis — for each POST/PUT/PATCH/DELETE and
+each expensive export GET. Ordinary reads are never rate-limited: the
+dashboard and topology views fire several GETs per page load and we don't
+want to penalise normal browsing. Exempt paths (health, auth) skip the
+counter entirely, so probes cost nothing.
 
 Degradation policy: FAIL OPEN
 -----------------------------
@@ -55,8 +58,8 @@ per-worker algorithm). Rationale:
 The AI limiter (`app/services/ai/rate_limit.py`) makes the *opposite*
 choice, deliberately: it guards spend, not load.
 
-A circuit breaker keeps a Postgres outage from costing every write a
-connection timeout — one failure parks the DB path for
+A circuit breaker keeps a Postgres (or Redis) outage from costing every write
+a connection timeout — one failure parks the shared path for
 `_CIRCUIT_COOLDOWN_SECONDS`, and the fallback window carries the load.
 
 Implementation note: this is a raw ASGI middleware, NOT a
@@ -70,6 +73,7 @@ SSE on `/api/ai/query/stream` actually flushes per-token.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -84,6 +88,7 @@ from app.services.rate_limit_store import (
     InProcessWindows,
     maybe_purge_expired,
     try_consume,
+    try_consume_redis,
 )
 from app.utils.request import client_ip
 
@@ -147,18 +152,26 @@ class WriteRateLimitMiddleware:
         max_per_window: int,
         window_seconds: int,
         engine: AsyncEngine | None = None,
+        redis_client: Any = None,
+        cache_key_prefix: str = "netforge",
     ) -> None:
-        """`engine` is the shared-counter backend.
+        """`engine` / `redis_client` select the shared-counter backend.
 
-        Passing `None` selects the legacy process-local window. That is the
+        `redis_client` wins when both are passed — `main.create_app` only ever
+        passes one, and the precedence keeps the constructor total rather than
+        raising on a combination that cannot occur.
+
+        Passing neither selects the legacy process-local window. That is the
         `RATE_LIMIT_STORE=memory` mode (single-worker deployments that want
         zero extra DB traffic) and what the unit suite uses so it never
-        needs a database.
+        needs a database or a Redis.
         """
         self.app = app
         self._max = max_per_window
         self._window = int(window_seconds)
         self._engine = engine
+        self._redis = redis_client
+        self._prefix = cache_key_prefix
         self._fallback = _FALLBACK_WINDOWS
         self._breaker = CircuitBreaker(_CIRCUIT_COOLDOWN_SECONDS)
 
@@ -200,18 +213,35 @@ class WriteRateLimitMiddleware:
         one deque and each would eat into the other's budget.
         """
         fallback_key = f"{rate_scope}:{key}"
-        if self._engine is None or self._breaker.is_open():
+        engine = self._engine
+        redis = self._redis
+        if self._breaker.is_open():
             return self._fallback.consume(
                 fallback_key, limit=self._max, window_seconds=self._window
             )
         try:
-            decision = await try_consume(
-                self._engine,
-                scope=rate_scope,
-                key=key,
-                limit=self._max,
-                window_seconds=self._window,
-            )
+            if redis is not None:
+                decision = await try_consume_redis(
+                    redis,
+                    namespace=self._prefix,
+                    scope=rate_scope,
+                    key=key,
+                    limit=self._max,
+                    window_seconds=self._window,
+                )
+            elif engine is not None:
+                decision = await try_consume(
+                    engine,
+                    scope=rate_scope,
+                    key=key,
+                    limit=self._max,
+                    window_seconds=self._window,
+                )
+            else:
+                # RATE_LIMIT_STORE=memory — no shared backend was wired.
+                return self._fallback.consume(
+                    fallback_key, limit=self._max, window_seconds=self._window
+                )
         except Exception:
             self._breaker.record_failure()
             logger.warning(
@@ -224,10 +254,12 @@ class WriteRateLimitMiddleware:
                 fallback_key, limit=self._max, window_seconds=self._window
             )
         self._breaker.record_success()
-        # Housekeeping, throttled to once per 10 minutes per worker and
-        # never allowed to raise. Hung off the write path because it is the
-        # only path that creates counter rows in the first place.
-        await maybe_purge_expired(self._engine)
+        # Housekeeping, throttled to once per 10 minutes per worker and never
+        # allowed to raise. Hung off the write path because it is the only path
+        # that creates counter rows in the first place. Postgres only: Redis
+        # retires its own buckets via EXPIRE.
+        if self._engine is not None and self._redis is None:
+            await maybe_purge_expired(self._engine)
         return decision
 
     async def _reject(

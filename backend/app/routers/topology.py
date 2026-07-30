@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.db import get_session as get_db
 from app.schemas.topology import TopologyResponse
 from app.services import topology as service
+from app.services.read_cache import cached_read
 
 router = APIRouter(prefix="/topology", tags=["topology"])
+
+# Module level: building a TypeAdapter walks the whole model, which is not
+# something to redo on every request.
+_RESPONSE_ADAPTER = TypeAdapter(TopologyResponse)
 
 
 @router.get(
@@ -42,10 +48,24 @@ async def get_topology(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> TopologyResponse:
-    return await service.build_topology(
+    # Cached when REDIS_URL is set — the SPA refetches the whole graph on every
+    # filter toggle. `cached_read` keys on a fingerprint of the inventory, so a
+    # write is never invisible here; without Redis this is a direct call.
+    return await cached_read(
         db,
-        site_id=site_id,
-        room_id=room_id,
-        vlan_id=vlan_id,
-        include_devices=include_devices,
+        name="topology",
+        params={
+            "site_id": site_id,
+            "room_id": room_id,
+            "vlan_id": vlan_id,
+            "include_devices": include_devices,
+        },
+        adapter=_RESPONSE_ADAPTER,
+        builder=lambda: service.build_topology(
+            db,
+            site_id=site_id,
+            room_id=room_id,
+            vlan_id=vlan_id,
+            include_devices=include_devices,
+        ),
     )
