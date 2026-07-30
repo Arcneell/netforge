@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { Eye, EyeOff } from 'lucide-vue-next'
 import FormPage from '@/components/FormPage.vue'
 import FormSection from '@/components/FormSection.vue'
 import Input from '@/components/ui/Input.vue'
@@ -14,6 +15,7 @@ import { fetchAllPages, roomsApi, switchesApi } from '@/api'
 import type { Room, SwitchCreate, SwitchUpdate } from '@/api'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
+import { isValidIpv4 } from '@/utils/cidr'
 
 const route = useRoute()
 const router = useRouter()
@@ -67,6 +69,12 @@ const saving = ref(false)
 const loading = ref(false)
 const rooms = ref<Room[]>([])
 
+// SNMP community is a shared secret in plain text on the wire (SNMPv1/v2c
+// has no concept of hiding it), so masking it by default is mostly a "don't
+// shoulder-surf it" courtesy — a toggle to reveal it is standard for that
+// class of field (same idea as a password field with a show/hide eye).
+const showSnmpCommunity = ref(false)
+
 onMounted(async () => {
   // Rooms populate the placement select in both modes; they are not part of
   // the entity load, so a slow /rooms never blocks the create form.
@@ -102,9 +110,21 @@ const roomOptions = computed(() => [
   ...rooms.value.map((r) => ({ value: r.id, label: r.code })),
 ])
 
+// Real IPv4 parsing (utils/cidr.ts) instead of a hand-rolled regex — a regex
+// like `\d{1,3}` only checks digit count, so it happily accepted an
+// out-of-range octet.
+function validateManagementIp(): boolean {
+  if (form.management_ip && !isValidIpv4(form.management_ip.trim())) {
+    errors.management_ip = t('common.validation.invalidIp')
+    return false
+  }
+  errors.management_ip = null
+  return true
+}
+
 function validate(): boolean {
   let ok = true
-  errors.name = errors.port_count = errors.management_ip = null
+  errors.name = errors.port_count = null
   if (!form.name.trim()) {
     errors.name = t('common.validation.required')
     ok = false
@@ -116,10 +136,7 @@ function validate(): boolean {
     errors.port_count = t('common.validation.required')
     ok = false
   }
-  if (form.management_ip && !/^\d{1,3}(\.\d{1,3}){3}$/.test(form.management_ip.trim())) {
-    errors.management_ip = t('common.validation.invalidIp')
-    ok = false
-  }
+  if (!validateManagementIp()) ok = false
   return ok
 }
 
@@ -223,6 +240,7 @@ const breadcrumb = computed(() => [
               placeholder="10.0.0.10"
               class="font-mono"
               autocomplete="off"
+              @blur="validateManagementIp()"
             />
           </template>
         </FormField>
@@ -301,7 +319,25 @@ const breadcrumb = computed(() => [
             <HelpTooltip :text="t('switch.help.snmpCommunity')" />
           </template>
           <template #default="{ id: fieldId }">
-            <Input :id="fieldId" v-model="form.snmp_community" type="password" autocomplete="off" />
+            <div class="relative">
+              <Input
+                :id="fieldId"
+                v-model="form.snmp_community"
+                :type="showSnmpCommunity ? 'text' : 'password'"
+                autocomplete="off"
+                class="pr-9"
+              />
+              <button
+                type="button"
+                class="absolute inset-y-0 right-0 flex items-center px-2.5 text-fg-muted hover:text-fg transition-colors duration-150 ease-soft"
+                :aria-label="showSnmpCommunity ? t('common.hide') : t('common.reveal')"
+                :title="showSnmpCommunity ? t('common.hide') : t('common.reveal')"
+                @click="showSnmpCommunity = !showSnmpCommunity"
+              >
+                <EyeOff v-if="showSnmpCommunity" class="w-4 h-4" aria-hidden="true" />
+                <Eye v-else class="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
           </template>
         </FormField>
       </template>

@@ -16,6 +16,7 @@ import { useApi } from '@/composables/useApi'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
+import { useRowHighlight } from '@/composables/useRowHighlight'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -24,6 +25,10 @@ const { success } = useToast()
 const { notify } = useApiErrorMessage()
 // Reserved for future filter-aware fetches; useApi keeps toast wiring centralised.
 useApi()
+// Scrolls to + rings the row named by `?highlight=<id>` — GlobalSearch has
+// no per-VLAN detail route, so this is how a VLAN search result actually
+// lands the user on the right row instead of just the bare list.
+const { applyHighlight, rowClass } = useRowHighlight()
 
 const items = ref<Vlan[]>([])
 const total = ref(0)
@@ -45,7 +50,13 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  // Only meaningful on whichever page/tab actually holds the target row —
+  // if a search result points at a VLAN past page 1, this silently does
+  // nothing (no cross-page lookup here); see useRowHighlight.
+  await applyHighlight()
+})
 
 // Create and edit are their own pages now; the list only navigates.
 function onNew() {
@@ -112,6 +123,7 @@ const columns = computed<DataTableColumn[]>(() => [
       :loading="loading"
       :empty-title="t('common.empty.title')"
       :empty-description="t('vlan.empty')"
+      :row-class="rowClass"
     >
       <template v-if="isAdmin" #empty-action>
         <Button variant="primary" @click="onNew">

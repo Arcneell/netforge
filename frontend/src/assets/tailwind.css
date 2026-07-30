@@ -206,9 +206,16 @@ samp,
   /* THE LEGEND. Monospace, uppercase, tracked out — how a port, a panel and a
      cable are labelled in the real world. Every column header, every small
      caption, every eyebrow in the app is this. It is the structural device
-     that makes two dozen unrelated screens read as one machine. */
+     that makes two dozen unrelated screens read as one machine.
+
+     Uses `fg-muted`, not `fg-subtle` — `fg-subtle` on `surface` only clears
+     ~3.6:1 (light) / ~3.7:1 (dark), under the 4.5:1 AA floor for this much
+     text. `fg-muted` on `surface` is ~6.3:1 in both themes. `fg-subtle`
+     stays reserved for decorative use (dividers, placeholder icons) where
+     AA text contrast doesn't apply. Plate-background legends already
+     override this with `text-plate-fg-muted` and are unaffected. */
   .nf-legend {
-    @apply font-mono text-2xs font-medium uppercase text-fg-subtle;
+    @apply font-mono text-2xs font-medium uppercase text-fg-muted;
     letter-spacing: 0.14em;
   }
 

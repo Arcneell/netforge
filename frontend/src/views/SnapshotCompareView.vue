@@ -116,7 +116,7 @@ const changeRows = computed<(SnapshotChange & { id: string })[]>(() =>
   (result.value?.changes ?? []).map((c) => ({ ...c, id: `${c.entity}:${c.entity_id}` })),
 )
 
-const changeColumns = computed<DataTableColumn[]>(() => [
+const changeColumns = computed<DataTableColumn<SnapshotChange & { id: string }>[]>(() => [
   { key: 'entity', label: t('snapshots.compare.colEntity'), cellClass: 'w-32' },
   { key: 'entity_id', label: 'ID', align: 'right', cellClass: 'w-20' },
   { key: 'status', label: t('snapshots.compare.colStatus'), cellClass: 'w-28' },

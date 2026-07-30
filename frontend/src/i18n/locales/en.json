@@ -18,6 +18,8 @@
     "menu": "Menu",
     "close": "Close",
     "confirm": "Confirm",
+    "reveal": "Show",
+    "hide": "Hide",
     "yes": "Yes",
     "no": "No",
     "actions": "Actions",
@@ -734,7 +736,8 @@
     "subtitle": "Personal keys to call the API from a script.",
     "help": {
       "section": "API tokens let an external script or CI job call NetForge as you. They inherit your permissions, so treat them like a password — don't share them, and revoke any you stop using.",
-      "expiry": "Pick a date when the token should stop working. Leave empty for a token that never expires (you can always revoke it manually)."
+      "expiry": "Pick a date when the token should stop working. Leave empty for a token that never expires (you can always revoke it manually).",
+      "scope": "Read-only tokens can never create, update or delete anything — even if your account is an admin. Pick it for CI jobs and scripts that only need to fetch data."
     },
     "new": "New token",
     "generate": "Generate",
@@ -759,7 +762,14 @@
       "created": "Created",
       "lastUsed": "Last used",
       "status": "Status",
-      "expiresAt": "Expires"
+      "expiresAt": "Expires",
+      "scope": "Scope"
+    },
+    "scope": {
+      "full": "Full access",
+      "readOnly": "Read-only",
+      "fullDescription": "Inherits your account's full role — the same access you have, including writes.",
+      "readOnlyDescription": "Limited to read (GET) requests, even if your account is an admin. Safer for scripts and CI jobs that only need to fetch data."
     },
     "status": {
       "active": "Active",
@@ -772,13 +782,7 @@
     }
   },
   "topology": {
-    "subtitle": "Visual map of your switches and how they're cabled.",
-    "wip": {
-      "title": "The map is being rebuilt",
-      "body": "The old graph view is paused while we design a clearer one. Your links and ports are untouched and still readable from the pages below.",
-      "viaSwitches": "Open a switch to see its ports and what is plugged into them.",
-      "viaDevices": "Find a device and the port that serves it."
-    },
+    "subtitle": "How your sites, switches and devices are actually cabled together.",
     "layout": "Layout",
     "layouts": {
       "dagre": "Hierarchical",
@@ -787,17 +791,72 @@
       "circle": "Circle",
       "grid": "Grid"
     },
+    "view": {
+      "label": "View mode",
+      "graph": "Graph",
+      "list": "List"
+    },
     "fit": "Fit to screen",
     "relayout": "Re-run layout",
     "exportPng": "Export PNG",
-    "selectPrompt": "Click a switch or a link in the graph to see its details here.",
-    "openSwitch": "Open switch",
-    "link": "Link",
-    "empty": {
-      "title": "No topology to display",
-      "description": "Create switches and inter-switch links to see them appear here."
+    "suggestLinks": "Suggest links",
+    "truncatedNotice": "Large inventory — the graph shows a capped subset.",
+    "stats": {
+      "switches": "Switches",
+      "devices": "Devices",
+      "links": "Links",
+      "sites": "Sites"
     },
-    "help": "Each node is a switch, each edge is an inter-switch link. Click an element to see its details on the right. Use the layout dropdown to try different arrangements when the graph gets crowded."
+    "warnings": {
+      "isolated": "1 switch with nothing attached | {count} switches with nothing attached",
+      "unplaced": "1 node with no room | {count} nodes with no room"
+    },
+    "kinds": {
+      "site": "Site",
+      "room": "Room",
+      "switch": "Switch",
+      "device": "Device"
+    },
+    "edgeKinds": {
+      "link": "Cable",
+      "attachment": "Device port"
+    },
+    "filters": {
+      "allSites": "All sites",
+      "allRooms": "All rooms",
+      "allVlans": "All VLANs",
+      "showDevices": "Show devices"
+    },
+    "legend": {
+      "title": "Legend",
+      "isolated": "Nothing attached"
+    },
+    "table": {
+      "nodesHeading": "Switches and devices",
+      "edgesHeading": "Connections",
+      "name": "Name",
+      "kind": "Kind",
+      "location": "Location",
+      "ports": "Ports used",
+      "connections": "Links",
+      "endpoints": "Endpoints",
+      "media": "Media",
+      "speed": "Speed",
+      "unplaced": "No room"
+    },
+    "inspector": {
+      "region": "Selection details",
+      "title": "Nothing selected",
+      "hint": "Pick a switch, a device or a cable to see its details, its neighbours and where to go next.",
+      "neighbours": "Connected to",
+      "noNeighbours": "Nothing is cabled or plugged into this one yet.",
+      "open": "Open full record"
+    },
+    "empty": {
+      "title": "Nothing to map yet",
+      "body": "The graph draws switches, the devices plugged into them and the cables between them. Add a switch to get started.",
+      "cta": "Go to switches"
+    }
   },
   "cable": {
     "label": "Cable",

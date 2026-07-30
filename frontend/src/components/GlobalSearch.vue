@@ -95,9 +95,11 @@ watch(debounced, async (q) => {
   }
 })
 
-function routeFor(
-  r: SearchResult,
-): { name: string; params?: Record<string, string | number> } | null {
+function routeFor(r: SearchResult): {
+  name: string
+  params?: Record<string, string | number>
+  query?: Record<string, string>
+} | null {
   switch (r.type) {
     case 'switch':
       return { name: 'switch-detail', params: { id: r.id } }
@@ -119,15 +121,17 @@ function routeFor(
     case 'subnet':
       return { name: 'subnet-detail', params: { id: r.id } }
     case 'vlan':
-      // No per-VLAN detail route — drop the user on the VLAN list. They can
-      // spot the row by the matching id/name we just surfaced in the label.
-      return { name: 'vlans' }
+      // No per-VLAN detail route — land on the VLAN list with `?highlight=`
+      // so the list scrolls to and rings the matching row (useRowHighlight)
+      // instead of just dropping the user on the bare list.
+      return { name: 'vlans', query: { highlight: String(r.id) } }
     case 'site':
+      // Sites aren't owners of a dedicated detail page; they live in the
+      // Sites tab of SettingsView. `?tab=` opens the right tab, `?highlight=`
+      // rings the matching row once it's loaded.
+      return { name: 'settings', query: { tab: 'sites', highlight: String(r.id) } }
     case 'room':
-      // Sites and rooms aren't owners of a dedicated detail page; they live
-      // in SettingsView, which renders both lists. Better than 404'ing or
-      // pretending the click did something.
-      return { name: 'settings' }
+      return { name: 'settings', query: { tab: 'rooms', highlight: String(r.id) } }
     default:
       return null
   }
@@ -190,7 +194,7 @@ function flatIndex(groupIdx: number, itemIdx: number): number {
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[12vh] bg-zinc-900/30 dark:bg-black/60 backdrop-blur-sm"
+        class="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[12vh] bg-plate/70 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
         :aria-label="t('common.search')"

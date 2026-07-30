@@ -16,6 +16,7 @@ import { vrfsApi } from '@/api/endpoints/vrfs'
 import type { Vrf } from '@/api/endpoints/vrfs'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { useToast } from '@/composables/useToast'
+import { isValidCidr, isValidIpv4 } from '@/utils/cidr'
 
 const route = useRoute()
 const router = useRouter()
@@ -142,20 +143,39 @@ const parentOptions = computed(() => [
   ...candidateParents.value.map((s) => ({ value: s.id, label: s.cidr })),
 ])
 
-function validate(): boolean {
-  let ok = true
-  errors.cidr = errors.site_id = errors.gateway = null
-  if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(form.cidr.trim())) {
+// Real CIDR/IP parsing (utils/cidr.ts, the same module IpGrid and the
+// address-space band use), not a hand-rolled regex — a regex like
+// `\d{1,3}` happily accepts "999.1.1.1/99" since it only checks digit
+// *count*, not octet or prefix range.
+function validateCidr(): boolean {
+  if (!isValidCidr(form.cidr.trim())) {
     errors.cidr = t('common.validation.invalidCidr')
-    ok = false
+    return false
   }
-  if (form.gateway && !/^\d{1,3}(\.\d{1,3}){3}$/.test(form.gateway.trim())) {
+  errors.cidr = null
+  return true
+}
+
+function validateGateway(): boolean {
+  if (form.gateway && !isValidIpv4(form.gateway.trim())) {
     errors.gateway = t('common.validation.invalidIp')
-    ok = false
+    return false
   }
+  errors.gateway = null
+  return true
+}
+
+function validate(): boolean {
+  // Both validators run as separate statements (not `a() && b()`) so every
+  // field's error surfaces at once instead of short-circuiting on the first.
+  const cidrOk = validateCidr()
+  const gatewayOk = validateGateway()
+  let ok = cidrOk && gatewayOk
   if (!form.site_id) {
     errors.site_id = t('common.validation.required')
     ok = false
+  } else {
+    errors.site_id = null
   }
   return ok
 }
@@ -246,6 +266,7 @@ const breadcrumb = computed(() => [
               class="font-mono"
               autocomplete="off"
               :readonly="isEdit"
+              @blur="form.cidr.trim() && validateCidr()"
             />
           </template>
         </FormField>
@@ -262,6 +283,7 @@ const breadcrumb = computed(() => [
               placeholder="10.0.30.1"
               class="font-mono"
               autocomplete="off"
+              @blur="validateGateway()"
             />
           </template>
         </FormField>

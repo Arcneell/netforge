@@ -17,7 +17,12 @@ export function useApiErrorMessage() {
     if (err instanceof ApiError) {
       const key = `errorCodes.${err.code}`
       if (te(key)) return t(key)
-      return err.message
+      // Unknown backend error code: the raw message is backend-internal
+      // English text, not something we want to show a French-speaking user
+      // verbatim. Show the generic translated fallback and keep the raw
+      // message in the console for whoever's debugging.
+      console.warn(`Unmapped API error code "${err.code}":`, err.message)
+      return t('errors.unknown')
     }
     if (err instanceof Error) return err.message
     return t('errors.unknown')

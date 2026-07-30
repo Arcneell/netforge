@@ -157,7 +157,7 @@ watch(
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-zinc-900/25 dark:bg-black/60"
+        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-plate/70"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="title ? titleId : undefined"
@@ -178,9 +178,11 @@ watch(
             tabindex="-1"
             :class="[
               // Sheet on mobile (full width, rounded at the top only), a
-              // floating dialog on desktop.
+              // floating dialog on desktop. Radius matches the rest of the
+              // design system (`rounded-lg`, same as `.nf-card`) instead of
+              // the larger `2xl`/`xl` this used to carry on its own.
               'bg-surface w-full focus:outline-none shadow-xl',
-              'rounded-t-2xl sm:rounded-xl',
+              'rounded-t-lg sm:rounded-lg',
               'border-t border-x sm:border border-border',
               sizeClass[size],
             ]"
@@ -207,7 +209,7 @@ watch(
             </div>
             <footer
               v-if="$slots.footer"
-              class="px-6 py-4 border-t border-border bg-bg/60 rounded-b-2xl sm:rounded-b-xl"
+              class="px-6 py-4 border-t border-border bg-bg/60 rounded-b-lg"
             >
               <slot name="footer" />
             </footer>

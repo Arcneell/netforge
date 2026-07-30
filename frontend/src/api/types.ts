@@ -157,6 +157,11 @@ export type TopologyEdge = S['TopologyEdge']
 export type TopologyNodeData = S['TopologyNodeData']
 export type TopologyEdgeData = S['TopologyEdgeData']
 export type TopologyResponse = S['TopologyResponse']
+export type TopologyStats = S['TopologyStats']
+// The generator inlines these unions into the node/edge shapes rather than
+// emitting them as named components, so they're derived rather than aliased.
+export type TopologyNodeKind = TopologyNodeData['kind']
+export type TopologyEdgeKind = TopologyEdgeData['kind']
 
 // ---------------------------------------------------------------------------
 // Imports
