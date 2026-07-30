@@ -46,7 +46,7 @@ services:
     # docker-compose.yml. No persistence and no password locally: a dev cache
     # that starts cold is a feature (it makes "did my change actually land?"
     # unambiguous), and the port is loopback-only below.
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
