@@ -22,7 +22,7 @@ from app.models.switch import Switch
 from app.models.user import ApiToken, AuditLog, Session, User
 from app.models.vlan import Vlan
 from app.models.vrf import Vrf
-from app.models.webhook import Webhook, WebhookDelivery
+from app.models.webhook import Webhook, WebhookDelivery, WebhookOutbox
 
 __all__ = [
     "AIRunKind",
@@ -52,4 +52,5 @@ __all__ = [
     "Vrf",
     "Webhook",
     "WebhookDelivery",
+    "WebhookOutbox",
 ]

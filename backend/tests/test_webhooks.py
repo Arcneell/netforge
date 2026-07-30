@@ -8,12 +8,15 @@ and the request-scoped ContextVar queue.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
+from unittest.mock import patch
 
 import pytest
 
+from app.services import webhooks as webhooks_module
 from app.services.webhooks import (
     WebhookEvent,
     _drop_pending,
@@ -87,6 +90,35 @@ def test_generate_secret_fits_db_column() -> None:
 
 
 # --- WebhookEvent payload --------------------------------------------------
+
+
+def test_event_payload_redacts_sensitive_fields() -> None:
+    """Fix #3: `snmp_community` (and anything else in
+    `audit.SENSITIVE_FIELDS`) must never reach a subscriber in plaintext,
+    even if a future caller builds a `WebhookEvent` straight from a raw
+    column dump instead of the already-redacted audit `changes` dict."""
+    e = WebhookEvent(
+        entity="switch",
+        action="update",
+        entity_id=9,
+        before={"snmp_community": "public", "name": "SW-01"},
+        after={"snmp_community": "private", "name": "SW-01"},
+        user_id=1,
+    )
+    payload = e.to_payload()
+    assert payload["before"]["snmp_community"] == "***"
+    assert payload["after"]["snmp_community"] == "***"
+    assert payload["before"]["name"] == "SW-01"
+    assert payload["after"]["name"] == "SW-01"
+
+
+def test_event_payload_handles_none_before_after() -> None:
+    e = WebhookEvent(
+        entity="site", action="create", entity_id=1, before=None, after={"code": "HQ"}, user_id=None
+    )
+    payload = e.to_payload()
+    assert payload["before"] is None
+    assert payload["after"] == {"code": "HQ"}
 
 
 def test_event_payload_has_stable_keys() -> None:
@@ -177,3 +209,44 @@ def test_take_committed_returns_empty_when_no_commit_happened() -> None:
     # Without calling _promote_pending_to_committed, the committed bucket is
     # untouched — so the middleware would dispatch nothing.
     assert take_committed() == []
+
+
+# --- bounded dispatch concurrency (Fix #5) ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deliver_one_bounded_never_exceeds_the_semaphore_limit() -> None:
+    """`_dispatch_events` used to `asyncio.gather` one `_deliver_one` task
+    per event x webhook pair with no cap — each opens its own DB session,
+    so a mutation with many subscribed webhooks (or a bulk import queuing
+    many events) could saturate the pool. `_deliver_one_bounded` gates
+    real dispatch through a semaphore; this pins that the gate actually
+    holds under concurrent load, independent of the HTTP/DB internals of
+    `_deliver_one` (mocked out here)."""
+    concurrent = 0
+    max_concurrent = 0
+    lock = asyncio.Lock()
+
+    async def fake_deliver_one(webhook_id, url, secret, ev):
+        nonlocal concurrent, max_concurrent
+        async with lock:
+            concurrent += 1
+            max_concurrent = max(max_concurrent, concurrent)
+        await asyncio.sleep(0.01)
+        async with lock:
+            concurrent -= 1
+
+    ev = WebhookEvent(
+        entity="port", action="update", entity_id=1, before=None, after=None, user_id=None
+    )
+    semaphore = asyncio.Semaphore(2)
+
+    with patch.object(webhooks_module, "_deliver_one", fake_deliver_one):
+        await asyncio.gather(
+            *[
+                webhooks_module._deliver_one_bounded(semaphore, i, "http://x", "s", ev)
+                for i in range(10)
+            ]
+        )
+
+    assert max_concurrent <= 2

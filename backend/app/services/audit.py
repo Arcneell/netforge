@@ -15,20 +15,30 @@ What we **do not** audit:
   - `audit_log` itself.
   - `port_vlan` (no integer PK; the parent `ports` mutation is logged
     anyway).
+
+Retention: unlike `webhook_deliveries` (services/webhooks.py) and
+`ai_run_logs` (services/ai/scheduler.py), `audit_log` has no background loop
+or request-scoped dispatcher of its own to hang a lazy purge off — every
+audited mutation runs `_write_audit_row` on the SAME `Connection` already
+open for that mutation, so that's where the purge lives too (see
+`_maybe_purge_audit_log`), gated by `Settings.audit_log_retention_days`
+(0 = disabled, the conservative default for an audit trail).
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from contextvars import ContextVar
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import event, insert
+from sqlalchemy import delete, event, insert
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Mapper
 
+from app.config import get_settings
 from app.models.core import Room, Site
 from app.models.device import Device
 from app.models.ip import Ip
@@ -55,6 +65,23 @@ current_request_ip_var: ContextVar[str | None] = ContextVar(
 current_request_ua_var: ContextVar[str | None] = ContextVar(
     "current_request_ua", default=None
 )
+
+
+# Column names whose raw value must never leave the process boundary —
+# not in an audit_log.changes row, not in a webhook payload — even though
+# the value lives in plaintext in the DB (e.g. `Switch.snmp_community`).
+# `webhooks.WebhookEvent.to_payload` re-applies `redact_sensitive` on its
+# own before/after dicts as a second line of defence, since `before`/
+# `after` there are built from the same `changes` dict this module writes.
+SENSITIVE_FIELDS: frozenset[str] = frozenset({"snmp_community"})
+
+
+def redact_sensitive(data: dict[str, Any]) -> dict[str, Any]:
+    """Mask sensitive column values before they're persisted or dispatched."""
+    return {
+        key: ("***" if key in SENSITIVE_FIELDS and value is not None else value)
+        for key, value in data.items()
+    }
 
 
 # (Model, entity name written into audit_log.entity)
@@ -139,10 +166,10 @@ def _write_audit_row(
     )
     # Queue an outbound webhook event for this mutation. Dispatch is
     # deferred until after the response is known to be successful — see
-    # `services/webhooks.py::dispatch_pending_in_background`.
-    from app.services.webhooks import queue_event
+    # `services/webhooks.py::dispatch_committed_in_background`.
+    from app.services.webhooks import queue_event, write_outbox_row
 
-    queue_event(
+    webhook_event = queue_event(
         entity=entity,
         action=action.value,
         entity_id=entity_id,
@@ -150,6 +177,60 @@ def _write_audit_row(
         after=changes.get("after") if isinstance(changes, dict) else None,
         user_id=current_user_id_var.get(),
     )
+    # Persist the same event into `webhook_outbox` on THIS connection — the
+    # same durability guarantee `insert(AuditLog)` above already has. Same
+    # transaction, same commit/rollback fate. See `write_outbox_row`'s
+    # docstring and the `webhook_outbox` module comment in
+    # `app/models/webhook.py` for the full rationale (Codex audit: the
+    # committed-events ContextVar had nothing durable behind it, so a
+    # process crash between commit and the fire-and-forget dispatch lost
+    # the event for good).
+    write_outbox_row(connection, webhook_event)
+
+    _maybe_purge_audit_log(connection)
+
+
+# How often a mutation bothers checking for stale rows to purge. Same lazy-
+# cleanup idiom as `webhook_deliveries` (services/webhooks.py) and
+# `ai_run_logs` (services/ai/scheduler.py) — the difference is *where* it's
+# anchored: those two hang off a dispatcher/scheduler loop that only exists
+# for their own feature, `audit_log` grows on every audited mutation, so the
+# check rides along on the same `_write_audit_row` call instead.
+_AUDIT_PURGE_INTERVAL = timedelta(hours=6)
+_last_audit_purge_at: datetime | None = None
+
+
+def _maybe_purge_audit_log(connection: Connection) -> None:
+    """Trim `audit_log` rows older than `Settings.audit_log_retention_days`.
+
+    Disabled by default (`audit_log_retention_days=0`) — unlike
+    `webhook_deliveries` / `ai_run_logs`, an audit trail is exactly the data
+    an operator would NOT want silently aged out, so unlimited retention is
+    the safe default. When enabled, runs at most once per
+    `_AUDIT_PURGE_INTERVAL` and reuses the `Connection` already open for the
+    mutation that triggered this listener — no extra session, no extra
+    round trip just to acquire one.
+    """
+    global _last_audit_purge_at
+    retention_days = get_settings().audit_log_retention_days
+    if retention_days <= 0:
+        return
+    now = datetime.now(UTC)
+    if (
+        _last_audit_purge_at is not None
+        and now - _last_audit_purge_at < _AUDIT_PURGE_INTERVAL
+    ):
+        return
+    _last_audit_purge_at = now
+    cutoff = now - timedelta(days=retention_days)
+    connection.execute(delete(AuditLog).where(AuditLog.created_at < cutoff))
+
+
+def reset_audit_purge_clock() -> None:
+    """Test hook — forget when the last purge ran (mirrors
+    `rate_limit_store.reset_purge_clock`)."""
+    global _last_audit_purge_at
+    _last_audit_purge_at = None
 
 
 _listeners_registered = False
@@ -158,7 +239,7 @@ _listeners_registered = False
 # the closures internally, so a blind `event.remove` with the original
 # function reference works when we use it directly — but only if we
 # have the reference. Hence this list.
-_attached: list[tuple[type, str, object]] = []
+_attached: list[tuple[type, str, Callable[..., Any]]] = []
 
 
 def register_audit_listeners() -> None:
@@ -211,7 +292,7 @@ def _attach_listeners(model: type, entity: str) -> None:
             AuditAction.create,
             entity,
             _entity_id_of(target),
-            {"after": _dump_columns(target)},
+            {"after": redact_sensitive(_dump_columns(target))},
         )
 
     def _on_update(mapper, connection, target) -> None:
@@ -224,7 +305,7 @@ def _attach_listeners(model: type, entity: str) -> None:
             AuditAction.update,
             entity,
             _entity_id_of(target),
-            {"before": before, "after": after},
+            {"before": redact_sensitive(before), "after": redact_sensitive(after)},
         )
 
     def _on_delete(mapper, connection, target) -> None:
@@ -233,7 +314,7 @@ def _attach_listeners(model: type, entity: str) -> None:
             AuditAction.delete,
             entity,
             _entity_id_of(target),
-            {"before": _dump_columns(target)},
+            {"before": redact_sensitive(_dump_columns(target))},
         )
 
     # Wire each handler via the imperative API (instead of @event.listens_for)
