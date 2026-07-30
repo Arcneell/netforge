@@ -97,6 +97,78 @@ async def test_create_link_rejects_port_already_linked() -> None:
     db.commit.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_create_link_catches_port_exclusivity_race_as_409_equivalent() -> None:
+    """The pre-check above runs outside any lock: two concurrent requests can
+    both pass it before either commits, each wiring a shared port to a
+    different peer. Migration 0022 adds a `links_validate_port_exclusivity`
+    trigger that closes this race at the DB level — its violation must map
+    to the same `PORT_ALREADY_LINKED` 400 the non-racing pre-check returns,
+    not leak as a raw 500 or a generic integrity error."""
+    from sqlalchemy.exc import IntegrityError
+
+    empty_clash = MagicMock()
+    empty_clash.all = MagicMock(return_value=[])  # pre-check sees no clash
+
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=Port(id=1, switch_id=1, number=1))
+    db.execute = AsyncMock(return_value=empty_clash)
+    db.add = MagicMock()
+    db.rollback = AsyncMock()
+    db.commit = AsyncMock(
+        side_effect=IntegrityError(
+            "INSERT INTO links ...",
+            {},
+            Exception(
+                'port 5 or 99 is already an endpoint of link 42 — violates '
+                'unique constraint "links_port_exclusivity"'
+            ),
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await service.create_link(
+            db, LinkCreate(port_a_id=5, port_b_id=99, link_type=LinkType.copper)
+        )
+    assert exc.value.status_code == 400
+    detail = exc.value.detail["error"]
+    assert detail["code"] == "PORT_ALREADY_LINKED"
+    db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_link_other_integrity_errors_still_map_generically() -> None:
+    """A constraint violation unrelated to the exclusivity trigger (e.g. the
+    exact-pair `links_ports_uniq` duplicate) must still go through the
+    shared `catch_integrity_errors` mapping, not be swallowed by the new
+    trigger-specific branch."""
+    from sqlalchemy.exc import IntegrityError
+
+    empty_clash = MagicMock()
+    empty_clash.all = MagicMock(return_value=[])
+
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=Port(id=1, switch_id=1, number=1))
+    db.execute = AsyncMock(return_value=empty_clash)
+    db.add = MagicMock()
+    db.rollback = AsyncMock()
+    db.commit = AsyncMock(
+        side_effect=IntegrityError(
+            "INSERT INTO links ...",
+            {},
+            Exception('duplicate key value violates unique constraint "links_ports_uniq"'),
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await service.create_link(
+            db, LinkCreate(port_a_id=2, port_b_id=8, link_type=LinkType.copper)
+        )
+    assert exc.value.status_code == 409
+    assert exc.value.detail["error"]["code"] == "DUPLICATE_LINK"
+    db.rollback.assert_awaited_once()
+
+
 # --- create_link_by_name --------------------------------------------------- #
 
 

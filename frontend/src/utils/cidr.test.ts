@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { compareIps, intToIp, ipInCidr, ipToInt, iterateCidr, parseCidr } from './cidr'
+import {
+  compareIps,
+  intToIp,
+  ipInCidr,
+  ipToInt,
+  isValidCidr,
+  isValidIpv4,
+  iterateCidr,
+  parseCidr,
+} from './cidr'
 
 describe('ipToInt / intToIp', () => {
   it('round-trips dotted-quad addresses', () => {
@@ -79,5 +88,51 @@ describe('compareIps', () => {
   it('orders numerically, not lexicographically', () => {
     const sorted = ['10.0.0.10', '10.0.0.9', '10.0.0.2'].sort(compareIps)
     expect(sorted).toEqual(['10.0.0.2', '10.0.0.9', '10.0.0.10'])
+  })
+})
+
+describe('isValidIpv4', () => {
+  it('accepts well-formed dotted-quad addresses', () => {
+    expect(isValidIpv4('0.0.0.0')).toBe(true)
+    expect(isValidIpv4('255.255.255.255')).toBe(true)
+    expect(isValidIpv4('10.0.30.55')).toBe(true)
+  })
+
+  it('rejects an out-of-range octet', () => {
+    expect(isValidIpv4('999.1.1.1')).toBe(false)
+    expect(isValidIpv4('10.0.0.256')).toBe(false)
+  })
+
+  it('rejects the wrong number of octets and non-numeric octets', () => {
+    expect(isValidIpv4('10.0.0')).toBe(false)
+    expect(isValidIpv4('10.0.0.0.0')).toBe(false)
+    expect(isValidIpv4('10.0.0.x')).toBe(false)
+    expect(isValidIpv4('')).toBe(false)
+  })
+})
+
+describe('isValidCidr', () => {
+  it('accepts boundary prefixes /0 and /32', () => {
+    expect(isValidCidr('0.0.0.0/0')).toBe(true)
+    expect(isValidCidr('10.0.0.5/32')).toBe(true)
+  })
+
+  it('accepts a normal mid-range prefix', () => {
+    expect(isValidCidr('10.0.30.0/24')).toBe(true)
+  })
+
+  it('rejects an out-of-range octet combined with an out-of-range prefix', () => {
+    expect(isValidCidr('999.1.1.1/99')).toBe(false)
+  })
+
+  it('rejects a prefix outside 0..32', () => {
+    expect(isValidCidr('10.0.0.0/33')).toBe(false)
+    expect(isValidCidr('10.0.0.0/-1')).toBe(false)
+  })
+
+  it('rejects missing prefix or malformed network', () => {
+    expect(isValidCidr('10.0.0.0')).toBe(false)
+    expect(isValidCidr('10.0.0.x/24')).toBe(false)
+    expect(isValidCidr('')).toBe(false)
   })
 })

@@ -52,12 +52,20 @@ jobs:
       - name: Ruff lint
         run: ruff check app tests
 
-      - name: Pytest (with coverage report)
+      - name: mypy
+        # Pragmatic baseline (see [tool.mypy] in pyproject.toml) — not strict
+        # mode, but `app/` is clean against it, so this is a blocking gate.
+        # Keep it that way: a new error is cheaper to fix in the PR that
+        # introduces it than to pay down in a batch later.
+        run: mypy app
+
+      - name: Pytest (with coverage report + gate)
         # The AI tests rely only on mocked SDKs / mocked DB sessions, so the
-        # job stays fully self-contained. Coverage is measured and printed in
-        # the log (pytest-cov) but NOT enforced yet — no threshold fails the
-        # job; add `--cov-fail-under` once a baseline is agreed.
-        run: pytest -q --cov=app --cov-report=term
+        # job stays fully self-contained. Baseline measured at 81% on the
+        # commit that added this gate — floor set 2pts under that as an
+        # anti-flaky margin. Bump the number up (never down without a note)
+        # as coverage improves.
+        run: pytest -q --cov=app --cov-report=term --cov-fail-under=79
 
   frontend:
     runs-on: ubuntu-latest
@@ -271,8 +279,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: docker build ${{ matrix.component.name }} (no push)
-        run: docker build --tag netforge-${{ matrix.component.name }}:ci ${{ matrix.component.context }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: docker build ${{ matrix.component.name }} (no push, cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component.context }}
+          push: false
+          tags: netforge-${{ matrix.component.name }}:ci
+          # GHA cache, same mechanism as release.yml but its own scope
+          # (`ci-<name>` vs release.yml's `<name>`) so a PR build here can
+          # never warm or evict the cache release.yml uses to push real
+          # images, and vice versa.
+          cache-from: type=gha,scope=ci-${{ matrix.component.name }}
+          cache-to: type=gha,scope=ci-${{ matrix.component.name }},mode=max
 
   # Dependency vulnerability scan. Kept in its own job so a transitive
   # advisory shows up as a distinct red check rather than masquerading as a

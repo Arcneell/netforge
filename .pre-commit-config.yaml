@@ -1,0 +1,46 @@
+# Lightweight, local-only hooks — no network fetch of a mirrored ruff/eslint
+# repo, just the same `ruff` / `eslint` / `prettier` binaries CONTRIBUTING.md
+# already tells you to install (`pip install -e ".[dev]"`, `npm ci`). Keeps
+# `pre-commit run` in sync with exactly what CI runs (.github/workflows/ci.yml)
+# instead of a separately-pinned mirror that can drift from it.
+#
+# Install once per clone:
+#   pip install pre-commit    # or: pipx install pre-commit
+#   pre-commit install
+#
+# Run on demand without committing:
+#   pre-commit run --all-files
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (backend)
+        description: Lint backend/app and backend/tests with ruff.
+        entry: ruff check
+        language: system
+        files: ^backend/.*\.py$
+
+      # No `ruff format --check` hook: the codebase predates ruff format and
+      # ~120 files diverge from it. CI only enforces `ruff check` — adding a
+      # format gate here would fail every commit until a dedicated
+      # reformat-the-world commit lands.
+
+      - id: eslint-frontend
+        name: eslint (frontend)
+        description: >
+          Lints the whole frontend/src tree rather than just the staged
+          files — simpler and safer than juggling repo-root-relative vs
+          frontend-relative paths for a config that lives in frontend/.
+        entry: bash -c 'cd frontend && npx eslint . --ext .vue,.ts,.js'
+        language: system
+        files: ^frontend/src/.*\.(vue|ts|js)$
+        pass_filenames: false
+
+      - id: prettier-frontend
+        name: prettier --check (frontend)
+        description: Same scoping rationale as the eslint hook above.
+        entry: bash -c 'cd frontend && npx prettier --check "src/**/*.{vue,ts,js,json,css}"'
+        language: system
+        files: ^frontend/src/.*\.(vue|ts|js|json|css)$
+        pass_filenames: false

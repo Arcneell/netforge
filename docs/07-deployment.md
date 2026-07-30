@@ -38,9 +38,14 @@ cp /path/to/fullchain.pem certs/fullchain.pem
 cp /path/to/privkey.pem   certs/privkey.pem
 chmod 600 certs/privkey.pem
 
-# 4. Pin a release (recommended — `latest` floats with main) and bring the
+# 4. Pin a version (recommended — `latest` floats with main) and bring the
 #    stack up. The pull is ~80 MB total.
-echo "NETFORGE_VERSION=v1.0.0" >> .env
+#    No `vX.Y.Z` tag has been cut yet at the time of writing — until the
+#    first release, pin the reproducible `main-<sha>` tag release.yml
+#    publishes on every push to main (see the packages page on GHCR for the
+#    current sha). Once a `vX.Y.Z` tag exists, prefer that instead — it
+#    won't move under you the way `main-<sha>` history can be pruned.
+echo "NETFORGE_VERSION=main-abcdef0" >> .env
 docker compose pull
 docker compose up -d
 

@@ -95,3 +95,34 @@ ignore = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# --cov is intentionally NOT in addopts: it slows down the local dev loop
+# (`pytest -k foo`, `pytest tests/test_x.py`) for no benefit outside CI.
+# CI invokes it explicitly with --cov=app --cov-fail-under=N (see
+# .github/workflows/ci.yml).
+[tool.coverage.run]
+omit = [
+    "*/alembic/*",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+show_missing = true
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+# Pragmatic baseline, not a strict-mode gate: third-party stubs are
+# inconsistent (authlib ships none) and the codebase leans on SQLAlchemy's
+# Mapped[]/Select[] generics + Sequence-vs-list variance in a few spots that
+# mypy flags but aren't real bugs. Tightening these is a separate, deliberate
+# effort — this section exists so `mypy app` is runnable and reproducible in
+# CI, not to make it clean today.
+ignore_missing_imports = true
+warn_unused_ignores = false
+

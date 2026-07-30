@@ -81,6 +81,16 @@ The stack ships three services:
 
 OAuth callback URLs registered on your IdP must point at `http://localhost:5173/api/auth/callback` (the SPA proxies the callback through to the backend).
 
+### Load demo data
+
+`scripts/build_demo_bundle.py` generates a realistic multi-site CSV bundle (9 sites, ~75 subnets, 145 devices, 38 switches, ~55 links) with a handful of deliberately planted issues (SPOFs, a saturated subnet, a duplicate MAC, orphan VLANs, …) — a good way to see the integrity checks, AI advisor and bulk import in action without hand-entering data:
+
+```bash
+python scripts/build_demo_bundle.py     # writes demo-bundle.zip at the repo root
+```
+
+Upload the resulting `demo-bundle.zip` via **Import → All at once (auto)** in the UI, or `POST /api/imports/bulk`.
+
 ### Run the SPA on the host instead of in Docker
 
 If you want native filesystem speed on Windows / macOS, skip the `frontend` container and run Vite yourself:

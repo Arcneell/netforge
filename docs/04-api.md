@@ -1,6 +1,6 @@
 # 04 — REST API
 
-All routes are prefixed with `/api`. JSON only. Auth via session cookie (see [06-auth.md](06-auth.md)).
+All routes are prefixed with `/api`. JSON only. Auth via session cookie or `Authorization: Bearer` personal access token (see [06-auth.md](06-auth.md)).
 
 ## Conventions
 
@@ -13,12 +13,25 @@ All routes are prefixed with `/api`. JSON only. Auth via session cookie (see [06
 
 ## Auth
 
+Auth is **pluggable** — `AUTH_PROVIDER` picks `github`, `oidc` (any IdP with
+`.well-known/openid-configuration`: Entra ID, Keycloak, Authentik, Google
+Workspace, …) or `dev`. See [06-auth.md](06-auth.md) for the full flow,
+provider setup, and personal access tokens.
+
 | Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/auth/login` | Redirects to Entra ID (authorization code + PKCE flow) |
-| GET | `/api/auth/callback` | OIDC callback, creates/updates user, sets session cookie |
-| POST | `/api/auth/logout` | Destroys the session, redirects to Entra ID logout |
+| GET | `/api/auth/login` | Redirects to the configured IdP's authorize endpoint |
+| GET | `/api/auth/callback` | Provider callback, creates/updates user (JIT), sets session cookie |
+| POST | `/api/auth/logout` | Destroys the session |
 | GET | `/api/auth/me` | Returns `{ id, email, display_name, role }` for the current user |
+| GET | `/api/auth/tokens` | List the caller's personal access tokens |
+| POST | `/api/auth/tokens` | Mint a new token — plaintext returned once |
+| DELETE | `/api/auth/tokens/{id}` | Revoke a token |
+
+The API is not anonymous, but it isn't cookie-only either: every route also
+accepts `Authorization: Bearer nfp_...` (a personal access token) in place of
+the session cookie — see [06-auth.md](06-auth.md#personal-access-tokens-api)
+for the full contract.
 
 ## Sites & rooms
 
@@ -44,6 +57,18 @@ All routes are prefixed with `/api`. JSON only. Auth via session cookie (see [06
 | GET | `/api/vlans/{id}` | Detail + subnets + using ports |
 | PUT | `/api/vlans/{id}` | Update (admin) |
 | DELETE | `/api/vlans/{id}` | Delete if unused (admin) |
+
+## VRFs
+
+Routing-table isolation for overlapping CIDRs (see [03-data-model.md](03-data-model.md)). A subnet's `vrf_id` is `null` for the global scope.
+
+| Method | Path | Description |
+|---------|--------|-------------|
+| GET | `/api/vrfs` | List |
+| POST | `/api/vrfs` | Create (admin) |
+| GET | `/api/vrfs/{id}` | Detail |
+| PUT | `/api/vrfs/{id}` | Update (admin) |
+| DELETE | `/api/vrfs/{id}` | Delete (admin) |
 
 ## Subnets
 
@@ -121,23 +146,64 @@ Example response for `/api/subnets/{id}/ips`:
 | PUT | `/api/links/{id}` | Patch metadata only: `link_type`, `speed_mbps`, `description` (admin). Endpoints are immutable here — to change connected ports, delete and recreate. |
 | DELETE | `/api/links/{id}` | Delete (admin) |
 
+## Cables
+
+Physical cable inventory, one-to-one with a `Link` via `link_id` (`null` = in stock, not patched). See [03-data-model.md](03-data-model.md).
+
+| Method | Path | Description |
+|---------|--------|-------------|
+| GET | `/api/cables` | List, `?in_stock=true` filters to unpatched cables |
+| POST | `/api/cables` | Create (admin) |
+| GET | `/api/cables/{id}` | Detail |
+| PUT | `/api/cables/{id}` | Update (admin) |
+| DELETE | `/api/cables/{id}` | Delete (admin) |
+| GET | `/api/links/{id}/cable` | The cable attached to a link, 404 if none recorded yet |
+
 ## Topology
 
 | Method | Path | Description |
 |---------|--------|-------------|
-| GET | `/api/topology` | Full graph in Cytoscape format: `{ nodes: [...], edges: [...] }` |
-| GET | `/api/topology?site_id=3` | Filtered by site |
+| GET | `/api/topology` | Graph in Cytoscape element format: `{ nodes, edges, stats, truncated }` |
+
+Query parameters, all optional:
+
+| Parameter | Effect |
+|---|---|
+| `site_id` | Restrict to switches and devices in this site |
+| `room_id` | Restrict to a single room |
+| `vlan_id` | Keep only switches carrying this VLAN (native or tagged) on at least one port. Every link **between** those switches is still returned — filtering edges too would hide the cable that actually carries the VLAN |
+| `include_devices` | Default `true`. Set `false` for a switch-only backbone view |
+
+Four node kinds share one payload. `site` and `room` are compound *group*
+nodes; `switch` and `device` are leaves that name their room in `parent`, so
+Cytoscape draws the grouping without the client rebuilding the hierarchy.
+`id` is prefixed because element ids share one namespace across four tables;
+`entity_id` carries the un-prefixed PK for navigation.
+
+Two edge kinds: `link` for a physical cable between two switch ports, and
+`attachment` for a device plugged into a port (`ports.connected_device_id`).
+Only `link` edges carry `link_type` / `speed_mbps` / `port_b`.
+
+Group nodes are emitted only for rooms that hold something, and for sites
+holding such a room. Both the switch and link queries are capped at the DB
+level; `truncated` says the payload was cut down. `stats` is computed from
+the returned payload, so it always describes exactly what the caller got.
 
 Example response:
 ```json
 {
   "nodes": [
-    { "data": { "id": "sw-1", "label": "SW-SRV-01", "type": "switch", "ports_count": 48 } },
-    { "data": { "id": "sw-2", "label": "SW-ETAGE-01", "type": "switch", "ports_count": 24 } }
+    { "data": { "id": "site-3", "label": "PAR", "kind": "site", "entity_id": 3, "child_count": 1 } },
+    { "data": { "id": "room-7", "label": "MDF", "kind": "room", "entity_id": 7, "parent": "site-3", "child_count": 2 } },
+    { "data": { "id": "sw-1", "label": "SW-SRV-01", "kind": "switch", "entity_id": 1, "parent": "room-7", "ports_total": 48, "ports_used": 12 } },
+    { "data": { "id": "dev-42", "label": "srv-ad-01", "kind": "device", "entity_id": 42, "parent": "room-7", "device_type": "server" } }
   ],
   "edges": [
-    { "data": { "id": "l-1", "source": "sw-1", "target": "sw-2", "speed": "10G", "type": "fiber" } }
-  ]
+    { "data": { "id": "link-1", "kind": "link", "source": "sw-1", "target": "sw-2", "link_type": "fiber", "speed_mbps": 10000, "port_a": 49, "port_b": 24 } },
+    { "data": { "id": "attach-88", "kind": "attachment", "source": "sw-1", "target": "dev-42", "port_a": 5 } }
+  ],
+  "stats": { "sites": 1, "rooms": 1, "switches": 2, "devices": 1, "links": 1, "attachments": 1, "isolated_switches": 0, "unplaced_nodes": 0, "link_types": { "fiber": 1 } },
+  "truncated": false
 }
 ```
 
@@ -180,6 +246,25 @@ See [08-import-csv.md](08-import-csv.md) for the expected formats.
 
 Only `admin` users can view the full log. `viewer` users only see their own actions (none in practice given their role).
 
+## Webhooks (admin-only)
+
+Outbound HTTP subscribers, fired for every audited mutation (`{entity}.{action}`, e.g. `port.update`). Payloads are signed HMAC-SHA256 (`X-Netforge-Signature`) with a secret shown once at creation / rotation. See `backend/app/models/webhook.py`.
+
+| Method | Path | Description |
+|---------|--------|-------------|
+| GET | `/api/webhooks` | List (secrets never included) |
+| POST | `/api/webhooks` | Create — response includes the plaintext secret once |
+| GET | `/api/webhooks/{id}` | Detail |
+| PATCH | `/api/webhooks/{id}` | Update name / url / events / enabled |
+| DELETE | `/api/webhooks/{id}` | Delete |
+| POST | `/api/webhooks/{id}/rotate-secret` | Rotate the signing secret — new plaintext returned once |
+| POST | `/api/webhooks/{id}/test` | Send a synthetic test event, records a delivery |
+| GET | `/api/webhooks/{id}/deliveries` | Recent delivery attempts (status, latency, error) |
+
+## AI features (optional)
+
+Gated behind `AI_PROVIDER` (`anthropic` / `openai` / `gemini` / unset = disabled) — routes 501 when disabled. Covers natural-language querying, an infrastructure advisor (insights + link suggestions), CSV column-mapping assistance, PDF export of the advisor report, and scheduled scans. See `backend/app/routers/ai/` (`query.py`, `insights.py`, `suggestions.py`, `drafts.py`, `csv_mapping.py`, `conversations.py`, `schedules.py`, `pdf_export.py`, `status.py`, `usage.py`, `integrity.py`, `streaming.py`) for the full surface — all mounted under `/api/ai`.
+
 ## Error codes
 
 | Code | Meaning |
@@ -190,7 +275,8 @@ Only `admin` users can view the full log. `viewer` users only see their own acti
 | `VALIDATION_ERROR` | 422 — invalid payload, per-field details |
 | `CONFLICT` | 409 — e.g. overlapping subnet, MAC already used |
 | `BUSINESS_RULE` | 400 — e.g. IP outside subnet, link on nonexistent port |
-| `RATE_LIMITED` | 429 — login bruteforce (rate limit on `/auth/login`) |
+| `RATE_LIMITED` | 429 — per-IP limit on write methods, expensive export GETs, and `/auth/login`/`/auth/callback` |
+| `AI_RATE_LIMITED` | 429 — the AI provider itself rate-limited the request (not our own limiter) |
 | `INTERNAL_ERROR` | 500 — catch-all, logged server-side with a `trace_id` returned to the client |
 
 ## OpenAPI

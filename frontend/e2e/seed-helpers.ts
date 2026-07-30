@@ -14,6 +14,31 @@ import type { APIRequestContext } from '@playwright/test'
 const E2E_SITE_CODE = 'E2E'
 const E2E_SUBNET_CIDR = '10.250.0.0/24'
 
+// `createSwitch` below is intentionally non-idempotent (timestamped names,
+// one fresh pair per topology run) — but nothing deleted them afterwards, so
+// every local/CI run left orphan switches accumulating in the dev DB. Track
+// what this module creates and let specs delete it in an `afterAll` rather
+// than switching to a get-or-create (which would defeat the "fresh pair per
+// run" guarantee `seedTopologyPair` relies on for the port-pair uniqueness
+// constraint).
+const createdSwitchIds: number[] = []
+
+/** Delete every switch this module created since the last cleanup. Call
+ * from `test.afterAll` in specs that use `createSwitch` / `seedTopologyPair`
+ * so repeated runs don't pile up orphan switches (and their auto-generated
+ * ports) in the dev database. Best-effort: a 404 (already gone) is fine. */
+export async function cleanupSeededSwitches(request: APIRequestContext): Promise<void> {
+  const ids = createdSwitchIds.splice(0, createdSwitchIds.length)
+  for (const id of ids) {
+    const res = await request.delete(`/api/switches/${id}`)
+    if (!res.ok() && res.status() !== 404) {
+      throw new Error(
+        `cleanupSeededSwitches failed for switch ${id}: ${res.status()} ${await res.text()}`,
+      )
+    }
+  }
+}
+
 interface Site {
   id: number
   code: string
@@ -97,7 +122,9 @@ export async function createSwitch(
     data: { name, port_count: portCount },
   })
   if (!res.ok()) throw new Error(`createSwitch failed: ${res.status()} ${await res.text()}`)
-  return res.json()
+  const created: Switch = await res.json()
+  createdSwitchIds.push(created.id)
+  return created
 }
 
 export async function getFirstPort(request: APIRequestContext, switchId: number): Promise<Port> {

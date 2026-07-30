@@ -20,7 +20,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import SessionLocal
-from app.models.user import ApiToken, User
+from app.models.user import ApiToken, ApiTokenScope, User
 from app.services.errors import not_found
 
 TOKEN_PREFIX = "nfp_"
@@ -48,6 +48,7 @@ async def create_token(
     user: User,
     name: str,
     expires_at: datetime | None = None,
+    scope: ApiTokenScope = ApiTokenScope.full,
 ) -> tuple[ApiToken, str]:
     """Mint a token for ``user``. Returns the persisted row plus the *one
     and only* plaintext copy — caller is responsible for surfacing it.
@@ -59,6 +60,7 @@ async def create_token(
         token_hash=_hash(plaintext),
         prefix=prefix,
         expires_at=expires_at,
+        scope=scope,
     )
     db.add(row)
     await db.commit()
@@ -97,8 +99,15 @@ async def revoke_token(db: AsyncSession, user: User, token_id: int) -> None:
         await db.commit()
 
 
-async def verify_token(db: AsyncSession, plaintext: str) -> User | None:
+async def verify_token(
+    db: AsyncSession, plaintext: str
+) -> tuple[User, ApiTokenScope] | None:
     """Resolve a plaintext token to its owning user, or None if invalid.
+
+    Returns the user alongside the token's `scope` — the caller
+    (`app.auth.dependencies.get_current_user`) is responsible for capping
+    the effective role to viewer when the scope is `read_only`; this
+    function only reports what was stored, it never mutates the user.
 
     Best-effort updates `last_used_at` on a successful verify so admins
     can spot stale tokens. The update runs in its own short transaction
@@ -131,7 +140,11 @@ async def verify_token(db: AsyncSession, plaintext: str) -> User | None:
         return None
 
     await _touch_last_used_at(row.id, now)
-    return user
+    # `row.scope` is only unset (None) for a bare in-memory ApiToken built
+    # without going through a flush (e.g. older tests) — treat that the same
+    # as the column's own default, `full`, rather than crashing the comparison
+    # in the auth dependency.
+    return user, (row.scope or ApiTokenScope.full)
 
 
 async def _touch_last_used_at(token_id: int, when: datetime) -> None:
