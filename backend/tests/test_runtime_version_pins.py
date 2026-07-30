@@ -182,6 +182,10 @@ UPSTREAM_BLOCKED_IGNORES = {
     # openapi-typescript and typescript-eslint both cap typescript below 6.1 on
     # their latest releases. See the comment on the ignore entry.
     "typescript",
+    # `pydantic` pins `pydantic-core` to an exact version, so it can only move
+    # when pydantic does — at which point pip-compile picks the matching core on
+    # its own. Proposed and refused three times (#158, #179, #194).
+    "pydantic-core",
 }
 
 
