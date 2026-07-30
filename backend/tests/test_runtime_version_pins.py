@@ -9,6 +9,8 @@ that must agree, and Dependabot can only see some of them:
                  ci.yml x4, pyproject requires-python          <- does not
     postgres 16  docker-compose.yml, docker-compose.dev.yml    <- sees
                  ci.yml x2 (integration + e2e services)        <- does not
+    redis 8      docker-compose.yml, docker-compose.dev.yml    <- sees
+                 ci.yml x1 (integration service)               <- does not
 
 PR #155 shipped that gap: it moved `docker-compose.dev.yml` to `node:26-alpine`
 and left the other four pins on 22, contradicting the comment in that very file
@@ -107,6 +109,28 @@ def test_postgres_major_agrees_everywhere() -> None:
     _assert_single_major("PostgreSQL", found)
 
 
+def test_redis_major_agrees_everywhere() -> None:
+    """Both compose files and CI's integration service container must run the
+    same Redis major.
+
+    This one is here because the guard missed it once. When `ignore` was first
+    written, redis was left out on the claim it was "pinned here only" — but the
+    PR that added the cache also added a `redis:N-alpine` service container to
+    ci.yml. PR #173 then moved both compose files to 8-alpine and left CI proving
+    the rate-limit Lua script, the atomic INCR and the EXPIRE semantics against 7.
+    """
+    found: dict[str, list[str]] = {
+        ".github/workflows/ci.yml": _majors(
+            r"image:\s*redis:(\d[\d.]*)-", _read(".github/workflows/ci.yml")
+        ),
+        "docker-compose.yml": _majors(r"image:\s*redis:(\d[\d.]*)-", _read("docker-compose.yml")),
+        "docker-compose.dev.yml": _majors(
+            r"image:\s*redis:(\d[\d.]*)-", _read("docker-compose.dev.yml")
+        ),
+    }
+    _assert_single_major("Redis", found)
+
+
 def _assert_single_major(runtime: str, found: dict[str, list[str]]) -> None:
     empty = sorted(path for path, versions in found.items() if not versions)
     assert not empty, (
@@ -147,6 +171,7 @@ def test_ignored_runtimes_are_still_multi_pin() -> None:
         "node": r'node-version:\s*"\d',
         "python": r'python-version:\s*"\d',
         "postgres": r"image:\s*postgres:\d",
+        "redis": r"image:\s*redis:\d",
     }
 
     for name in sorted(ignored):
