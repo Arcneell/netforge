@@ -38,9 +38,14 @@ cp /path/to/fullchain.pem certs/fullchain.pem
 cp /path/to/privkey.pem   certs/privkey.pem
 chmod 600 certs/privkey.pem
 
-# 4. Pin a release (recommended — `latest` floats with main) and bring the
+# 4. Pin a version (recommended — `latest` floats with main) and bring the
 #    stack up. The pull is ~80 MB total.
-echo "NETFORGE_VERSION=v1.0.0" >> .env
+#    No `vX.Y.Z` tag has been cut yet at the time of writing — until the
+#    first release, pin the reproducible `main-<sha>` tag release.yml
+#    publishes on every push to main (see the packages page on GHCR for the
+#    current sha). Once a `vX.Y.Z` tag exists, prefer that instead — it
+#    won't move under you the way `main-<sha>` history can be pruned.
+echo "NETFORGE_VERSION=main-abcdef0" >> .env
 docker compose pull
 docker compose up -d
 
@@ -130,6 +135,26 @@ Cron: daily at 02:30.
 docker compose exec -T postgres pg_restore -U netforge -d netforge --clean --if-exists < netforge-20260501-023000.dump
 ```
 
+### Redis
+Not backed up, on purpose. Redis holds only caches — sessions, assembled read
+payloads, rate-limit counters — every one of which the backend rebuilds from
+Postgres on the next request. Losing the volume costs a few slow page loads,
+nothing else.
+
+Two consequences worth knowing:
+
+- **Restoring Postgres does not need Redis touched.** Read-cache keys embed a
+  fingerprint of the inventory tables, so a restore that changes the data
+  changes the keys; nothing stale can be served. Session entries expire within
+  `CACHE_SESSION_TTL_SECONDS` (default 30s). If you would rather start clean:
+  `docker compose exec redis redis-cli FLUSHDB`.
+- **The volume exists for the AI quota, not for the cache.** With
+  `RATE_LIMIT_STORE=redis` and `AI_ENABLED=true`, the per-user LLM budget lives
+  in Redis, and losing it on restart hands every user a fresh hour of spend.
+  That is why the bundled service runs `appendonly yes`. Leave
+  `RATE_LIMIT_STORE=database` if you would rather that counter sit in a
+  database you already back up.
+
 ## Logs
 
 - Backend and Nginx write to stdout/stderr → picked up by Docker → shipped to journald or Loki.
@@ -154,9 +179,17 @@ images; it never touches your server.
 
 ## Monitoring
 
-- HTTP healthcheck `GET /api/health` returns `{ status: "ok", db: "ok", uptime_s: N }` — to be integrated on the Zabbix side as a "Netforge" template.
+- HTTP healthcheck `GET /api/health` returns
+  `{ status: "ok", db: "ok", cache: "ok", uptime_s: N }` — to be integrated on
+  the Zabbix side as a "Netforge" template.
 - Zabbix alert if `/api/health` is down > 5 min.
 - Alert if DB usage exceeds 80% of disk.
+- `cache` is one of `disabled` (no `REDIS_URL` — the default, not a fault),
+  `ok`, or `down`. A down cache deliberately leaves `status: "ok"`: every
+  consumer degrades to querying Postgres, so the app is still healthy and
+  paging someone at 03:00 would be wrong. Alert on the field as a warning —
+  requests get slower, and with `RATE_LIMIT_STORE=redis` the write limiter
+  falls back to a per-worker window (see `backend/app/middleware/rate_limit.py`).
 
 ## Go-live checklist
 

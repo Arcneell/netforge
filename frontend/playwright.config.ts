@@ -27,6 +27,10 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
+  // Fails fast with a clear message if the docker-compose dev stack isn't up
+  // — see e2e/global-setup.ts for why this is a globalSetup ping rather than
+  // a `webServer` entry (docker-compose here, not a single spawnable process).
+  globalSetup: './e2e/global-setup.ts',
   // Workers serialised — every test mutates shared DB state (subnets, IPs,
   // switches). Parallelism would need namespacing by worker index, which
   // isn't worth the complexity for 3 specs.

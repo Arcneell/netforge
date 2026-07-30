@@ -18,9 +18,10 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Request, Response
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.session_cache import invalidate as invalidate_cached_principal
 from app.config import Settings
 from app.models.user import Session, User
 from app.utils.request import client_ip
@@ -95,20 +96,35 @@ async def get_active_session(db: AsyncSession, session_id: str) -> Session | Non
 async def touch_session(
     db: AsyncSession, session: Session, settings: Settings
 ) -> None:
-    """Sliding renewal: push `expires_at` back if we're close to expiry."""
+    """Sliding renewal: push `expires_at` back if we're close to expiry.
+
+    Renews through the ORM attribute rather than a Core `update()` so
+    `session.expires_at` reflects the new value on return. Callers rely on
+    that: `auth/dependencies.get_current_user` passes it straight to
+    `session_cache.store_principal`, which must not cache an entry against
+    the expiry this call just replaced.
+    """
     if session.expires_at - _utcnow() >= _RENEW_THRESHOLD:
         return
-    new_expires = _utcnow() + timedelta(seconds=settings.session_max_age_seconds)
-    await db.execute(
-        update(Session).where(Session.id == session.id).values(expires_at=new_expires)
+    session.expires_at = _utcnow() + timedelta(
+        seconds=settings.session_max_age_seconds
     )
     await db.commit()
 
 
 async def delete_session(db: AsyncSession, session_id: str) -> None:
-    """Delete by raw cookie value — hashed to match the stored digest."""
-    await db.execute(delete(Session).where(Session.id == hash_session_id(session_id)))
+    """Delete by raw cookie value — hashed to match the stored digest.
+
+    Evicts the Redis entry for the same digest in the same call, so logout
+    stays immediate when `session_cache` is in play (no-op without Redis).
+    Order matters: the row goes first, so a crash between the two leaves a
+    cached entry with no row behind it — bounded by the cache TTL — rather
+    than a live row nobody can find.
+    """
+    digest = hash_session_id(session_id)
+    await db.execute(delete(Session).where(Session.id == digest))
     await db.commit()
+    await invalidate_cached_principal(digest)
 
 
 # --- Cookie helpers --------------------------------------------------------

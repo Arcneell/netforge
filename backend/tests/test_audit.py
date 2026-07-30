@@ -10,15 +10,20 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import Enum
 
+import pytest
+
 from app.models.core import Site
 from app.models.port import PortMode
+from app.models.switch import Switch
 from app.models.user import AuditAction
 from app.services.audit import (
+    SENSITIVE_FIELDS,
     _dump_columns,
     _jsonsafe,
     current_request_ip_var,
     current_request_ua_var,
     current_user_id_var,
+    redact_sensitive,
     register_audit_listeners,
 )
 
@@ -139,4 +144,167 @@ def test_register_audit_listeners_is_idempotent() -> None:
     assert _count_after_insert(Site) == after_first, (
         "subsequent calls must be no-ops"
     )
+
+
+# --- redact_sensitive (Fix #3: snmp_community must never leak in plaintext) -
+
+
+def test_sensitive_fields_lists_snmp_community() -> None:
+    assert "snmp_community" in SENSITIVE_FIELDS
+
+
+def test_redact_sensitive_masks_snmp_community() -> None:
+    out = redact_sensitive({"id": 1, "name": "SW-01", "snmp_community": "public"})
+    assert out["snmp_community"] == "***"
+    assert out["id"] == 1
+    assert out["name"] == "SW-01"
+
+
+def test_redact_sensitive_leaves_null_snmp_community_as_null() -> None:
+    """A column that was never set shouldn't be turned into the literal
+    string "***" — that would look like a real (masked) secret was present
+    when there wasn't one."""
+    out = redact_sensitive({"snmp_community": None})
+    assert out["snmp_community"] is None
+
+
+def test_redact_sensitive_is_noop_for_unrelated_dicts() -> None:
+    data = {"code": "HQ", "name": "Headquarters"}
+    assert redact_sensitive(data) == data
+
+
+def test_dump_columns_of_switch_exposes_raw_value_before_redaction() -> None:
+    """`_dump_columns` itself is a raw snapshot — masking is applied by the
+    caller (`_attach_listeners`'s `_on_insert`/`_on_update`/`_on_delete`).
+    Pin that contract so a future refactor doesn't accidentally bake
+    redaction into the wrong layer or drop it entirely."""
+    switch = Switch(
+        id=1, name="SW-01", port_count=48, snmp_community="public"
+    )
+    dump = _dump_columns(switch)
+    assert dump["snmp_community"] == "public"
+    assert redact_sensitive(dump)["snmp_community"] == "***"
+
+
+# --- audit_log retention purge ---------------------------------------------
+#
+# Same lazy-cleanup idiom as `webhook_deliveries` (services/webhooks.py) and
+# `rate_limit_counters` (services/rate_limit_store.py), anchored on
+# `_write_audit_row`'s `Connection` instead of a dispatcher/scheduler loop —
+# see the module docstring. End-to-end (a real INSERT actually triggering a
+# DELETE) needs Postgres and is deferred to the testcontainers suite, same
+# as the listener wiring above; these pin the throttle + on/off contract.
+
+
+def test_maybe_purge_audit_log_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock
+
+    from app.config import get_settings
+    from app.services.audit import _maybe_purge_audit_log, reset_audit_purge_clock
+
+    monkeypatch.delenv("AUDIT_LOG_RETENTION_DAYS", raising=False)
+    get_settings.cache_clear()
+    reset_audit_purge_clock()
+    try:
+        conn = MagicMock()
+        _maybe_purge_audit_log(conn)
+        conn.execute.assert_not_called()
+    finally:
+        get_settings.cache_clear()
+        reset_audit_purge_clock()
+
+
+def test_maybe_purge_audit_log_runs_once_per_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Enabling retention (`AUDIT_LOG_RETENTION_DAYS > 0`) issues the DELETE
+    on the first audited mutation, then stays quiet for the rest of the
+    throttle interval — same contract as `rate_limit_store.maybe_purge_expired`."""
+    from unittest.mock import MagicMock
+
+    from app.config import get_settings
+    from app.services.audit import _maybe_purge_audit_log, reset_audit_purge_clock
+
+    monkeypatch.setenv("AUDIT_LOG_RETENTION_DAYS", "30")
+    get_settings.cache_clear()
+    reset_audit_purge_clock()
+    try:
+        conn = MagicMock()
+        _maybe_purge_audit_log(conn)
+        _maybe_purge_audit_log(conn)
+        _maybe_purge_audit_log(conn)
+        assert conn.execute.call_count == 1
+    finally:
+        monkeypatch.delenv("AUDIT_LOG_RETENTION_DAYS", raising=False)
+        get_settings.cache_clear()
+        reset_audit_purge_clock()
+
+
+# --- webhook outbox wiring (durable handoff, Codex audit follow-up) ---------
+#
+# `_write_audit_row` now also persists a `webhook_outbox` row on the SAME
+# `Connection` it already uses for `insert(AuditLog)` — see
+# `services/webhooks.py::write_outbox_row`. Real transactional rollback
+# semantics need a real Postgres and are covered end-to-end in
+# `tests/integration/test_webhook_outbox_pg.py`; here we pin that
+# `_write_audit_row` hands `write_outbox_row` the exact same `Connection`
+# object, which is what makes "same transaction" true in the first place.
+
+
+def test_write_audit_row_persists_outbox_row_on_the_same_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import MagicMock
+
+    import app.services.webhooks as webhooks_module
+    from app.services.audit import _write_audit_row
+
+    seen: dict[str, object] = {}
+
+    def fake_write_outbox_row(connection: object, event: object) -> None:
+        seen["connection"] = connection
+        seen["event"] = event
+
+    # `_write_audit_row` imports `write_outbox_row` locally (function-local
+    # `from app.services.webhooks import ...`), so patching the attribute on
+    # `app.services.webhooks` itself — not a name bound inside `audit.py` —
+    # is what actually takes effect at call time.
+    monkeypatch.setattr(webhooks_module, "write_outbox_row", fake_write_outbox_row)
+
+    conn = MagicMock()
+    _write_audit_row(conn, AuditAction.create, "site", 1, {"after": {"code": "HQ"}})
+
+    assert seen["connection"] is conn
+    assert seen["event"].event_name == "site.create"
+    assert seen["event"].entity_id == 1
+
+
+def test_write_audit_row_outbox_event_carries_the_before_after_diff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The `WebhookEvent` handed to `write_outbox_row` must be built from
+    the SAME `before`/`after` the audit row itself records — the outbox
+    payload and `audit_log.changes` must never diverge. Runs through the
+    REAL `write_outbox_row` (only the `Connection` is a mock) so this also
+    pins that `event.outbox_id` ends up set from the mocked
+    `RETURNING id` result."""
+    from unittest.mock import MagicMock
+
+    from app.services.audit import _write_audit_row
+
+    conn = MagicMock()
+    conn.execute.return_value.scalar_one.return_value = 99
+
+    _write_audit_row(
+        conn,
+        AuditAction.update,
+        "port",
+        7,
+        {"before": {"label": "old"}, "after": {"label": "new"}},
+    )
+
+    # Two inserts on the same connection: audit_log, then webhook_outbox.
+    assert conn.execute.call_count == 2
+    outbox_stmt = conn.execute.call_args_list[1].args[0]
+    params = outbox_stmt.compile().params
+    assert params["payload"]["before"] == {"label": "old"}
+    assert params["payload"]["after"] == {"label": "new"}
 

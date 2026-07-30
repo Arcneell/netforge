@@ -12,6 +12,7 @@ reads (which is exactly what the reference cache has to stay honest about).
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -113,6 +114,20 @@ class _FakeSession:
 
     async def rollback(self) -> None:
         self.rolled_back = True
+
+    @asynccontextmanager
+    async def begin_nested(self):
+        """Stand-in for `AsyncSession.begin_nested()`.
+
+        The driver wraps the apply phase (and, on retry, each row) in a
+        SAVEPOINT so an `IntegrityError` on one row can't poison the ones
+        after it — see `driver.py::_run_apply_pass`. This fake session has
+        no real transaction to nest into, and every query in this file is a
+        happy path (no errors), so a bare no-op is enough: the point of
+        these tests is the statement count, not SAVEPOINT rollback
+        semantics (covered by the testcontainers suite).
+        """
+        yield
 
     # -- assertions helpers ------------------------------------------------
 

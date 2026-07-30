@@ -12,20 +12,8 @@ from ipaddress import IPv4Address, IPv4Network
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-def _ip_text(value: object) -> str:
-    """Canonicalise whatever asyncpg returns for an INET column to a bare
-    dotted-quad. asyncpg defaults to `ipaddress.IPv4Interface`, whose
-    `str()` includes the `/32` mask — strip it so the in-memory lookups
-    in `bulk_ip_range` match the keys we built from `IPv4Address` (Codex
-    P1 on #80, mirrors the `_ip_text` helper in `services.subnets`).
-    """
-    text = str(value)
-    if "/" in text:
-        text = text.split("/", 1)[0]
-    return str(IPv4Address(text))
-
 from app.models.ip import Ip
+from app.models.ip import IpStatus as DbIpStatus
 from app.models.subnet import Subnet
 from app.schemas.common import PageParams
 from app.schemas.ip import (
@@ -36,6 +24,7 @@ from app.schemas.ip import (
     IpUpdate,
 )
 from app.services.errors import business_rule, catch_integrity_errors, not_found
+from app.services.net_text import ip_text as _ip_text
 
 # Cap on a single bulk-IP call. Picked to comfortably cover a full /24
 # (254 host addresses) plus a bit of slack for /23 sweeps. Larger ranges
@@ -242,7 +231,10 @@ async def bulk_ip_range(
                 )
                 created += 1
             elif payload.overwrite:
-                row.status = payload.status
+                # The schema and model each declare their own IpStatus enum
+                # with identical members; convert rather than relying on both
+                # being str subclasses.
+                row.status = DbIpStatus(payload.status.value)
                 if payload.description is not None:
                     row.description = payload.description
                 updated += 1

@@ -69,6 +69,40 @@ async def test_search_returns_empty_when_no_matches() -> None:
     assert results == []
 
 
+# --- ILIKE metacharacter escaping (Fix #9) ----------------------------------
+#
+# `%` and `_` are wildcards in LIKE/ILIKE; a search term containing one
+# literally (e.g. a hostname "srv_01" or "50%") must not have that
+# character reinterpreted as "any string"/"any single char" — it should
+# only match literal occurrences.
+
+
+def test_escape_like_escapes_percent_and_underscore() -> None:
+    assert service._escape_like("50%_off") == "50\\%\\_off"
+
+
+def test_escape_like_escapes_backslash_first() -> None:
+    """The escape char itself must be escaped, and before the other
+    substitutions run — otherwise a literal backslash in the input could
+    combine with a later inserted `\\%` to still act as an unescaped `%`."""
+    assert service._escape_like("a\\b") == "a\\\\b"
+    assert service._escape_like("100%\\done") == "100\\%\\\\done"
+
+
+def test_escape_like_leaves_plain_text_unchanged() -> None:
+    assert service._escape_like("srv-ad-01") == "srv-ad-01"
+
+
+@pytest.mark.asyncio
+async def test_search_does_not_crash_on_metacharacter_query() -> None:
+    """Regression guard: a query containing `%`, `_` or `\\` must not blow
+    up building the pattern/filter (it used to reach the DB as an
+    unescaped wildcard instead of a literal match)."""
+    db = _mock_db()
+    results = await service.search(db, "50%_off\\")
+    assert results == []
+
+
 @pytest.mark.asyncio
 async def test_search_ip_match_includes_hostname_in_context() -> None:
     db = _mock_db(

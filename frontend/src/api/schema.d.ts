@@ -15,9 +15,16 @@ export interface paths {
          * Health
          * @description Healthcheck consumed by Docker, Zabbix, etc.
          *
-         *     Returns `{ status, db, uptime_s }`. If the DB is unreachable the endpoint
-         *     still returns 200 with `db: "down"` so that clients can distinguish
-         *     app-down from db-down — this matches the behaviour described in docs/07.
+         *     Returns `{ status, db, cache, uptime_s }`. If the DB is unreachable the
+         *     endpoint still returns 200 with `db: "down"` so that clients can
+         *     distinguish app-down from db-down — this matches the behaviour described in
+         *     docs/07.
+         *
+         *     `cache` reports Redis: `"disabled"` when `REDIS_URL` is unset (the
+         *     default — not a fault), `"ok"` when it answers PING, `"down"` otherwise.
+         *     A down cache is deliberately NOT reflected in `status`: every consumer of
+         *     it degrades to querying Postgres (see `app/cache.py`), so the app is still
+         *     healthy. Alert on the field, don't page on the status.
          */
         get: operations["health_api_health_get"];
         put?: never;
@@ -113,9 +120,11 @@ export interface paths {
         /**
          * Create My Token
          * @description Mint a new API token for the calling user. The plaintext is returned
-         *     **once** in the response body — never again. The token inherits the
-         *     caller's role, so demoting / disabling the user immediately limits what
-         *     the token can do.
+         *     **once** in the response body — never again. A `full`-scope token (the
+         *     default) inherits the caller's role, so demoting / disabling the user
+         *     immediately limits what the token can do. A `read_only`-scope token is
+         *     capped to viewer-level reads for its whole lifetime, regardless of the
+         *     caller's role — see `app.auth.dependencies.get_current_user`.
          */
         post: operations["create_my_token_api_auth_tokens_post"];
         delete?: never;
@@ -322,8 +331,37 @@ export interface paths {
          * Subnet Tree
          * @description Hierarchical view of the subnets in one VRF. Roots first, depth-first
          *     children. Operators with no VRFs configured just see the global tree.
+         *
+         *     `site_id` / `vlan_id` narrow the result client-side without changing
+         *     the hierarchy — orphaned matches float up to root level so a filter
+         *     on a leaf VLAN still surfaces the matching subnets even when their
+         *     parents were dropped.
          */
         get: operations["subnet_tree_api_subnets_tree_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subnets/capacity-overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Capacity Overview
+         * @description Top-N subnet rankings for the dashboard: fullest, at-capacity, unused.
+         *
+         *     Declared BEFORE `/{subnet_id}` so the literal path wins the route match
+         *     — otherwise FastAPI would try to coerce `"capacity-overview"` to int and
+         *     surface a 422.
+         */
+        get: operations["capacity_overview_api_subnets_capacity_overview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -379,6 +417,31 @@ export interface paths {
         put?: never;
         /** Next Free Ip */
         post: operations["next_free_ip_api_subnets__subnet_id__next_free_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subnets/{subnet_id}/bulk-ip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Ip Range
+         * @description Reserve or release every host address in `[start, end]` in one call.
+         *
+         *     Admin-only — same gate as single-IP CRUD. Capped at 512 addresses per
+         *     call; larger sweeps must be split client-side. Skips network /
+         *     broadcast slots automatically so the result stays consistent with
+         *     `_per_subnet_used_counts` accounting.
+         */
+        post: operations["bulk_ip_range_api_subnets__subnet_id__bulk_ip_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -918,6 +981,12 @@ export interface paths {
          *     The archive is structured exactly like what `POST /api/imports/bulk`
          *     accepts (one `<entity>.csv` per member, headers matching the importer),
          *     so it doubles as a logical backup and as a round-trip-ready snapshot.
+         *
+         *     Admin-only because (a) importing the same payload back is admin-only,
+         *     so symmetric exporting should be too, and (b) the response is the
+         *     full inventory in one in-memory bytes blob — a viewer with an API
+         *     token can loop the call to balloon worker memory or to exfiltrate
+         *     every site / room / IP / MAC / etc. snapshot.
          */
         get: operations["export_all_api_exports_all_get"];
         put?: never;
@@ -1364,6 +1433,151 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List User Conversations
+         * @description Return the operator's most-recent conversations, newest first.
+         *
+         *     Each row carries `turn_count` + a short preview so the sidebar can
+         *     render without N+1 round-trips for the per-conversation details.
+         */
+        get: operations["list_user_conversations_api_ai_conversations_get"];
+        put?: never;
+        /**
+         * Create User Conversation
+         * @description Open a fresh empty conversation. Title is filled lazily when the
+         *     first user turn lands via POST /api/ai/query{,/stream} with the new
+         *     `conversation_id` parameter.
+         */
+        post: operations["create_user_conversation_api_ai_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Conversation
+         * @description Load one conversation with every turn embedded.
+         */
+        get: operations["get_user_conversation_api_ai_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete User Conversation
+         * @description Erase a conversation + every turn under it (CASCADE).
+         */
+        delete: operations["delete_user_conversation_api_ai_conversations__conversation_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename User Conversation
+         * @description Rename a conversation. Only the title is editable today.
+         */
+        patch: operations["rename_user_conversation_api_ai_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/api/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Webhooks */
+        get: operations["list_webhooks_api_webhooks_get"];
+        put?: never;
+        /** Create Webhook */
+        post: operations["create_webhook_api_webhooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webhooks/{webhook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Webhook */
+        get: operations["get_webhook_api_webhooks__webhook_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Webhook */
+        delete: operations["delete_webhook_api_webhooks__webhook_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Webhook */
+        patch: operations["update_webhook_api_webhooks__webhook_id__patch"];
+        trace?: never;
+    };
+    "/api/webhooks/{webhook_id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate Secret */
+        post: operations["rotate_secret_api_webhooks__webhook_id__rotate_secret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webhooks/{webhook_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Webhook */
+        post: operations["test_webhook_api_webhooks__webhook_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/webhooks/{webhook_id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Deliveries */
+        get: operations["list_deliveries_api_webhooks__webhook_id__deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1488,6 +1702,8 @@ export interface components {
             };
             /** Status */
             status: string;
+            /** Error Code */
+            error_code: string | null;
             /** Error Message */
             error_message: string | null;
             /** Applied Resource */
@@ -1530,6 +1746,8 @@ export interface components {
             name: string;
             /** Expires At */
             expires_at?: string | null;
+            /** @default full */
+            scope: components["schemas"]["ApiTokenScope"];
         };
         /**
          * ApiTokenCreated
@@ -1545,6 +1763,7 @@ export interface components {
             name: string;
             /** Prefix */
             prefix: string;
+            scope: components["schemas"]["ApiTokenScope"];
             /**
              * Created At
              * Format: date-time
@@ -1572,6 +1791,7 @@ export interface components {
             name: string;
             /** Prefix */
             prefix: string;
+            scope: components["schemas"]["ApiTokenScope"];
             /**
              * Created At
              * Format: date-time
@@ -1584,6 +1804,20 @@ export interface components {
             /** Revoked At */
             revoked_at: string | null;
         };
+        /**
+         * ApiTokenScope
+         * @description How much of the owner's role a token is allowed to exercise.
+         *
+         *     ``full`` (the historical, still-default behaviour) inherits the owner's
+         *     role verbatim — an admin's token can do anything the admin can.
+         *     ``read_only`` caps the token to `UserRole.viewer` for the lifetime of the
+         *     request it authenticates, regardless of the owner's real role: a leaked
+         *     CI token minted as ``read_only`` can list/get, never write. Enforcement
+         *     lives in `app/auth/dependencies.py::get_current_user`, not here — this
+         *     column is only ever read, never interpreted by the DB.
+         * @enum {string}
+         */
+        ApiTokenScope: "full" | "read_only";
         /**
          * AuditAction
          * @enum {string}
@@ -1657,6 +1891,8 @@ export interface components {
             ok_rows: number;
             /** Error Rows */
             error_rows: components["schemas"]["ImportErrorRow"][];
+            /** Warnings */
+            warnings?: string[];
         };
         /**
          * BulkImportReport
@@ -1672,6 +1908,54 @@ export interface components {
             total_ok_rows: number;
             /** Applied */
             applied: boolean;
+        };
+        /**
+         * BulkIpAction
+         * @enum {string}
+         */
+        BulkIpAction: "reserve" | "release";
+        /**
+         * BulkIpRange
+         * @description Bulk-operate on a contiguous range of host addresses inside a subnet.
+         *
+         *     - `reserve` creates an IP row per address with the given status, skipping
+         *       any address that already has a row (unless `overwrite=True`, in which
+         *       case the existing row is updated in place).
+         *     - `release` deletes every IP row whose address falls in the range.
+         *     Capped server-side so a malformed range can't trigger a runaway
+         *     transaction.
+         */
+        BulkIpRange: {
+            action: components["schemas"]["BulkIpAction"];
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
+            /** @default reserved */
+            status: components["schemas"]["IpStatus"];
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+            /** Description */
+            description?: string | null;
+        };
+        /**
+         * BulkIpResult
+         * @description Summary returned by `POST /api/subnets/{id}/bulk-ip`.
+         */
+        BulkIpResult: {
+            /** Requested */
+            requested: number;
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
+            /** Deleted */
+            deleted: number;
+            /** Skipped */
+            skipped: number;
         };
         /** CableCreate */
         CableCreate: {
@@ -1755,6 +2039,89 @@ export interface components {
             notes?: string | null;
         };
         /**
+         * ConversationDetailRead
+         * @description A single conversation with every turn embedded — used by the
+         *     "load this thread" path.
+         */
+        ConversationDetailRead: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Turn Count */
+            turn_count: number;
+            /** Preview */
+            preview?: string | null;
+            /** Turns */
+            turns: components["schemas"]["ConversationTurnRead"][];
+        };
+        /**
+         * ConversationRead
+         * @description Conversation list-item — no turns embedded.
+         *
+         *     The list endpoint surfaces these so the sidebar can render quickly
+         *     without dragging the full transcript across the wire on every load.
+         */
+        ConversationRead: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Turn Count */
+            turn_count: number;
+            /** Preview */
+            preview?: string | null;
+        };
+        /**
+         * ConversationTurnRead
+         * @description One turn of a persisted Ask-AI conversation.
+         */
+        ConversationTurnRead: {
+            /** Id */
+            id: number;
+            /** Role */
+            role: string;
+            /** Text */
+            text: string;
+            /** Entities */
+            entities?: components["schemas"]["QueryEntityRef"][];
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ConversationUpdate
+         * @description PATCH body — only the title is editable today.
+         */
+        ConversationUpdate: {
+            /** Title */
+            title: string;
+        };
+        /**
          * CsvColumnMapping
          * @description One column → field decision.
          */
@@ -1767,6 +2134,37 @@ export interface components {
             confidence: number;
             /** Notes */
             notes: string;
+        };
+        /**
+         * CsvDataQualityIssue
+         * @description One data-quality observation surfaced by the mapper.
+         *
+         *     Two complementary sources feed this:
+         *       - **Deterministic checks** (`csv_mapping.run_local_data_quality`) catch
+         *         obviously wrong cells in the sample: empty required fields, malformed
+         *         CIDR/IPv4/MAC, duplicate values in unique columns.
+         *       - **LLM observations** flag higher-level issues the deterministic
+         *         checks miss: mixed unit conventions, inconsistent casing, suspicious
+         *         outliers.
+         */
+        CsvDataQualityIssue: {
+            /** Severity */
+            severity: string;
+            /** Column */
+            column: string | null;
+            /** Issue */
+            issue: string;
+            /** Details */
+            details: string;
+            /** Sample Values */
+            sample_values?: string[];
+            /**
+             * Affected Row Count
+             * @default 0
+             */
+            affected_row_count: number;
+            /** Source */
+            source: string;
         };
         /**
          * CsvMappingRequest
@@ -1796,6 +2194,8 @@ export interface components {
             columns: components["schemas"]["CsvColumnMapping"][];
             /** Missing Required Fields */
             missing_required_fields: string[];
+            /** Data Quality */
+            data_quality?: components["schemas"]["CsvDataQualityIssue"][];
             /** Provider */
             provider: string;
             /** Model */
@@ -1936,6 +2336,8 @@ export interface components {
             error_rows: components["schemas"]["ImportErrorRow"][];
             /** Applied */
             applied: boolean;
+            /** Warnings */
+            warnings?: string[];
         };
         /**
          * InsightEntityRef
@@ -2228,6 +2630,17 @@ export interface components {
             /** Page Size */
             page_size: number;
         };
+        /** Page[CableRead] */
+        Page_CableRead_: {
+            /** Items */
+            items: components["schemas"]["CableRead"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
         /** Page[DeviceRead] */
         Page_DeviceRead_: {
             /** Items */
@@ -2320,6 +2733,17 @@ export interface components {
         Page_VlanRead_: {
             /** Items */
             items: components["schemas"]["VlanRead"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[VrfRead] */
+        Page_VrfRead_: {
+            /** Items */
+            items: components["schemas"]["VrfRead"][];
             /** Total */
             total: number;
             /** Page */
@@ -2452,6 +2876,8 @@ export interface components {
              * @default false
              */
             lite_context: boolean;
+            /** Conversation Id */
+            conversation_id?: number | null;
         };
         /** RoomCreate */
         RoomCreate: {
@@ -2648,6 +3074,50 @@ export interface components {
                 [key: string]: components["schemas"]["SnapshotEntityBucket"];
             };
         };
+        /**
+         * SubnetCapacityEntry
+         * @description One row in the dashboard capacity overview — a flat summary of a
+         *     single subnet's fill rate. Cheap to compute (no address-space scan),
+         *     so we can rank a few hundred subnets in a single request.
+         */
+        SubnetCapacityEntry: {
+            /** Id */
+            id: number;
+            /** Cidr */
+            cidr: string;
+            /** Site Id */
+            site_id: number;
+            /** Vrf Id */
+            vrf_id?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Usable */
+            usable: number;
+            /** Used */
+            used: number;
+            /** Used Pct */
+            used_pct: number;
+        };
+        /**
+         * SubnetCapacityOverview
+         * @description Top-N rankings the dashboard uses to surface "where should I look
+         *     next?" — three buckets cover daily-ops triage:
+         *       - `fullest`: nearly-full subnets that may run out of headroom.
+         *       - `full`:    at 100% — already a capacity incident waiting to happen.
+         *       - `unused`:  0 IPs recorded — either dead space to reclaim or
+         *                    undocumented inventory.
+         *     Each list is sorted server-side; the caller doesn't have to re-sort.
+         */
+        SubnetCapacityOverview: {
+            /** Fullest */
+            fullest: components["schemas"]["SubnetCapacityEntry"][];
+            /** Full */
+            full: components["schemas"]["SubnetCapacityEntry"][];
+            /** Unused */
+            unused: components["schemas"]["SubnetCapacityEntry"][];
+            /** Total Subnets */
+            total_subnets: number;
+        };
         /** SubnetCreate */
         SubnetCreate: {
             /**
@@ -2682,7 +3152,10 @@ export interface components {
          * @description One row in the GET /api/subnets/{id}/ips response.
          *
          *     `status` may be one of the stored statuses (`reserved`, `assigned`, `dhcp`)
-         *     OR the synthetic `"free"` for addresses that have no row in `ips`.
+         *     OR the synthetic `"free"` for addresses that have no row in `ips`. `ip_id`
+         *     is the primary key of the underlying `ips` row when one exists, so the
+         *     UI can open the editor directly without an extra `/ips?q=` lookup; it
+         *     stays `None` for synthetic free/dhcp rows that have no DB row at all.
          */
         SubnetIpEntry: {
             /** Address */
@@ -2748,16 +3221,14 @@ export interface components {
             updated_at: string;
             /**
              * Usable
-             * @description Host-usable address count (excludes network/broadcast on /≤30).
              * @default 0
              */
-            usable?: number;
+            usable: number;
             /**
              * Used
-             * @description Number of recorded Ip rows in this subnet.
              * @default 0
              */
-            used?: number;
+            used: number;
         };
         /**
          * SubnetTreeNode
@@ -2766,6 +3237,10 @@ export interface components {
          *     `children` is depth-first; siblings ordered by CIDR ascending. Root
          *     nodes are the subnets that have no parent (or whose parent rests in a
          *     different VRF — orphaned children float back to the top of their VRF).
+         *
+         *     `vlan_id`, `gateway`, `usable` and `used` are populated by the service
+         *     so the UI tree row can render the VLAN badge, gateway and fill-rate
+         *     bar without a follow-up fetch per node.
          */
         SubnetTreeNode: {
             /** Id */
@@ -2776,10 +3251,29 @@ export interface components {
             site_id: number;
             /** Vrf Id */
             vrf_id: number | null;
+            /** Vlan Id */
+            vlan_id?: number | null;
             /** Parent Subnet Id */
             parent_subnet_id: number | null;
             /** Description */
             description: string | null;
+            /** Gateway */
+            gateway?: string | null;
+            /**
+             * Usable
+             * @default 0
+             */
+            usable: number;
+            /**
+             * Used
+             * @default 0
+             */
+            used: number;
+            /**
+             * Synthetic
+             * @default false
+             */
+            synthetic: boolean;
             /**
              * Children
              * @default []
@@ -2953,18 +3447,27 @@ export interface components {
         TopologyEdgeData: {
             /** Id */
             id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "link" | "attachment";
             /** Source */
             source: string;
             /** Target */
             target: string;
             /** Link Type */
-            link_type: string;
+            link_type?: string | null;
             /** Speed Mbps */
             speed_mbps?: number | null;
             /** Port A */
-            port_a: number;
+            port_a?: number | null;
             /** Port B */
-            port_b: number;
+            port_b?: number | null;
+            /** Port A Label */
+            port_a_label?: string | null;
+            /** Port B Label */
+            port_b_label?: string | null;
         };
         /** TopologyNode */
         TopologyNode: {
@@ -2977,21 +3480,28 @@ export interface components {
             /** Label */
             label: string;
             /**
-             * Type
-             * @default switch
-             * @constant
+             * Kind
+             * @enum {string}
              */
-            type: "switch";
+            kind: "site" | "room" | "switch" | "device";
+            /** Entity Id */
+            entity_id: number;
+            /** Parent */
+            parent?: string | null;
             /** Vendor */
             vendor?: string | null;
             /** Model */
             model?: string | null;
             /** Management Ip */
             management_ip?: string | null;
-            /** Room Id */
-            room_id?: number | null;
             /** Ports Total */
-            ports_total: number;
+            ports_total?: number | null;
+            /** Ports Used */
+            ports_used?: number | null;
+            /** Device Type */
+            device_type?: string | null;
+            /** Child Count */
+            child_count?: number | null;
         };
         /** TopologyResponse */
         TopologyResponse: {
@@ -2999,6 +3509,80 @@ export interface components {
             nodes: components["schemas"]["TopologyNode"][];
             /** Edges */
             edges: components["schemas"]["TopologyEdge"][];
+            /**
+             * @default {
+             *       "sites": 0,
+             *       "rooms": 0,
+             *       "switches": 0,
+             *       "devices": 0,
+             *       "links": 0,
+             *       "attachments": 0,
+             *       "isolated_switches": 0,
+             *       "unplaced_nodes": 0,
+             *       "link_types": {}
+             *     }
+             */
+            stats: components["schemas"]["TopologyStats"];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * TopologyStats
+         * @description Counts for the header strip — computed from the returned payload, so
+         *     they always describe exactly what is on screen (including after
+         *     truncation).
+         */
+        TopologyStats: {
+            /**
+             * Sites
+             * @default 0
+             */
+            sites: number;
+            /**
+             * Rooms
+             * @default 0
+             */
+            rooms: number;
+            /**
+             * Switches
+             * @default 0
+             */
+            switches: number;
+            /**
+             * Devices
+             * @default 0
+             */
+            devices: number;
+            /**
+             * Links
+             * @default 0
+             */
+            links: number;
+            /**
+             * Attachments
+             * @default 0
+             */
+            attachments: number;
+            /**
+             * Isolated Switches
+             * @default 0
+             */
+            isolated_switches: number;
+            /**
+             * Unplaced Nodes
+             * @default 0
+             */
+            unplaced_nodes: number;
+            /**
+             * Link Types
+             * @default {}
+             */
+            link_types: {
+                [key: string]: number;
+            };
         };
         /**
          * UsageBucketRead
@@ -3137,6 +3721,134 @@ export interface components {
             rd?: string | null;
             /** Description */
             description?: string | null;
+        };
+        /** WebhookCreate */
+        WebhookCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+            /** Events */
+            events?: string[];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /**
+         * WebhookCreated
+         * @description Returned by POST + rotate-secret — includes the plaintext secret
+         *     exactly once. Operators must copy it immediately; we cannot recover it.
+         */
+        WebhookCreated: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+            /** Events */
+            events: string[];
+            /** Enabled */
+            enabled: boolean;
+            /** Total Deliveries */
+            total_deliveries: number;
+            /** Total Failures */
+            total_failures: number;
+            /** Last Delivery At */
+            last_delivery_at: string | null;
+            /** Last Status Code */
+            last_status_code: number | null;
+            /** Last Error */
+            last_error: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Secret */
+            secret: string;
+        };
+        /** WebhookDeliveryRead */
+        WebhookDeliveryRead: {
+            /** Id */
+            id: number;
+            /** Webhook Id */
+            webhook_id: number;
+            /** Event */
+            event: string;
+            /** Status Code */
+            status_code: number;
+            /** Success */
+            success: boolean;
+            /** Error */
+            error: string | null;
+            /** Latency Ms */
+            latency_ms: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * WebhookRead
+         * @description Public metadata — never includes the secret.
+         */
+        WebhookRead: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+            /** Events */
+            events: string[];
+            /** Enabled */
+            enabled: boolean;
+            /** Total Deliveries */
+            total_deliveries: number;
+            /** Total Failures */
+            total_failures: number;
+            /** Last Delivery At */
+            last_delivery_at: string | null;
+            /** Last Status Code */
+            last_status_code: number | null;
+            /** Last Error */
+            last_error: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WebhookUpdate
+         * @description All fields optional — PATCH semantics.
+         */
+        WebhookUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Events */
+            events?: string[] | null;
+            /** Enabled */
+            enabled?: boolean | null;
         };
     };
     responses: never;
@@ -3816,7 +4528,10 @@ export interface operations {
     };
     list_vrfs_api_vrfs_get: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3829,7 +4544,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VrfRead"][];
+                    "application/json": components["schemas"]["Page_VrfRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3969,6 +4693,8 @@ export interface operations {
                 vlan_id?: number | null;
                 /** @description Filter by VRF. Use `0` to fetch only global-scope subnets. */
                 vrf_id?: number | null;
+                /** @description Free-text search over CIDR + description (trigram-indexed). */
+                q?: string | null;
                 page?: number;
                 page_size?: number;
             };
@@ -4036,6 +4762,12 @@ export interface operations {
             query?: {
                 /** @description VRF scope. Omit or pass `0` for the global VRF. */
                 vrf_id?: number | null;
+                /** @description Filter the tree to a single site. */
+                site_id?: number | null;
+                /** @description Filter the tree to a single VLAN. */
+                vlan_id?: number | null;
+                /** @description Wrap flat root subnets sharing a /N supernet under a synthetic virtual parent so the tree shows real hierarchy. Pass `0` to disable and get the raw flat list of roots. */
+                auto_group_prefix?: number;
             };
             header?: never;
             path?: never;
@@ -4050,6 +4782,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubnetTreeNode"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capacity_overview_api_subnets_capacity_overview_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum entries per ranked bucket. Default 5. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubnetCapacityOverview"];
                 };
             };
             /** @description Validation Error */
@@ -4207,6 +4971,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NextFreeIpResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_ip_range_api_subnets__subnet_id__bulk_ip_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subnet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkIpRange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkIpResult"];
                 };
             };
             /** @description Validation Error */
@@ -5131,6 +5930,8 @@ export interface operations {
             query?: {
                 /** @description Only cables with no link assigned. */
                 in_stock?: boolean;
+                page?: number;
+                page_size?: number;
             };
             header?: never;
             path?: never;
@@ -5144,7 +5945,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CableRead"][];
+                    "application/json": components["schemas"]["Page_CableRead_"];
                 };
             };
             /** @description Validation Error */
@@ -5456,7 +6257,14 @@ export interface operations {
     get_topology_api_topology_get: {
         parameters: {
             query?: {
+                /** @description Restrict to switches and devices in this site. */
                 site_id?: number | null;
+                /** @description Restrict to a single room. */
+                room_id?: number | null;
+                /** @description Keep only switches carrying this VLAN (native or tagged) on at least one port. Links between those switches are all returned — filtering edges too would hide the cable carrying the VLAN. */
+                vlan_id?: number | null;
+                /** @description Include non-switch devices as leaf nodes, with an `attachment` edge per port they are plugged into. Turn off for a switch-only backbone view. */
+                include_devices?: boolean;
             };
             header?: never;
             path?: never;
@@ -6231,6 +7039,395 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_conversations_api_ai_conversations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_conversation_api_ai_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationRead"];
+                };
+            };
+        };
+    };
+    get_user_conversation_api_ai_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_user_conversation_api_ai_conversations__conversation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_user_conversation_api_ai_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_webhooks_api_webhooks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookRead"][];
+                };
+            };
+        };
+    };
+    create_webhook_api_webhooks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_webhook_api_webhooks__webhook_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_webhook_api_webhooks__webhook_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_webhook_api_webhooks__webhook_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_secret_api_webhooks__webhook_id__rotate_secret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_webhook_api_webhooks__webhook_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_deliveries_api_webhooks__webhook_id__deliveries_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryRead"][];
                 };
             };
             /** @description Validation Error */

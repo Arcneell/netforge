@@ -7,7 +7,7 @@ renderer.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_role
@@ -20,6 +20,7 @@ from app.services.ai.advisor import list_latest_insights
 from app.services.ai.locale import _parse_primary_tag
 from app.services.ai.pdf_export import build_filename as _pdf_filename
 from app.services.ai.pdf_export import render_advisor_report
+from app.services.errors import http_error
 
 router = APIRouter()
 
@@ -43,8 +44,10 @@ async def export_insights_pdf(
     _require_ai_enabled()
     run_id, run_created_at, items = await list_latest_insights(db)
     if run_id is None:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, detail="no advisor run has succeeded yet"
+        http_error(
+            status.HTTP_404_NOT_FOUND,
+            "NO_ADVISOR_RUN",
+            "no advisor run has succeeded yet",
         )
     locale = _parse_primary_tag(accept_language)
     pdf_bytes = render_advisor_report(

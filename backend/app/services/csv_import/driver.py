@@ -7,13 +7,15 @@ down on the commit *and* on both rollback paths.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.schemas.imports import (
     BulkImportFileReport,
     BulkImportReport,
@@ -30,10 +32,12 @@ from app.services.csv_import.errors import (
 from app.services.csv_import.parsing import (
     BULK_MAX_FILES,
     BULK_MAX_TOTAL_BYTES,
+    TOO_MANY_COLUMNS_KEY,
     _parse_csv,
+    _rows_with_invalid_encoding,
     apply_column_mapping,
 )
-from app.services.csv_import.persist import IMPORT_ORDER, SPECS
+from app.services.csv_import.persist import IMPORT_ORDER, SPECS, _ImportSpec
 from app.services.csv_import.refs import _ref_cache_scope
 
 
@@ -45,6 +49,84 @@ class _SingleResult:
     parsed_rows: int
     ok_rows: int
     error_rows: list[ImportErrorRow]
+    warnings: list[str] = field(default_factory=list)
+
+
+class _NeedsSavepointRetry(Exception):
+    """Internal signal only — never escapes `_import_one`.
+
+    Raised when the fast apply pass (see `_run_apply_pass`) hits an
+    `IntegrityError` without a SAVEPOINT in place. PostgreSQL aborts the
+    whole transaction on that error, so nothing else in it can run until a
+    ROLLBACK — including any later row in this same file. Wrapping the fast
+    pass in `begin_nested()` lets us roll back to a SAVEPOINT instead of the
+    whole (possibly multi-file, see `run_bulk_import`) transaction, then
+    retry the file with a SAVEPOINT around every row.
+    """
+
+
+async def _run_apply_pass(
+    db: AsyncSession,
+    parsed: list[tuple[int, BaseModel, dict[str, str]]],
+    spec: _ImportSpec,
+    *,
+    use_savepoints: bool,
+) -> tuple[int, list[ImportErrorRow]]:
+    """One pass over `parsed`, persisting + flushing each row.
+
+    `_RefError` / `HTTPException` are pure validation failures — nothing they
+    do reaches the database in a way that can abort the transaction, so the
+    loop always keeps going past them, `use_savepoints` or not.
+
+    `IntegrityError` is different: it comes from a real `flush()`, and
+    PostgreSQL poisons the whole transaction once one fires. With
+    `use_savepoints=False` this pass stops there and raises
+    `_NeedsSavepointRetry` — the caller must roll back (to the SAVEPOINT it
+    wrapped this call in) and retry with `use_savepoints=True`, which puts
+    every row in its own SAVEPOINT so a later row's constraint violation
+    can't cascade into the ones after it.
+    """
+    apply_errors: list[ImportErrorRow] = []
+    success_count = 0
+    for line, model, _raw in parsed:
+        try:
+            if use_savepoints:
+                async with db.begin_nested():
+                    await spec.persist(db, model)
+                    await db.flush()
+            else:
+                await spec.persist(db, model)
+                await db.flush()
+        except _RefError as e:
+            apply_errors.append(
+                ImportErrorRow(
+                    line=line, column=e.column, value=e.value, error=e.message
+                )
+            )
+            continue
+        except IntegrityError as e:
+            apply_errors.append(
+                ImportErrorRow(
+                    line=line, error=_friendly_integrity(str(getattr(e, "orig", e)))
+                )
+            )
+            if not use_savepoints:
+                raise _NeedsSavepointRetry from e
+            continue
+        except HTTPException as e:
+            err_obj: dict[str, Any] = (
+                e.detail.get("error", {}) if isinstance(e.detail, dict) else {}
+            )
+            apply_errors.append(
+                ImportErrorRow(
+                    line=line,
+                    error=str(err_obj.get("message") or err_obj.get("code") or e.detail),
+                )
+            )
+            continue
+        success_count += 1
+
+    return success_count, apply_errors
 
 
 async def _import_one(
@@ -73,10 +155,44 @@ async def _import_one(
     if not rows:
         return _SingleResult(parsed_rows=0, ok_rows=0, error_rows=[])
 
+    max_rows = get_settings().csv_import_max_rows
+    if len(rows) > max_rows:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "TOO_MANY_ROWS",
+                    "message": (
+                        f"CSV has {len(rows)} data rows, exceeding the "
+                        f"{max_rows} row limit. Split the file into smaller "
+                        "batches or raise CSV_IMPORT_MAX_ROWS."
+                    ),
+                }
+            },
+        )
+
+    # Silent-corruption guard: `_parse_csv` decodes with `errors="replace"`
+    # so one bad byte can't 500 the whole import, but that must not mean the
+    # operator never finds out a value was mangled.
+    warnings = [
+        f"line {i + 2}: row contains the Unicode replacement character "
+        "(U+FFFD) — the source file may not be valid UTF-8; check for "
+        "corrupted values in this row."
+        for i in _rows_with_invalid_encoding(rows)
+    ]
+
     # ---- Parse / validate phase ------------------------------------------
     parsed: list[tuple[int, BaseModel, dict[str, str]]] = []
     parse_errors: list[ImportErrorRow] = []
     for i, raw in enumerate(rows, start=2):  # row 1 = header
+        if TOO_MANY_COLUMNS_KEY in raw:
+            parse_errors.append(
+                ImportErrorRow(
+                    line=i,
+                    error="Row has more columns than the header row.",
+                )
+            )
+            continue
         try:
             model = spec.row_model.model_validate(raw)
         except ValidationError as exc:
@@ -86,43 +202,38 @@ async def _import_one(
 
     if parse_errors:
         return _SingleResult(
-            parsed_rows=len(rows), ok_rows=0, error_rows=parse_errors
+            parsed_rows=len(rows),
+            ok_rows=0,
+            error_rows=parse_errors,
+            warnings=warnings,
         )
 
-    # ---- Apply phase — flush per row to localize errors ------------------
-    apply_errors: list[ImportErrorRow] = []
-    success_count = 0
-    for line, model, _raw in parsed:
-        try:
-            await spec.persist(db, model)
-            await db.flush()
-        except _RefError as e:
-            apply_errors.append(
-                ImportErrorRow(
-                    line=line, column=e.column, value=e.value, error=e.message
-                )
+    # ---- Apply phase -------------------------------------------------
+    # Fast path first, no SAVEPOINT overhead: `_RefError`/`HTTPException`
+    # already get collected in full for free (see `_run_apply_pass`), which
+    # covers the common case (a row references something that doesn't
+    # exist). The whole pass runs inside ONE SAVEPOINT so that, if a row
+    # hits a genuine `IntegrityError`, we can roll back just THIS file's
+    # work (not the other files already flushed in the same transaction —
+    # `run_bulk_import` shares one transaction across the whole batch) and
+    # retry with a SAVEPOINT per row, which is the only way to keep
+    # collecting errors past a statement that poisoned the fast pass.
+    try:
+        async with db.begin_nested():
+            success_count, apply_errors = await _run_apply_pass(
+                db, parsed, spec, use_savepoints=False
             )
-            break
-        except IntegrityError as e:
-            apply_errors.append(
-                ImportErrorRow(
-                    line=line, error=_friendly_integrity(str(getattr(e, "orig", e)))
-                )
+    except _NeedsSavepointRetry:
+        with _ref_cache_scope(db):
+            success_count, apply_errors = await _run_apply_pass(
+                db, parsed, spec, use_savepoints=True
             )
-            break
-        except HTTPException as e:
-            err_obj = e.detail.get("error", {}) if isinstance(e.detail, dict) else {}
-            apply_errors.append(
-                ImportErrorRow(
-                    line=line,
-                    error=str(err_obj.get("message") or err_obj.get("code") or e.detail),
-                )
-            )
-            break
-        success_count += 1
 
     return _SingleResult(
-        parsed_rows=len(rows), ok_rows=success_count, error_rows=apply_errors
+        parsed_rows=len(rows),
+        ok_rows=success_count,
+        error_rows=apply_errors,
+        warnings=warnings,
     )
 
 
@@ -146,6 +257,7 @@ async def run_import(
             ok_rows=result.ok_rows,
             error_rows=result.error_rows,
             applied=False,
+            warnings=result.warnings,
         )
 
     await db.commit()
@@ -154,6 +266,7 @@ async def run_import(
         ok_rows=result.ok_rows,
         error_rows=[],
         applied=True,
+        warnings=result.warnings,
     )
 
 
@@ -283,6 +396,7 @@ async def run_bulk_import(
                     parsed_rows=result.parsed_rows,
                     ok_rows=result.ok_rows,
                     error_rows=result.error_rows,
+                    warnings=result.warnings,
                 )
             )
             if result.error_rows:

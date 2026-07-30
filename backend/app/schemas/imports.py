@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ImportErrorRow(BaseModel):
@@ -21,6 +21,11 @@ class ImportReport(BaseModel):
     ok_rows: int
     error_rows: list[ImportErrorRow]
     applied: bool  # True only when dry_run=False AND no error
+    # Non-blocking notices — e.g. a row whose bytes weren't valid UTF-8 and
+    # got silently `errors="replace"`-repaired by the decoder. Additive field
+    # (defaults to empty): older clients that don't know about it are
+    # unaffected, they just never see it.
+    warnings: list[str] = Field(default_factory=list)
 
 
 class DetectReport(BaseModel):
@@ -47,6 +52,8 @@ class BulkImportFileReport(BaseModel):
     parsed_rows: int
     ok_rows: int
     error_rows: list[ImportErrorRow]
+    # See `ImportReport.warnings` — same additive, non-blocking notices.
+    warnings: list[str] = Field(default_factory=list)
 
 
 class BulkImportReport(BaseModel):

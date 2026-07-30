@@ -35,7 +35,14 @@ class OIDCProvider(AuthProvider):
             client_id=client_id,
             client_secret=client_secret,
             server_metadata_url=f"{issuer_url.rstrip('/')}/.well-known/openid-configuration",
-            client_kwargs={"scope": scope},
+            # PKCE (RFC 7636, S256) — modern IdPs (Entra ID, Keycloak,
+            # Authentik, Google Workspace, GitLab) all support it. authlib
+            # generates the code_verifier, carries it in the same signed
+            # `netforge_oauth_state` session cookie already used for
+            # `state` / `nonce`, and replays it at the token exchange
+            # automatically once `code_challenge_method` is set here — no
+            # extra state-transport plumbing needed.
+            client_kwargs={"scope": scope, "code_challenge_method": "S256"},
         )
         self._oauth = oauth
         self._require_email_verified = require_email_verified

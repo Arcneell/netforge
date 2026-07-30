@@ -46,6 +46,18 @@ ruff format .               # apply formatting
 
 CI must be green before a PR is merged. Any new business rule (GiST constraint, trigger, service) ships with a `pytest` test.
 
+## Pre-commit hooks (optional but recommended)
+
+`.pre-commit-config.yaml` runs the same lint checks as CI (`ruff check` on the backend, `eslint` + `prettier --check` on the frontend) before you commit, so a lint failure never has to wait for CI to tell you about it. It shells out to the tools you already installed above (`pip install -e ".[dev]"`, `npm ci`) — no separate toolchain to keep in sync. (`ruff format --check` is deliberately not hooked: much of the codebase predates ruff format, so it stays a manual, per-file tool until a dedicated reformat lands.)
+
+```bash
+pip install pre-commit   # or: pipx install pre-commit
+pre-commit install       # wires it into .git/hooks/pre-commit
+
+# Run it on demand, e.g. before opening a PR, without waiting for a commit:
+pre-commit run --all-files
+```
+
 ## Ground rules
 
 1. **Small, focused PRs** — one PR, one intent. Easier to review, easier to revert.

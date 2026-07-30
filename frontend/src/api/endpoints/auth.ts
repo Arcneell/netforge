@@ -10,11 +10,24 @@ export interface CurrentUser {
   provider: string
 }
 
+/**
+ * `full` inherits the owner's role verbatim (the historical, still-default
+ * behaviour). `read_only` caps the token to viewer-level reads for its
+ * whole lifetime, even if the owner is an admin — see backend
+ * `app/auth/dependencies.py::get_current_user`.
+ */
+export type ApiTokenScope = 'full' | 'read_only'
+
+// TODO(gen:types): once the backend is reachable, run `npm run gen:types`
+// to regenerate `src/api/schema.d.ts` (it still predates the `scope` field
+// added to ApiTokenCreate/ApiTokenRead) and fold any renamed fields back in
+// here by hand, same as every other hand-curated alias in this file.
 export interface ApiToken {
   id: number
   user_id: number
   name: string
   prefix: string
+  scope: ApiTokenScope
   created_at: string
   expires_at: string | null
   last_used_at: string | null
@@ -24,6 +37,8 @@ export interface ApiToken {
 export interface ApiTokenCreate {
   name: string
   expires_at?: string | null
+  /** Defaults server-side to `full` when omitted. */
+  scope?: ApiTokenScope
 }
 
 /** Returned by POST /api/auth/tokens. `token` is the plaintext, surfaced

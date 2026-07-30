@@ -42,4 +42,13 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # Unprivileged listen ports (see runtime-stage note above). Host-facing
 # 80/443 are restored by the port mappings in docker-compose.yml.
 EXPOSE 8080 8443
+
+# Plain-HTTP /healthz (nginx.prod.conf and nginx.conf both define it on
+# 8080, no TLS, no redirect) — mirrors the healthcheck docker-compose.yml
+# already runs from the outside, so `docker inspect` / `docker ps` report
+# container health even without compose. wget is busybox, already in the
+# nginx-unprivileged alpine base; no curl here to keep the image slim.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://localhost:8080/healthz || exit 1
+
 CMD ["nginx", "-g", "daemon off;"]

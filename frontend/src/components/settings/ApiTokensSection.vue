@@ -8,10 +8,11 @@ import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import FormField from '@/components/ui/FormField.vue'
 import HelpTooltip from '@/components/ui/HelpTooltip.vue'
+import Select, { type SelectOption } from '@/components/ui/Select.vue'
 import DataTable, { type DataTableColumn } from '@/components/DataTable.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { authApi } from '@/api'
-import type { ApiToken, ApiTokenCreated } from '@/api'
+import type { ApiToken, ApiTokenCreated, ApiTokenScope } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
 import { formatDate } from '@/utils/formatters'
@@ -29,6 +30,7 @@ const newName = ref('')
 // "YYYY-MM-DDTHH:mm" string with no timezone. We append ":00" + the user's
 // offset before posting so the server stores an unambiguous UTC instant.
 const newExpiresAt = ref('')
+const newScope = ref<ApiTokenScope>('full')
 const creating = ref(false)
 const createError = ref<string | null>(null)
 
@@ -45,6 +47,7 @@ const revoking = ref(false)
 const columns = computed<DataTableColumn[]>(() => [
   { key: 'name', label: t('apiTokens.fields.name'), cellClass: 'font-medium' },
   { key: 'prefix', label: t('apiTokens.fields.prefix'), cellClass: 'font-mono w-32' },
+  { key: 'scope', label: t('apiTokens.fields.scope'), cellClass: 'w-32' },
   { key: 'created_at', label: t('apiTokens.fields.created'), cellClass: 'w-44 whitespace-nowrap' },
   {
     key: 'last_used_at',
@@ -54,6 +57,21 @@ const columns = computed<DataTableColumn[]>(() => [
   { key: 'status', label: t('apiTokens.fields.status'), cellClass: 'w-32' },
   { key: 'actions', label: t('common.actions'), align: 'right', cellClass: 'w-20' },
 ])
+
+const scopeOptions = computed<SelectOption<ApiTokenScope>[]>(() => [
+  { value: 'full', label: t('apiTokens.scope.full') },
+  { value: 'read_only', label: t('apiTokens.scope.readOnly') },
+])
+
+const scopeDescription = computed(() =>
+  newScope.value === 'read_only'
+    ? t('apiTokens.scope.readOnlyDescription')
+    : t('apiTokens.scope.fullDescription'),
+)
+
+function scopeLabel(scope: ApiTokenScope): string {
+  return scope === 'read_only' ? t('apiTokens.scope.readOnly') : t('apiTokens.scope.full')
+}
 
 async function load() {
   loading.value = true
@@ -71,6 +89,7 @@ onMounted(load)
 function openCreate() {
   newName.value = ''
   newExpiresAt.value = ''
+  newScope.value = 'full'
   createError.value = null
   // Wipe a previous plaintext before opening — we never want two open tokens
   // visible at once. The user closing the previous create-result modal also
@@ -115,6 +134,7 @@ async function submitCreate(e: Event) {
     const result = await authApi.createToken({
       name: newName.value.trim(),
       expires_at: expiresAt,
+      scope: newScope.value,
     })
     justCreated.value = result
     createOpen.value = false
@@ -241,6 +261,11 @@ function statusFor(token: ApiToken): { key: string; tone: BadgeTone } {
           {{ t('apiTokens.new') }}
         </Button>
       </template>
+      <template #cell-scope="{ row }">
+        <Badge :tone="row.scope === 'read_only' ? 'primary' : 'neutral'">
+          {{ scopeLabel(row.scope) }}
+        </Badge>
+      </template>
       <template #cell-created_at="{ row }">
         <span class="text-fg-muted">{{ formatDate(row.created_at) }}</span>
       </template>
@@ -296,6 +321,15 @@ function statusFor(token: ApiToken): { key: string; tone: BadgeTone } {
           </template>
           <template #default="{ id }">
             <Input :id="id" v-model="newExpiresAt" type="datetime-local" autocomplete="off" />
+          </template>
+        </FormField>
+
+        <FormField :label="t('apiTokens.fields.scope')" :hint="scopeDescription">
+          <template #help>
+            <HelpTooltip :text="t('apiTokens.help.scope')" />
+          </template>
+          <template #default="{ id }">
+            <Select :id="id" v-model="newScope" :options="scopeOptions" />
           </template>
         </FormField>
 

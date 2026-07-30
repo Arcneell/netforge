@@ -12,9 +12,11 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
+from app.config import get_settings
 from app.services.ai.types import (
     AICompletion,
     AIProviderError,
+    AIProviderRateLimitError,
     StreamChunk,
     StreamDelta,
     StreamDone,
@@ -22,6 +24,38 @@ from app.services.ai.types import (
     ToolCall,
     ToolDef,
 )
+
+# No settings field exists for this yet (see app/config.py) — read one via
+# getattr with this constant as the fallback so a future `ai_request_timeout_seconds`
+# setting is picked up automatically without another code change here.
+# 120s comfortably covers a large cached snapshot + tool-call round-trip
+# while still failing a genuinely stuck connection well before the client's
+# own HTTP timeout gives up.
+_DEFAULT_TIMEOUT_SECONDS = 120.0
+
+
+def _client_timeout_seconds() -> float:
+    return getattr(get_settings(), "ai_request_timeout_seconds", _DEFAULT_TIMEOUT_SECONDS)
+
+
+def _translate_provider_error(exc: Exception, *, context: str) -> AIProviderError:
+    """Map an SDK exception to our typed hierarchy.
+
+    `anthropic.RateLimitError` (429) is the obvious rate-limit signal;
+    `APIStatusError` with `status_code == 529` ("overloaded_error") is
+    Anthropic-specific and just as retryable, so it gets the same typed
+    error even though the SDK doesn't give it its own class.
+    """
+    try:
+        import anthropic
+    except ImportError:  # pragma: no cover - env-dependent
+        return AIProviderError(f"{context}: {exc}")
+
+    if isinstance(exc, anthropic.RateLimitError):
+        return AIProviderRateLimitError(f"{context} (rate limited): {exc}")
+    if isinstance(exc, anthropic.APIStatusError) and exc.status_code == 529:
+        return AIProviderRateLimitError(f"{context} (overloaded): {exc}")
+    return AIProviderError(f"{context}: {exc}")
 
 
 class AnthropicProvider:
@@ -55,7 +89,7 @@ class AnthropicProvider:
             raise AIProviderError(
                 "anthropic SDK not installed (`pip install anthropic`)"
             ) from exc
-        self._client = AsyncAnthropic(api_key=self._api_key)
+        self._client = AsyncAnthropic(api_key=self._api_key, timeout=_client_timeout_seconds())
         return self._client
 
     async def call(
@@ -122,7 +156,7 @@ class AnthropicProvider:
             resp = await client.messages.create(**kwargs)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
         except Exception as exc:
-            raise AIProviderError(f"anthropic API call failed: {exc}") from exc
+            raise _translate_provider_error(exc, context="anthropic API call failed") from exc
 
         # The response is a list of content blocks. Walk it once and pick
         # the first tool_use; if none, concatenate text blocks.
@@ -168,12 +202,14 @@ class AnthropicProvider:
         # Same cache_prefix splitting logic as `call()` — see that method for
         # the rationale. Keep behaviour aligned so a switch from non-streaming
         # to streaming doesn't suddenly stop hitting the cache.
+        user_block: list[dict[str, Any]] | str
         if cache_prefix and len(cache_prefix) >= 4096:
-            user_block: list[dict[str, Any]] | str = [
+            blocks: list[dict[str, Any]] = [
                 {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
             ]
             if prompt:
-                user_block.append({"type": "text", "text": prompt})
+                blocks.append({"type": "text", "text": prompt})
+            user_block = blocks
         else:
             user_block = (
                 cache_prefix + ("\n\n" if cache_prefix and prompt else "") + prompt
@@ -233,4 +269,4 @@ class AnthropicProvider:
         except AIProviderError:
             raise
         except Exception as exc:
-            raise AIProviderError(f"anthropic stream failed: {exc}") from exc
+            raise _translate_provider_error(exc, context="anthropic stream failed") from exc

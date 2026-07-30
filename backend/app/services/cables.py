@@ -2,22 +2,26 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cable import Cable
 from app.schemas.cable import CableCreate, CableUpdate
+from app.schemas.common import PageParams
 from app.services.errors import catch_integrity_errors, not_found
 
 
 async def list_cables(
-    db: AsyncSession, in_stock_only: bool = False
-) -> list[Cable]:
+    db: AsyncSession, page: PageParams, in_stock_only: bool = False
+) -> tuple[list[Cable], int]:
     base = select(Cable).order_by(Cable.id.desc())
+    count_q = select(func.count()).select_from(Cable)
     if in_stock_only:
         base = base.where(Cable.link_id.is_(None))
-    result = await db.execute(base)
-    return list(result.scalars().all())
+        count_q = count_q.where(Cable.link_id.is_(None))
+    total = (await db.execute(count_q)).scalar() or 0
+    result = await db.execute(base.offset(page.offset).limit(page.limit))
+    return list(result.scalars().all()), int(total)
 
 
 async def get_cable(db: AsyncSession, cable_id: int) -> Cable:

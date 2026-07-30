@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models.ai import AIRunKind, AIRunLog
 from app.services.ai.providers import get_provider
+from app.services.ai.retry import call_with_retry
 from app.services.ai.types import AIProviderError, ToolDef
 
 # Canonical NetForge fields per import entity — keep this in sync with the
@@ -537,16 +538,20 @@ async def run_mapping_suggestion(
 
     t0 = time.monotonic()
     error: str | None = None
+    error_exc: AIProviderError | None = None
     try:
-        completion = await provider.call(
-            system=system,
-            prompt=user_prompt,
-            tools=[tool],
-            max_tokens=settings.ai_max_output_tokens,
-            temperature=0.1,
+        completion = await call_with_retry(
+            lambda: provider.call(
+                system=system,
+                prompt=user_prompt,
+                tools=[tool],
+                max_tokens=settings.ai_max_output_tokens,
+                temperature=0.1,
+            )
         )
     except AIProviderError as exc:
         error = str(exc)
+        error_exc = exc
         completion = None
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -570,8 +575,8 @@ async def run_mapping_suggestion(
     await db.commit()
 
     if not completion or not completion.tool_call:
-        if error:
-            raise AIProviderError(error)
+        if error_exc:
+            raise error_exc
         raise AIProviderError("provider returned no tool call")
 
     raw_columns = completion.tool_call.input.get("columns", []) or []

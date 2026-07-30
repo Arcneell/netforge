@@ -18,6 +18,11 @@ dependencies = [
     "httpx>=0.28",
     "python-multipart>=0.0.18",
     "itsdangerous>=2.2",
+    # Optional at *runtime* (REDIS_URL empty disables every consumer — see
+    # app/cache.py) but a hard install dependency so the image ships one
+    # artefact regardless of whether an operator turns the cache on. Pure
+    # Python, no native deps; ~1 MB installed.
+    "redis>=5.2",
     # AI integration — three providers, all optional at runtime. The factory
     # only imports the one matching AI_PROVIDER so a deployment can leave the
     # unused SDKs uninstalled if it really wants to slim the image.
@@ -95,3 +100,34 @@ ignore = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# --cov is intentionally NOT in addopts: it slows down the local dev loop
+# (`pytest -k foo`, `pytest tests/test_x.py`) for no benefit outside CI.
+# CI invokes it explicitly with --cov=app --cov-fail-under=N (see
+# .github/workflows/ci.yml).
+[tool.coverage.run]
+omit = [
+    "*/alembic/*",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+show_missing = true
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+# Pragmatic baseline, not a strict-mode gate: third-party stubs are
+# inconsistent (authlib ships none) and the codebase leans on SQLAlchemy's
+# Mapped[]/Select[] generics + Sequence-vs-list variance in a few spots that
+# mypy flags but aren't real bugs. Tightening these is a separate, deliberate
+# effort — this section exists so `mypy app` is runnable and reproducible in
+# CI, not to make it clean today.
+ignore_missing_imports = true
+warn_unused_ignores = false
+

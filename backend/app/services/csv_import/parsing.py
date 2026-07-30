@@ -19,12 +19,51 @@ BULK_MAX_FILES = 50
 BULK_MAX_TOTAL_BYTES = 50 * 1024 * 1024  # 50 MiB total across all CSVs
 ZIP_MAX_UNCOMPRESSED = 50 * 1024 * 1024  # guard against zip bombs
 
+# Sentinel key `_parse_csv` uses to flag a malformed row instead of raising.
+# `driver._import_one` checks for it before handing the row to Pydantic and
+# turns it into a normal `ImportErrorRow` in the report.
+TOO_MANY_COLUMNS_KEY = "__too_many_columns__"
+
+# `_parse_csv` / `_read_headers` decode with `errors="replace"` so a single
+# mis-encoded byte can't turn into a 500 for the whole import — but silently
+# swallowing it means the operator has no idea a value was corrupted.
+# Every invalid byte sequence is replaced by this exact character, so its
+# presence in a decoded cell is a reliable (if approximate — a file that
+# legitimately contains U+FFFD looks the same) signal of a decode failure.
+REPLACEMENT_CHAR = "�"
+
+
+def _rows_with_invalid_encoding(rows: list[dict[str, str]]) -> list[int]:
+    """0-based positions (within `rows`) of data rows still carrying the
+    Unicode replacement character after decoding.
+
+    Called by the driver right after `_parse_csv` so it can turn a silent
+    `errors="replace"` substitution into a per-line warning in the import
+    report instead of leaving the operator to discover the corrupted value
+    on their own later.
+    """
+    return [
+        i
+        for i, row in enumerate(rows)
+        if any(REPLACEMENT_CHAR in v for v in row.values() if isinstance(v, str))
+    ]
+
 
 def _parse_csv(content: bytes) -> list[dict[str, str]]:
     text = content.decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(text), delimiter=";")
     rows: list[dict[str, str]] = []
     for raw in reader:
+        # `csv.DictReader`'s default `restkey` is `None` — a row with more
+        # fields than the header stuffs the overflow under `raw[None]` as a
+        # list. The old `(v or "").strip()` below assumed every value was a
+        # string and crashed with `AttributeError: 'list' object has no
+        # attribute 'strip'` on any such row, turning one malformed CSV line
+        # into a 500 for the whole import. Drop the overflow bucket and flag
+        # the row instead so the caller can report a clean per-row error.
+        if raw.pop(None, None):
+            rows.append({TOO_MANY_COLUMNS_KEY: "1"})
+            continue
         rows.append({(k or "").strip(): (v or "").strip() for k, v in raw.items()})
     return rows
 

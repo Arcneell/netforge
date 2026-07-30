@@ -28,6 +28,7 @@ from app.models.link import Link
 from app.models.port import Port
 from app.services.ai.context import build_topology_context_cached
 from app.services.ai.providers import get_provider
+from app.services.ai.retry import call_with_retry
 from app.services.ai.types import AIProviderError, ToolDef
 
 SYSTEM_PROMPT = """You are a senior network engineer helping operators find missing
@@ -133,20 +134,24 @@ async def run_suggest_links(
 
     t0 = time.monotonic()
     error: str | None = None
+    error_exc: AIProviderError | None = None
     try:
-        completion = await provider.call(
-            system=system,
-            # See `services/ai/nl_query.py` for the cache_prefix rationale —
-            # the snapshot is identical between back-to-back scans, so it
-            # gets the breakpoint.
-            prompt="",
-            cache_prefix=f"Network snapshot:\n```json\n{payload}\n```",
-            tools=[SUGGEST_TOOL],
-            max_tokens=settings.ai_max_output_tokens,
-            temperature=0.2,
+        completion = await call_with_retry(
+            lambda: provider.call(
+                system=system,
+                # See `services/ai/nl_query.py` for the cache_prefix
+                # rationale — the snapshot is identical between back-to-back
+                # scans, so it gets the breakpoint.
+                prompt="",
+                cache_prefix=f"Network snapshot:\n```json\n{payload}\n```",
+                tools=[SUGGEST_TOOL],
+                max_tokens=settings.ai_max_output_tokens,
+                temperature=0.2,
+            )
         )
     except AIProviderError as exc:
         error = str(exc)
+        error_exc = exc
         completion = None
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -167,8 +172,10 @@ async def run_suggest_links(
 
     if not completion or not completion.tool_call:
         await db.commit()
-        if error:
-            raise AIProviderError(error)
+        if error_exc:
+            # Preserve the original exception type (e.g.
+            # `AIProviderRateLimitError`) so the router's 429 mapping fires.
+            raise error_exc
         raise AIProviderError("provider returned no tool call")
 
     raw_items = completion.tool_call.input.get("suggestions", []) or []
@@ -298,7 +305,7 @@ async def _persist_suggestions(
 
 
 async def list_pending(db: AsyncSession) -> list[LinkSuggestion]:
-    return (
+    rows = (
         (
             await db.execute(
                 select(LinkSuggestion)
@@ -309,6 +316,7 @@ async def list_pending(db: AsyncSession) -> list[LinkSuggestion]:
         .scalars()
         .all()
     )
+    return list(rows)
 
 
 async def annotate_for_read(

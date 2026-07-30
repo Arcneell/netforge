@@ -403,3 +403,50 @@ async def test_capacity_overview_empty_inventory() -> None:
     db.execute = AsyncMock(side_effect=[subnets_result])
     out = await service.capacity_overview(db, limit=5)
     assert out == {"fullest": [], "full": [], "unused": [], "total_subnets": 0}
+
+
+# --- _validate_dhcp_range: start <= end (Fix #6) ---------------------------
+
+
+def test_validate_dhcp_range_accepts_start_before_end() -> None:
+    # Should not raise.
+    service._validate_dhcp_range(
+        "10.0.0.0/24",
+        {"dhcp_range_start": "10.0.0.10", "dhcp_range_end": "10.0.0.50"},
+    )
+
+
+def test_validate_dhcp_range_accepts_start_equal_end() -> None:
+    """A single-address pool is a degenerate but valid range."""
+    service._validate_dhcp_range(
+        "10.0.0.0/24",
+        {"dhcp_range_start": "10.0.0.10", "dhcp_range_end": "10.0.0.10"},
+    )
+
+
+def test_validate_dhcp_range_rejects_start_after_end() -> None:
+    with pytest.raises(HTTPException) as exc:
+        service._validate_dhcp_range(
+            "10.0.0.0/24",
+            {"dhcp_range_start": "10.0.0.50", "dhcp_range_end": "10.0.0.10"},
+        )
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"]["code"] == "INVALID_DHCP_RANGE"
+
+
+def test_validate_dhcp_range_skips_check_when_only_one_bound_set() -> None:
+    # Only `dhcp_range_start` present — nothing to compare against, must
+    # not raise.
+    service._validate_dhcp_range("10.0.0.0/24", {"dhcp_range_start": "10.0.0.50"})
+
+
+def test_validate_dhcp_range_still_rejects_out_of_subnet_bounds_first() -> None:
+    """The existing "inside the CIDR" check must still fire even though the
+    new start<=end check was added — pins the two validations don't shadow
+    each other."""
+    with pytest.raises(HTTPException) as exc:
+        service._validate_dhcp_range(
+            "10.0.0.0/24",
+            {"dhcp_range_start": "10.0.0.10", "dhcp_range_end": "192.168.0.1"},
+        )
+    assert exc.value.detail["error"]["code"] == "ADDRESS_OUT_OF_SUBNET"

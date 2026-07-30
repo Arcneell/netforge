@@ -21,11 +21,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -37,8 +39,8 @@ from app.models.ai import (
     InfraInsight,
     InsightSeverity,
 )
-from app.services.ai.advisor import run_advisor
-from app.services.ai.suggest_links import run_suggest_links
+from app.services.ai.advisor import AdvisorReport, run_advisor
+from app.services.ai.suggest_links import ScanReport, run_suggest_links
 
 logger = logging.getLogger("netforge.ai.scheduler")
 
@@ -63,6 +65,59 @@ _RUN_LOG_RETENTION = timedelta(days=30)
 _RUN_LOG_CLEANUP_INTERVAL = timedelta(hours=6)
 _last_run_log_cleanup_at: datetime | None = None
 
+# Advisory-lock namespace for the anti-overlap guard below. `classid`
+# distinguishes this lock family from unrelated advisory locks elsewhere in
+# the app (see `services/users.py`'s cold-start bootstrap lock, which uses
+# the single-bigint form instead of the two-int form used here); `objid` is
+# the schedule row's id, so each schedule gets its own independent lock.
+_SCHEDULE_LOCK_CLASSID = 0x41495F53  # "AI_S" as bytes, arbitrary but stable
+
+
+def _dialect_name(db: AsyncSession) -> str:
+    """Best-effort detection of the underlying DB dialect.
+
+    Mirrors `services/users.py::_dialect_name` — duplicated locally rather
+    than imported so this module doesn't reach into another service's
+    private helper. Returns "" for mocks / anything that doesn't expose the
+    `sync_session.bind.dialect` chain, which the caller treats as "not
+    Postgres" and skips the lock entirely (never worse than baseline).
+    """
+    try:
+        # `bind` is typed as Engine | Connection | None; a None bind raises
+        # AttributeError here, which is exactly the "not Postgres" fallback.
+        name = db.sync_session.bind.dialect.name  # type: ignore[union-attr]
+    except AttributeError:
+        return ""
+    return str(name) if isinstance(name, str) else ""
+
+
+async def _try_acquire_schedule_lock(lock_db: AsyncSession, schedule_id: int) -> bool:
+    """Best-effort cross-replica / cross-worker mutex for one schedule's run.
+
+    Multi-replica deploys each run their own scheduler loop against the same
+    `ai_schedules` table; without a lock, two replicas can both see the same
+    schedule as due in the same minute and both fire the LLM call (and, for
+    the advisor, both attempt the webhook POST). `pg_try_advisory_xact_lock`
+    is non-blocking (returns false instead of waiting) and scoped to
+    `lock_db`'s own transaction — the caller keeps that transaction open
+    (uncommitted) for as long as it wants the lock held, then lets it roll
+    back on session close to release it. Deliberately a SEPARATE session
+    from the one doing the actual work (`db` in `_run_one`), because that
+    one commits partway through — an xact-scoped lock taken there would be
+    released by the first `db.commit()`, well before the webhook fires.
+
+    Non-Postgres backends (sqlite test fixtures) skip the lock — same
+    fallback as the bootstrap lock in `services/users.py`.
+    """
+    if _dialect_name(lock_db) != "postgresql":
+        return True
+    result = await lock_db.execute(
+        text("SELECT pg_try_advisory_xact_lock(:classid, :objid)").bindparams(
+            classid=_SCHEDULE_LOCK_CLASSID, objid=schedule_id
+        )
+    )
+    return bool(result.scalar())
+
 
 def is_due(schedule: AISchedule, now: datetime) -> bool:
     """Return True when the schedule should run now (or hasn't run yet)."""
@@ -83,7 +138,12 @@ async def _run_one(db: AsyncSession, schedule: AISchedule) -> None:
 
     Wraps every step so a transient provider error never kills the loop —
     the schedule's `last_run_at` is bumped regardless so we don't hammer a
-    failing provider every minute.
+    failing provider every minute. The caller (`_loop`) additionally wraps
+    each call to this function in its own try/except so a bookkeeping
+    failure (e.g. `db.commit()` itself raising, or `_maybe_notify` raising)
+    can't abort the rest of the batch — only the LLM call used to be
+    guarded here, which meant an exception anywhere else propagated out of
+    this function and skipped every remaining due schedule for the tick.
     """
     settings = get_settings()
     if not settings.ai_enabled:
@@ -94,36 +154,67 @@ async def _run_one(db: AsyncSession, schedule: AISchedule) -> None:
         # the minute-tick sleep, so we don't busy-loop on this branch.
         return
 
-    previous_run_id = schedule.last_run_id
-    try:
-        if schedule.kind == AIRunKind.advisor:
-            report = await run_advisor(db, user_id=None)
-        elif schedule.kind == AIRunKind.suggest_links:
-            report = await run_suggest_links(db, user_id=None)
-        else:
-            logger.warning("scheduler skipping unknown kind %s", schedule.kind)
+    # Anti-overlap guard: a dedicated session holds the advisory lock for
+    # the whole run (see `_try_acquire_schedule_lock`'s docstring for why it
+    # can't be `db`). Failing to even check the lock (e.g. a transient
+    # connection error) fails OPEN — proceeding without the lock is no
+    # worse than the pre-existing behaviour, and strictly better than a
+    # scheduler that stops firing entirely because the lock check itself
+    # is flaky.
+    async with SessionLocal() as lock_db:
+        try:
+            acquired = await _try_acquire_schedule_lock(lock_db, schedule.id)
+        except Exception:
+            logger.exception(
+                "scheduler: advisory lock check failed for schedule id=%s — "
+                "proceeding without it",
+                schedule.id,
+            )
+            acquired = True
+        if not acquired:
+            logger.info(
+                "scheduler: schedule id=%s is locked by another worker/replica — "
+                "skipping this tick",
+                schedule.id,
+            )
+            return
+
+        previous_run_id = schedule.last_run_id
+        # Both branches below produce a different report dataclass; only
+        # `.run_id` is read from it here, so the name is declared wide enough
+        # to hold either.
+        report: AdvisorReport | ScanReport
+        try:
+            if schedule.kind == AIRunKind.advisor:
+                report = await run_advisor(db, user_id=None)
+            elif schedule.kind == AIRunKind.suggest_links:
+                report = await run_suggest_links(db, user_id=None)
+            else:
+                logger.warning("scheduler skipping unknown kind %s", schedule.kind)
+                schedule.last_run_at = datetime.now(UTC)
+                await db.commit()
+                return
+        except Exception:
+            logger.exception("scheduler run failed kind=%s id=%s", schedule.kind, schedule.id)
             schedule.last_run_at = datetime.now(UTC)
             await db.commit()
             return
-    except Exception:
-        logger.exception("scheduler run failed kind=%s id=%s", schedule.kind, schedule.id)
+
         schedule.last_run_at = datetime.now(UTC)
+        schedule.last_run_id = report.run_id
         await db.commit()
-        return
 
-    schedule.last_run_at = datetime.now(UTC)
-    schedule.last_run_id = report.run_id
-    await db.commit()
-
-    # Only the advisor emits insights — suggest-links emits suggestions,
-    # which the operator triages by hand. No webhook for the latter today.
-    if schedule.kind == AIRunKind.advisor and schedule.webhook_url:
-        await _maybe_notify(
-            db,
-            schedule=schedule,
-            new_run_id=report.run_id,
-            previous_run_id=previous_run_id,
-        )
+        # Only the advisor emits insights — suggest-links emits suggestions,
+        # which the operator triages by hand. No webhook for the latter today.
+        if schedule.kind == AIRunKind.advisor and schedule.webhook_url:
+            await _maybe_notify(
+                db,
+                schedule=schedule,
+                new_run_id=report.run_id,
+                previous_run_id=previous_run_id,
+            )
+    # Exiting the `async with` closes `lock_db`, rolling back its (otherwise
+    # untouched) transaction — that's what releases the advisory lock.
 
 
 async def _maybe_notify(
@@ -142,7 +233,7 @@ async def _maybe_notify(
     won't change wording when the percentage is the same)."""
     threshold = _SEVERITY_RANK[schedule.webhook_severity_threshold]
 
-    def keys(rows: list[InfraInsight]) -> set[tuple[str, str]]:
+    def keys(rows: Sequence[InfraInsight]) -> set[tuple[str, str]]:
         return {
             (r.title.strip().lower(), r.category.value)
             for r in rows
@@ -270,7 +361,19 @@ async def _send_webhook(url: str, payload: dict[str, Any]) -> None:
     in the logs for the operator to dig into.
 
     The body is reshaped per receiver via `_format_for_chat_provider` so
-    pasting a Slack / Mattermost / Teams / Discord URL Just Works."""
+    pasting a Slack / Mattermost / Teams / Discord URL Just Works.
+
+    Optionally signed: when `ai_webhook_signing_secret` is set, the request
+    carries an `X-Netforge-Signature: sha256=<hmac>` header over the exact
+    body bytes, computed with `services.webhooks.sign_body` — the same
+    HMAC helper the generic `Webhook` model's deliveries already use — so a
+    receiver only has to implement verification once. Unsigned (no header)
+    when the secret is unset, which is the default: `ai_schedules` rows
+    don't have their own per-row secret column the way `Webhook` does, so
+    this is deliberately a single global secret
+    (`settings.ai_webhook_signing_secret`, read via `getattr` so a stubbed
+    Settings in tests without the field still no-ops instead of erroring).
+    """
     if not url:
         return
     # SSRF guard — see app/utils/ssrf.py for the rationale. The scheduler
@@ -280,13 +383,23 @@ async def _send_webhook(url: str, payload: dict[str, Any]) -> None:
     # address so a rebinding DNS server can't redirect the POST to an
     # internal target between validation and connection.
     from app.config import get_settings
+    from app.services.webhooks import sign_body
     from app.utils.ssrf import UnsafeOutboundURL, safe_post
 
     body = _format_for_chat_provider(url, payload)
+    # Serialise once so the bytes we sign are exactly the bytes we send —
+    # passing `json=body` to httpx and signing a separate `json.dumps` call
+    # risks the two not matching byte-for-byte (key ordering, separators).
+    body_bytes = json.dumps(body, default=str, separators=(",", ":")).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    secret = getattr(get_settings(), "ai_webhook_signing_secret", None)
+    if secret:
+        headers["X-Netforge-Signature"] = sign_body(secret, body_bytes)
     try:
         resp = await safe_post(
             url,
-            json=body,
+            content=body_bytes,
+            headers=headers,
             timeout=10.0,
             allow_private=get_settings().webhook_allow_private_targets,
         )
@@ -346,7 +459,24 @@ async def _loop() -> None:
             async with SessionLocal() as db:
                 due = await _list_due(db, datetime.now(UTC))
                 for schedule in due:
-                    await _run_one(db, schedule)
+                    # Isolate each schedule from the others: `_run_one`
+                    # already guards its own LLM call, but a failure in the
+                    # bookkeeping around it (the `last_run_at` commit, or
+                    # `_maybe_notify`) used to propagate out of this loop
+                    # and silently skip every remaining due schedule for
+                    # the tick (and the cleanup pass below). One schedule's
+                    # bug should never starve the others.
+                    try:
+                        await _run_one(db, schedule)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.exception(
+                            "scheduler: schedule id=%s kind=%s crashed outside its "
+                            "own error handling — continuing with the rest",
+                            schedule.id,
+                            schedule.kind,
+                        )
                 await _maybe_cleanup_run_logs(db)
         except asyncio.CancelledError:
             raise

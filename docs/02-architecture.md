@@ -2,7 +2,9 @@
 
 ## Overview
 
-Netforge follows a classic 3-tier architecture, containerized as 3 Docker services orchestrated by `docker compose`.
+Netforge follows a classic 3-tier architecture, containerized as Docker services
+orchestrated by `docker compose`. Three of them are the tiers; a fourth, `redis`,
+is a cache the stack runs fine without.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -21,24 +23,26 @@ Netforge follows a classic 3-tier architecture, containerized as 3 Docker servic
 ┌─────────────────────────────────────────────────────────────┐
 │              backend container (FastAPI + Uvicorn)           │
 │  - REST routes /api/*                                        │
-│  - Auth middleware (OIDC Entra ID, session cookies)          │
+│  - Auth middleware (pluggable OIDC/GitHub/dev, sessions       │
+│    + Bearer personal access tokens)                          │
 │  - Business logic (services/)                                │
 │  - SQLAlchemy 2.0 async ORM                                  │
 │  - Alembic migrations                                        │
-└───────────────────────────────┬─────────────────────────────┘
-                                │ TCP 5432 (docker network)
-                                ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    postgres:16 container                     │
-│  - Persistent volume /var/lib/postgresql/data                │
-│  - Daily backup (external cron) to Veeam repo                │
-└─────────────────────────────────────────────────────────────┘
+└──────────────┬──────────────────────────────┬───────────────┘
+               │ TCP 5432                     │ TCP 6379
+               ▼                              ▼
+┌──────────────────────────────┐ ┌──────────────────────────────┐
+│      postgres:16 container   │ │      redis:7 container       │
+│  - Volume /var/lib/postgre…  │ │  - OPTIONAL (REDIS_URL)      │
+│  - System of record          │ │  - Session + read cache      │
+│  - Daily backup to Veeam     │ │  - Shared rate-limit counters│
+└──────────────────────────────┘ └──────────────────────────────┘
 ```
 
 ## Services
 
 ### `frontend`
-- **Image**: multi-stage build (Node 20 for the build, `nginx:alpine` for runtime).
+- **Image**: multi-stage build (Node 22 for the build, `nginx:alpine` for runtime).
 - **Exposed port**: 8080 (or 443 with a certificate).
 - **Volumes**: none (stateless).
 - **Responsibilities**: serving the UI, proxying `/api/*`, applying security headers.
@@ -53,7 +57,32 @@ Netforge follows a classic 3-tier architecture, containerized as 3 Docker servic
 - **Image**: `postgres:16-alpine`.
 - **Port**: 5432 (not exposed outside the Docker network).
 - **Volumes**: `netforge_pgdata:/var/lib/postgresql/data`.
-- **Responsibilities**: persistent storage.
+- **Responsibilities**: persistent storage. System of record for everything.
+
+### `redis` (optional)
+- **Image**: `redis:7-alpine`.
+- **Port**: 6379 (not exposed outside the Docker network — Redis has no
+  authentication by default, and the cache holds session records).
+- **Volumes**: `netforge_redisdata:/data` (`appendonly yes`).
+- **Responsibilities**: three caches, none of which is a system of record.
+  1. **Session cache** — the `(session cookie → user)` resolution every
+     authenticated request otherwise costs two SELECTs to rebuild. Short TTL
+     (`CACHE_SESSION_TTL_SECONDS`, default 30s) plus explicit eviction on
+     logout, because instant revocation is the reason sessions live in a table
+     rather than in a JWT.
+  2. **Read cache** — the expensive assembled reads (`/api/topology`,
+     `/api/search`, `/api/subnets/tree`, `/api/subnets/capacity-overview`).
+     Keys embed a one-query fingerprint of the inventory tables, so a write
+     changes the key: a reader can never be served a pre-write payload, and
+     there is no invalidation step to get wrong.
+  3. **Rate-limit counters** — only when `RATE_LIMIT_STORE=redis`. Same
+     fleet-wide budget as the Postgres default, via an atomic Lua
+     check-and-increment instead of an UPSERT.
+
+  Set `REDIS_URL=` (empty) and every one of those falls back to Postgres; the
+  stack behaves exactly as it did before this service existed. See
+  `backend/app/cache.py` for the degradation policy — a Redis outage is always
+  a cache miss, never an error.
 
 ## Repository layout
 
@@ -73,21 +102,40 @@ netforge/
 │       ├── main.py              # FastAPI app creation
 │       ├── config.py            # Pydantic settings
 │       ├── db.py                # SQLAlchemy engine
-│       ├── auth/                # OIDC + middleware
+│       ├── auth/                # pluggable providers (github, oidc, dev) + middleware
+│       ├── middleware/          # rate limiting
 │       ├── models/              # SQLAlchemy ORM
 │       ├── schemas/             # Pydantic (request/response)
 │       ├── routers/             # endpoints by domain
-│       │   ├── subnets.py
+│       │   ├── health.py
+│       │   ├── auth.py
+│       │   ├── sites.py
+│       │   ├── rooms.py
 │       │   ├── vlans.py
+│       │   ├── vrfs.py
+│       │   ├── subnets.py
 │       │   ├── ips.py
+│       │   ├── devices.py
 │       │   ├── switches.py
 │       │   ├── ports.py
+│       │   ├── cables.py
 │       │   ├── links.py
 │       │   ├── topology.py
+│       │   ├── search.py
+│       │   ├── snapshots.py
 │       │   ├── imports.py
-│       │   └── audit.py
-│       ├── services/            # business logic
-│       └── utils/
+│       │   ├── exports.py
+│       │   ├── webhooks.py
+│       │   ├── audit.py
+│       │   └── ai/              # optional, gated behind AI_PROVIDER — query,
+│       │                        # insights, suggestions, drafts, csv_mapping,
+│       │                        # conversations, schedules, pdf_export,
+│       │                        # status, usage, integrity, streaming
+│       ├── services/            # business logic (one module per router,
+│       │   │                    # plus errors.py, search.py, audit.py, ...)
+│       │   └── ai/              # advisor, nl_query, csv_mapping, scheduler,
+│       │                        # provider adapters (anthropic/openai/gemini)
+│       └── utils/                # ssrf.py (SSRF-safe outbound calls), request.py
 ├── frontend/
 │   ├── Dockerfile
 │   ├── nginx.conf
@@ -131,9 +179,18 @@ netforge/
 
 ### Why Cytoscape.js for topology
 - Built-in layout engines (dagre, breadthfirst, cose).
+- **Compound nodes** — a node can name a `parent`, which is what lets sites
+  and rooms render as group boxes around the switches and devices they hold.
+  The hierarchy is computed in `services/topology.py` and shipped in the
+  payload, so the browser never rebuilds it.
 - Performance on 100+ nodes without slowing down.
 - Clear events API (click, hover, drag).
 - No React dependency like `react-flow`.
+
+The canvas is pointer-driven and has no keyboard model, so it is marked
+`aria-hidden`. The accessible path is the topology page's **List view**, which
+renders the same nodes and edges as two real tables — the graph is a second
+presentation of that data, never the only one.
 
 ## Typical flow — looking up a port
 

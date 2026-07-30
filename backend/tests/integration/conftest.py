@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 INTEGRATION_DB_URL_VAR = "NETFORGE_INTEGRATION_DB_URL"
+INTEGRATION_REDIS_URL_VAR = "NETFORGE_INTEGRATION_REDIS_URL"
 
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -44,6 +45,19 @@ _BACKEND_DIR = Path(__file__).resolve().parents[2]
 def integration_db_url() -> str | None:
     """URL of the disposable Postgres, or None when the suite must skip."""
     return os.environ.get(INTEGRATION_DB_URL_VAR) or None
+
+
+def integration_redis_url() -> str | None:
+    """URL of the disposable Redis, or None when those modules must skip.
+
+    Independent of the Postgres variable: the Redis modules test the counter
+    script and the cache helpers, neither of which touches the database.
+
+        docker run --rm -d -p 6380:6379 redis:7-alpine
+        NETFORGE_INTEGRATION_REDIS_URL=redis://localhost:6380/0 \
+            python -m pytest tests/integration
+    """
+    return os.environ.get(INTEGRATION_REDIS_URL_VAR) or None
 
 
 @pytest.fixture(scope="session")
@@ -103,6 +117,30 @@ async def db(migrated_database: str) -> AsyncIterator[AsyncSession]:
             yield session
     finally:
         await engine.dispose()
+
+
+@pytest.fixture
+async def redis_client() -> AsyncIterator[object]:
+    """A real async Redis client on a flushed database.
+
+    Created per test because redis-py connections, like asyncpg's, are bound to
+    the event loop and pytest-asyncio gives each test its own. `flushdb` rather
+    than deleting known keys: this is a disposable instance, and a leftover
+    counter from a previous test would silently change the budget under the
+    next one.
+    """
+    url = integration_redis_url()
+    if not url:  # Belt and braces — test modules already skip at collection.
+        pytest.skip(f"{INTEGRATION_REDIS_URL_VAR} is not set")
+
+    from redis.asyncio import Redis
+
+    client = Redis.from_url(url, decode_responses=False)
+    try:
+        await client.flushdb()
+        yield client
+    finally:
+        await client.aclose()
 
 
 @pytest.fixture

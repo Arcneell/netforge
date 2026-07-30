@@ -56,6 +56,7 @@ Performance & safety: per-user rate limiter, prompt-injection sanitisation of fr
 | ---------- | ---------------------------------------------------------------------------- |
 | Backend    | Python 3.12 · FastAPI · SQLAlchemy 2.0 async · Alembic                       |
 | Database   | PostgreSQL 16 (`INET` / `CIDR` / `MACADDR`, GiST exclusion, triggers)        |
+| Cache      | Redis 7 — optional (`REDIS_URL`); sessions, heavy reads, rate-limit counters |
 | Frontend   | Vue 3 · Vite · TypeScript · Tailwind · Pinia · vue-i18n                      |
 | Topology   | Cytoscape.js (dagre + fcose layouts)                                         |
 | Auth       | OIDC (any IdP) or GitHub OAuth — pluggable provider · personal access tokens |
@@ -71,22 +72,52 @@ docker compose -f docker-compose.dev.yml up -d
 docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
 ```
 
-The stack ships three services:
+The stack ships four services:
 
 | Service           | URL                              | Notes                                                                                         |
 | ----------------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
 | SPA (Vite, HMR)   | <http://localhost:5173>          | the page you'll use                                                                           |
 | Backend (FastAPI) | <http://localhost:8000/api/docs> | OpenAPI explorer                                                                              |
 | Postgres          | localhost:5432                   | psql / dump from the host — set `POSTGRES_HOST_PORT` if 5432 is already taken on your machine |
+| Redis             | localhost:6379                   | cache only — see below. `REDIS_HOST_PORT` if 6379 is taken                                    |
 
 OAuth callback URLs registered on your IdP must point at `http://localhost:5173/api/auth/callback` (the SPA proxies the callback through to the backend).
+
+### Redis is optional
+
+Redis is what makes the UI feel quick: it caches the per-request session lookup
+and the assembled reads (topology graph, global search, subnet tree, dashboard
+capacity widget). It can also hold the shared rate-limit counters
+(`RATE_LIMIT_STORE=redis`).
+
+Nothing depends on it. Set `REDIS_URL=` (empty) in `.env` and every consumer
+falls back to Postgres — same answers, more queries. A Redis that goes down
+mid-flight is treated as a cache miss, never an error, so the stack stays up.
+
+Stale data is not a worry for the read cache: keys embed a cheap fingerprint of
+the inventory tables, so a write changes the key and no reader can be served a
+pre-write payload. The session cache is the one place with a real trade-off —
+it puts a short window (`CACHE_SESSION_TTL_SECONDS`, default 30s) in front of
+session revocation. Logout evicts its own entry immediately; the TTL is what
+bounds a role changed directly in the database. See `.env.example` for the
+whole knob set and `docs/02-architecture.md` for the reasoning.
+
+### Load demo data
+
+`scripts/build_demo_bundle.py` generates a realistic multi-site CSV bundle (9 sites, ~75 subnets, 145 devices, 38 switches, ~55 links) with a handful of deliberately planted issues (SPOFs, a saturated subnet, a duplicate MAC, orphan VLANs, …) — a good way to see the integrity checks, AI advisor and bulk import in action without hand-entering data:
+
+```bash
+python scripts/build_demo_bundle.py     # writes demo-bundle.zip at the repo root
+```
+
+Upload the resulting `demo-bundle.zip` via **Import → All at once (auto)** in the UI, or `POST /api/imports/bulk`.
 
 ### Run the SPA on the host instead of in Docker
 
 If you want native filesystem speed on Windows / macOS, skip the `frontend` container and run Vite yourself:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d postgres backend
+docker compose -f docker-compose.dev.yml up -d postgres redis backend
 cd frontend
 cp .env.example .env.local
 npm install

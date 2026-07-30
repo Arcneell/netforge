@@ -1,8 +1,8 @@
-"""Tests for the write-rate-limit middleware.
+"""Tests for the write / expensive-export-GET rate-limit middleware.
 
-We build a tiny FastAPI app with a single POST/GET handler and the middleware
-wired with very small limits — no need to spin up the full netforge app to
-test the middleware contract.
+We build a tiny FastAPI app with a handful of POST/GET handlers and the
+middleware wired with very small limits — no need to spin up the full
+netforge app to test the middleware contract.
 
 Two wirings are covered:
 
@@ -59,6 +59,14 @@ def _make_app(
     async def login() -> dict[str, str]:
         return {"ok": "login"}
 
+    @app.get("/api/exports/devices")
+    async def export_devices() -> dict[str, str]:
+        return {"ok": "export"}
+
+    @app.get("/api/ai/insights/export.pdf")
+    async def export_pdf() -> dict[str, str]:
+        return {"ok": "pdf"}
+
     return app
 
 
@@ -98,6 +106,53 @@ async def test_health_and_auth_endpoints_are_exempt() -> None:
         for _ in range(5):
             assert (await client.get("/api/health")).status_code == 200
             assert (await client.post("/api/auth/login")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_expensive_export_gets_are_rate_limited() -> None:
+    # /api/exports/* is a GET but expensive enough to be capped like a write.
+    app = _make_app(max_per_window=2, window_seconds=60)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        assert (await client.get("/api/exports/devices")).status_code == 200
+        assert (await client.get("/api/exports/devices")).status_code == 200
+        blocked = await client.get("/api/exports/devices")
+    assert blocked.status_code == 429
+    assert blocked.json()["error"]["code"] == "RATE_LIMITED"
+
+
+@pytest.mark.asyncio
+async def test_ai_pdf_export_get_is_rate_limited() -> None:
+    app = _make_app(max_per_window=1, window_seconds=60)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        assert (await client.get("/api/ai/insights/export.pdf")).status_code == 200
+        blocked = await client.get("/api/ai/insights/export.pdf")
+    assert blocked.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_export_get_budget_is_independent_from_write_budget() -> None:
+    # Same IP, same worker: exhausting the write bucket must not touch the
+    # separate export-GET bucket, and vice versa.
+    app = _make_app(max_per_window=1, window_seconds=60)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        assert (await client.post("/things")).status_code == 200
+        blocked_write = await client.post("/things")
+        assert (await client.get("/api/exports/devices")).status_code == 200
+        blocked_export = await client.get("/api/exports/devices")
+    assert blocked_write.status_code == 429
+    assert blocked_export.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_ordinary_gets_outside_expensive_prefixes_stay_unthrottled() -> None:
+    app = _make_app(max_per_window=1, window_seconds=60)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for _ in range(5):
+            assert (await client.get("/things")).status_code == 200
 
 
 @pytest.mark.asyncio

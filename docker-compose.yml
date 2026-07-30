@@ -24,6 +24,8 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_DB: netforge
       POSTGRES_USER: netforge
@@ -36,13 +38,59 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    # Cache + shared rate-limit counters. The stack works without it — leave
+    # REDIS_URL unset in .env and the backend queries Postgres for everything,
+    # exactly as it did before this service existed (see backend/app/cache.py).
+    # Turning it on is what makes repeated topology / search / dashboard reads
+    # and the per-request session lookup cheap.
+    image: redis:7-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # No `ports:` — reachable only from the compose network. Redis has no
+    # authentication by default, so publishing 6379 on the host would hand
+    # anyone who can reach it every cached session record. Set REDIS_PASSWORD
+    # in .env to add AUTH on top (and put it in REDIS_URL as
+    # redis://:<password>@redis:6379/0).
+    command: >-
+      sh -c 'exec redis-server
+      --appendonly yes
+      --maxmemory ${REDIS_MAXMEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+      ${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      # `appendonly yes` needs somewhere durable to write. Persistence matters
+      # beyond warm-cache-after-restart: with RATE_LIMIT_STORE=redis the AI
+      # per-user quota lives here, and losing it on restart hands every user a
+      # fresh hour of LLM spend — the exact bug the counters moved out of
+      # process to fix. See backend/app/services/ai/rate_limit.py.
+      - redisdata:/data
+    healthcheck:
+      # `redis-cli ping` needs the password too once requirepass is set;
+      # -a reads it from the env var rather than the command line.
+      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a \"$$REDIS_PASSWORD\"} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   backend:
-    image: ghcr.io/arcneell/netforge-backend:${NETFORGE_VERSION:-latest}
+    # `latest` moves under you on every `docker compose pull` — pin an
+    # explicit NETFORGE_VERSION (e.g. v0.1.0) once you're past first setup so
+    # a stack restart never silently upgrades production. This default just
+    # tracks the version this compose file shipped with.
+    image: ghcr.io/arcneell/netforge-backend:${NETFORGE_VERSION:-v0.1.0}
     build:
       context: ./backend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       # Mirrors the image's own HEALTHCHECK (backend/Dockerfile) so that the
@@ -62,19 +110,51 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_SCOPE: ${OIDC_SCOPE:-openid email profile}
+      # See .env.example — refuses OIDC logins whose email the IdP did not
+      # verify. Only flip to false for a known-good IdP that omits the claim.
+      OIDC_REQUIRE_EMAIL_VERIFIED: ${OIDC_REQUIRE_EMAIL_VERIFIED:-true}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       # ---- Sessions ----
       SESSION_SIGNING_KEY: ${SESSION_SIGNING_KEY:?missing SESSION_SIGNING_KEY in .env}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-netforge_session}
       SESSION_COOKIE_SECURE: "true"
       SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-28800}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:?missing BOOTSTRAP_ADMIN_EMAIL in .env}
+      # ---- Redis / caching ----
+      # Points at the bundled `redis` service by default, so a stock stack gets
+      # the cache. Set REDIS_URL="" in .env to run without it: every consumer
+      # falls back to Postgres and the stack behaves as it did before the redis
+      # service existed (see backend/app/cache.py). If you set REDIS_PASSWORD,
+      # the credential has to appear here too — hence the substitution rather
+      # than a flat default.
+      REDIS_URL: ${REDIS_URL:-redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379/0}
+      REDIS_TIMEOUT_SECONDS: ${REDIS_TIMEOUT_SECONDS:-0.5}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-netforge}
+      CACHE_SESSIONS_ENABLED: ${CACHE_SESSIONS_ENABLED:-true}
+      CACHE_SESSION_TTL_SECONDS: ${CACHE_SESSION_TTL_SECONDS:-30}
+      CACHE_READS_ENABLED: ${CACHE_READS_ENABLED:-true}
+      CACHE_READ_TTL_SECONDS: ${CACHE_READ_TTL_SECONDS:-300}
       # ---- Rate limiting ----
       RATE_LIMIT_WRITES_PER_WINDOW: ${RATE_LIMIT_WRITES_PER_WINDOW:-60}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
       # "database" shares the counters across workers/replicas via the
-      # rate_limit_counters table; "memory" is the legacy per-process window.
+      # rate_limit_counters table; "redis" does the same with INCR + EXPIRE and
+      # requires REDIS_URL; "memory" is the legacy per-process window.
       RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-database}
+      # Only honour X-Real-IP from these CIDRs (see .env.example) — narrow
+      # this if the backend sits behind more than the bundled nginx.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32,::1/128,172.16.0.0/12}
+      # ---- Outbound webhooks ----
+      # SECURITY: leave false. true disables SSRF protection on admin-configured
+      # webhook targets — see .env.example.
+      WEBHOOK_ALLOW_PRIVATE_TARGETS: ${WEBHOOK_ALLOW_PRIVATE_TARGETS:-false}
+      AI_WEBHOOK_SIGNING_SECRET: ${AI_WEBHOOK_SIGNING_SECRET:-}
+      # ---- CSV import ----
+      CSV_IMPORT_MAX_ROWS: ${CSV_IMPORT_MAX_ROWS:-50000}
+      # ---- Audit log retention ----
+      # 0 = unlimited retention (default). See .env.example.
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-0}
       # ---- Observability ----
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-text}
@@ -100,10 +180,14 @@ services:
       AI_SCHEDULER_ENABLED: ${AI_SCHEDULER_ENABLED:-true}
 
   frontend:
-    image: ghcr.io/arcneell/netforge-frontend:${NETFORGE_VERSION:-latest}
+    # See the backend image note above — pin NETFORGE_VERSION explicitly for
+    # any real deployment.
+    image: ghcr.io/arcneell/netforge-frontend:${NETFORGE_VERSION:-v0.1.0}
     build:
       context: ./frontend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       backend:
         condition: service_healthy
@@ -133,3 +217,5 @@ services:
 volumes:
   pgdata:
     name: netforge_pgdata
+  redisdata:
+    name: netforge_redisdata

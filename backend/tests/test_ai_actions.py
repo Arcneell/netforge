@@ -96,6 +96,40 @@ async def test_apply_create_vlan_rejects_duplicate_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_apply_create_subnet_rejects_unknown_vrf_id() -> None:
+    """LOW audit fix: `vrf_id` comes straight from the LLM, unverified. A
+    stale snapshot or a hallucinated id must fail with a clean `ValueError`
+    (like the site_code / vlan_id checks above it) instead of surfacing as
+    a raw FK-violation IntegrityError from the INSERT."""
+    site = SimpleNamespace(id=1)
+    db = AsyncMock()
+    # 1st execute(): site lookup succeeds. Then `db.get(Vrf, vrf_id)` is
+    # called (not `execute`) and returns None — unknown vrf.
+    db.execute = AsyncMock(side_effect=[_scalar_result(site)])
+    db.get = AsyncMock(return_value=None)
+    with pytest.raises(ValueError, match="VRF"):
+        await svc._apply_create_subnet(
+            db, {"cidr": "10.0.0.0/24", "site_code": "PAR", "vrf_id": 999}
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_create_subnet_accepts_known_vrf_id() -> None:
+    site = SimpleNamespace(id=1)
+    vrf = SimpleNamespace(id=999)
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_scalar_result(site)])
+    db.get = AsyncMock(return_value=vrf)
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    pointer = await svc._apply_create_subnet(
+        db, {"cidr": "10.0.0.0/24", "site_code": "PAR", "vrf_id": 999}
+    )
+    assert pointer.startswith("subnet:")
+    db.get.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_apply_create_subnet_requires_existing_site_and_vlan() -> None:
     # Site lookup hits nothing.
     db = _mock_db([None])
@@ -114,6 +148,30 @@ async def test_apply_create_subnet_requires_existing_site_and_vlan() -> None:
 
 
 # --- Apply / reject lifecycle ----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_draft_locks_the_row_for_update() -> None:
+    """LOW audit fix: without a row lock, two concurrent apply requests for
+    the same draft can both read `status=pending` before either commits and
+    both proceed — a TOCTOU double-apply. The fetch must take
+    `SELECT ... FOR UPDATE` via `with_for_update=True`."""
+    draft = SimpleNamespace(
+        id=1,
+        intent="create_vlan",
+        payload={"vlan_id": 50, "name": "IoT", "description": None, "color": None},
+        status=svc.AIActionDraftStatus.applied,  # already resolved -> short-circuits cleanly
+        error_code=None,
+        error_message=None,
+        applied_at=None,
+        applied_by_user_id=None,
+        applied_resource=None,
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=draft)
+    with pytest.raises(ValueError):
+        await svc.apply_draft(db, draft_id=1, user_id=99)
+    db.get.assert_awaited_once_with(svc.AIActionDraft, 1, with_for_update=True)
 
 
 @pytest.mark.asyncio

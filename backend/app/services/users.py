@@ -106,8 +106,9 @@ def _dialect_name(db: AsyncSession) -> str:
     Postgres" and skips the lock entirely.
     """
     try:
-        bind = db.sync_session.bind
-        name = bind.dialect.name
+        # `bind` is typed as Engine | Connection | None; a None bind raises
+        # AttributeError here, which is exactly the "not Postgres" fallback.
+        name = db.sync_session.bind.dialect.name  # type: ignore[union-attr]
     except AttributeError:
         return ""
     return str(name) if isinstance(name, str) else ""

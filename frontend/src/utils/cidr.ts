@@ -84,3 +84,33 @@ export function ipInCidr(ip: string, cidr: string): boolean {
 export function compareIps(a: string, b: string): number {
   return ipToInt(a) - ipToInt(b)
 }
+
+/**
+ * Strict IPv4 validity check for form validation. `ipToInt` already rejects
+ * anything but four dot-separated octets in [0, 255] (so "999.1.1.1" or
+ * "10.0.0" both fail) — this just turns the throw into a boolean so callers
+ * don't need a try/catch at every call site.
+ */
+export function isValidIpv4(ip: string): boolean {
+  try {
+    ipToInt(ip)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Strict CIDR validity check for form validation, built on the same
+ * `parseCidr` the rest of the app uses for rendering — so a value accepted
+ * here (e.g. rejects "999.1.1.1/99") is guaranteed to also parse downstream
+ * instead of drifting from a hand-rolled regex.
+ */
+export function isValidCidr(cidr: string): boolean {
+  try {
+    parseCidr(cidr)
+    return true
+  } catch {
+    return false
+  }
+}

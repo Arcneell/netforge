@@ -25,9 +25,25 @@ from app.schemas.search import SearchResult
 
 _PER_TYPE_LIMIT = 10
 
+# Backslash as the LIKE/ILIKE escape character — must be escaped itself
+# first so a literal backslash in `q` doesn't turn the following escaped
+# char back into a wildcard.
+_LIKE_ESCAPE = "\\"
+
+
+def _escape_like(value: str) -> str:
+    """Escape `%`, `_` and the escape character itself so free-text search
+    input can't widen its own ILIKE pattern (a hostname or description that
+    happens to contain `%` or `_` must match literally, not as a wildcard)."""
+    return (
+        value.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
+        .replace("%", f"{_LIKE_ESCAPE}%")
+        .replace("_", f"{_LIKE_ESCAPE}_")
+    )
+
 
 async def search(db: AsyncSession, q: str) -> list[SearchResult]:
-    pattern = f"%{q}%"
+    pattern = f"%{_escape_like(q)}%"
     results: list[SearchResult] = []
 
     # IPs — match address, hostname, or MAC.
@@ -36,9 +52,9 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
             select(Ip)
             .where(
                 or_(
-                    cast(Ip.address, String).ilike(pattern),
-                    Ip.hostname.ilike(pattern),
-                    cast(Ip.mac, String).ilike(pattern),
+                    cast(Ip.address, String).ilike(pattern, escape=_LIKE_ESCAPE),
+                    Ip.hostname.ilike(pattern, escape=_LIKE_ESCAPE),
+                    cast(Ip.mac, String).ilike(pattern, escape=_LIKE_ESCAPE),
                 )
             )
             .limit(_PER_TYPE_LIMIT)
@@ -62,9 +78,9 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
             select(Device)
             .where(
                 or_(
-                    Device.name.ilike(pattern),
-                    Device.serial.ilike(pattern),
-                    Device.model.ilike(pattern),
+                    Device.name.ilike(pattern, escape=_LIKE_ESCAPE),
+                    Device.serial.ilike(pattern, escape=_LIKE_ESCAPE),
+                    Device.model.ilike(pattern, escape=_LIKE_ESCAPE),
                 )
             )
             .limit(_PER_TYPE_LIMIT)
@@ -87,8 +103,8 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
             select(Switch)
             .where(
                 or_(
-                    Switch.name.ilike(pattern),
-                    cast(Switch.management_ip, String).ilike(pattern),
+                    Switch.name.ilike(pattern, escape=_LIKE_ESCAPE),
+                    cast(Switch.management_ip, String).ilike(pattern, escape=_LIKE_ESCAPE),
                 )
             )
             .limit(_PER_TYPE_LIMIT)
@@ -111,7 +127,7 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
         await db.execute(
             select(Port, Switch)
             .join(Switch, Port.switch_id == Switch.id)
-            .where(Port.label.ilike(pattern))
+            .where(Port.label.ilike(pattern, escape=_LIKE_ESCAPE))
             .limit(_PER_TYPE_LIMIT)
         )
     ).all()
@@ -132,9 +148,9 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
             select(Site)
             .where(
                 or_(
-                    Site.code.ilike(pattern),
-                    Site.name.ilike(pattern),
-                    Site.address.ilike(pattern),
+                    Site.code.ilike(pattern, escape=_LIKE_ESCAPE),
+                    Site.name.ilike(pattern, escape=_LIKE_ESCAPE),
+                    Site.address.ilike(pattern, escape=_LIKE_ESCAPE),
                 )
             )
             .limit(_PER_TYPE_LIMIT)
@@ -158,8 +174,8 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
             .join(Site, Room.site_id == Site.id)
             .where(
                 or_(
-                    Room.code.ilike(pattern),
-                    Room.description.ilike(pattern),
+                    Room.code.ilike(pattern, escape=_LIKE_ESCAPE),
+                    Room.description.ilike(pattern, escape=_LIKE_ESCAPE),
                 )
             )
             .limit(_PER_TYPE_LIMIT)
@@ -182,9 +198,9 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
             select(Vlan)
             .where(
                 or_(
-                    cast(Vlan.vlan_id, String).ilike(pattern),
-                    Vlan.name.ilike(pattern),
-                    Vlan.description.ilike(pattern),
+                    cast(Vlan.vlan_id, String).ilike(pattern, escape=_LIKE_ESCAPE),
+                    Vlan.name.ilike(pattern, escape=_LIKE_ESCAPE),
+                    Vlan.description.ilike(pattern, escape=_LIKE_ESCAPE),
                 )
             )
             .limit(_PER_TYPE_LIMIT)
@@ -209,8 +225,8 @@ async def search(db: AsyncSession, q: str) -> list[SearchResult]:
             .outerjoin(Site, Subnet.site_id == Site.id)
             .where(
                 or_(
-                    cast(Subnet.cidr, String).ilike(pattern),
-                    Subnet.description.ilike(pattern),
+                    cast(Subnet.cidr, String).ilike(pattern, escape=_LIKE_ESCAPE),
+                    Subnet.description.ilike(pattern, escape=_LIKE_ESCAPE),
                 )
             )
             .limit(_PER_TYPE_LIMIT)

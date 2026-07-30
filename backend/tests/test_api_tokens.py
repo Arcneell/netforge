@@ -26,7 +26,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.db import get_session as get_db_session
 from app.main import app
-from app.models.user import ApiToken, Session, User, UserRole
+from app.models.user import ApiToken, ApiTokenScope, Session, User, UserRole
 from app.services import api_tokens as service
 
 
@@ -95,9 +95,31 @@ async def test_verify_token_returns_user_for_valid_token() -> None:
     )
     db = _verify_db(row, user=_user())
 
-    user = await service.verify_token(db, plaintext)
-    assert user is not None
+    result = await service.verify_token(db, plaintext)
+    assert result is not None
+    user, scope = result
     assert user.id == 1
+    # The row above never set `scope` explicitly (a bare in-memory ApiToken,
+    # not a flushed one) — verify_token must treat that the same as the
+    # column's own default rather than crash the comparison.
+    assert scope is ApiTokenScope.full
+
+
+@pytest.mark.asyncio
+async def test_verify_token_returns_read_only_scope() -> None:
+    plaintext = "nfp_readonlyvalid"
+    row = ApiToken(
+        id=1, user_id=1, name="x",
+        token_hash=hashlib.sha256(plaintext.encode()).hexdigest(),
+        prefix=plaintext[:8],
+        scope=ApiTokenScope.read_only,
+    )
+    db = _verify_db(row, user=_user())
+
+    result = await service.verify_token(db, plaintext)
+    assert result is not None
+    _, scope = result
+    assert scope is ApiTokenScope.read_only
 
 
 @pytest.mark.asyncio
@@ -225,6 +247,42 @@ async def test_create_token_returns_plaintext_exactly_once(
     assert body["prefix"].startswith("nfp_")
     assert body["token"].startswith("nfp_")
     assert len(body["token"]) > len(body["prefix"])  # plaintext > prefix
+    # `scope` wasn't in the request body — must default to "full".
+    assert body["scope"] == "full"
+
+
+@pytest.mark.asyncio
+async def test_create_token_accepts_explicit_read_only_scope(
+    client: AsyncClient,
+) -> None:
+    async def _refresh(obj: object) -> None:
+        if getattr(obj, "id", None) is None:
+            obj.id = 42
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = _utcnow()
+
+    _install_db(user=_user()).refresh = AsyncMock(side_effect=_refresh)
+
+    r = await client.post(
+        "/api/auth/tokens",
+        json={"name": "ci-ro", "scope": "read_only"},
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.status_code == 201
+    assert r.json()["scope"] == "read_only"
+
+
+@pytest.mark.asyncio
+async def test_create_token_rejects_invalid_scope(client: AsyncClient) -> None:
+    """An unrecognised scope value is a 422, never silently coerced to
+    `full` or `read_only`."""
+    _install_db(user=_user())
+    r = await client.post(
+        "/api/auth/tokens",
+        json={"name": "bogus", "scope": "superadmin"},
+        cookies={"netforge_session": "sess"},
+    )
+    assert r.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -303,3 +361,96 @@ async def test_bearer_invalid_token_returns_401(client: AsyncClient) -> None:
     finally:
         app.dependency_overrides.clear()
     assert r.status_code == 401
+
+
+# --- read_only scope enforcement -------------------------------------------
+
+
+def _install_bearer_db(token_row: ApiToken, user: User) -> AsyncMock:
+    """Wire a mock DB for a Bearer request: the one `db.execute` call
+    `verify_token` makes resolves the token row, `db.get` resolves the
+    owning user."""
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_scalar(token_row))
+    db.get = AsyncMock(return_value=user)
+    db.commit = AsyncMock()
+
+    async def _override() -> AsyncIterator:
+        yield db
+
+    app.dependency_overrides[get_db_session] = _override
+    return db
+
+
+@pytest.mark.asyncio
+async def test_read_only_token_accepted_on_get(client: AsyncClient) -> None:
+    """A `read_only` token minted by an admin can still authenticate a plain
+    GET — only writes get capped."""
+    plaintext = "nfp_readonlyget"
+    token_row = ApiToken(
+        id=1, user_id=1, name="ci",
+        token_hash=hashlib.sha256(plaintext.encode()).hexdigest(),
+        prefix=plaintext[:8],
+        scope=ApiTokenScope.read_only,
+    )
+    _install_bearer_db(token_row, _user(role=UserRole.admin))
+    try:
+        r = await client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {plaintext}"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200
+    # Effective role for this request is viewer, even though the owner is
+    # admin — this is what makes GET-only endpoints keep working while
+    # `require_role(admin)` starts rejecting the same token.
+    assert r.json()["role"] == "viewer"
+
+
+@pytest.mark.asyncio
+async def test_read_only_token_rejected_on_write_endpoint(client: AsyncClient) -> None:
+    """A `read_only` token belonging to an admin must NOT be able to hit an
+    admin-only write route: the effective role is capped to viewer for this
+    request, so the existing `require_role(admin)` guard on `POST /api/sites`
+    rejects it with 403 — no change needed on that endpoint's side."""
+    plaintext = "nfp_readonlywrite"
+    token_row = ApiToken(
+        id=1, user_id=1, name="ci",
+        token_hash=hashlib.sha256(plaintext.encode()).hexdigest(),
+        prefix=plaintext[:8],
+        scope=ApiTokenScope.read_only,
+    )
+    _install_bearer_db(token_row, _user(role=UserRole.admin))
+    try:
+        r = await client.post(
+            "/api/sites",
+            json={"code": "X", "name": "X"},
+            headers={"Authorization": f"Bearer {plaintext}"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 403
+    assert r.json()["detail"]["error"]["code"] == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_full_scope_token_keeps_owners_real_role(client: AsyncClient) -> None:
+    """A `full`-scope token (the default, and the only kind that existed
+    before this feature) must keep behaving exactly as before: the owner's
+    real role comes through unchanged."""
+    plaintext = "nfp_fullscope"
+    token_row = ApiToken(
+        id=1, user_id=1, name="ci",
+        token_hash=hashlib.sha256(plaintext.encode()).hexdigest(),
+        prefix=plaintext[:8],
+        scope=ApiTokenScope.full,
+    )
+    _install_bearer_db(token_row, _user(role=UserRole.admin))
+    try:
+        r = await client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {plaintext}"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200
+    assert r.json()["role"] == "admin"

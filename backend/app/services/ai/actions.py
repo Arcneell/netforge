@@ -36,8 +36,10 @@ from app.models.ai import (
 from app.models.core import Room, Site
 from app.models.subnet import Subnet
 from app.models.vlan import Vlan
+from app.models.vrf import Vrf
 from app.services.ai.context import build_topology_context_cached
 from app.services.ai.providers import get_provider
+from app.services.ai.retry import call_with_retry
 from app.services.ai.types import AIProviderError, ToolDef
 
 # Intent enum mirrored on the tool schema — the model can pick exactly one.
@@ -168,7 +170,7 @@ def _validate_payload(intent: str, payload: dict[str, Any]) -> dict[str, Any] | 
         }
     if intent == "create_vlan":
         try:
-            vlan_id = int(payload.get("vlan_id"))
+            vlan_id = int(payload.get("vlan_id"))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return "create_vlan requires a numeric `vlan_id`"
         if not (1 <= vlan_id <= 4094):
@@ -237,17 +239,21 @@ async def draft_action(
 
     t0 = time.monotonic()
     error: str | None = None
+    error_exc: AIProviderError | None = None
     try:
-        completion = await provider.call(
-            system=system,
-            prompt=f"Operator request: {prompt}",
-            cache_prefix=f"Network snapshot:\n```json\n{payload_json}\n```",
-            tools=[DRAFT_TOOL],
-            max_tokens=settings.ai_max_output_tokens,
-            temperature=0.1,
+        completion = await call_with_retry(
+            lambda: provider.call(
+                system=system,
+                prompt=f"Operator request: {prompt}",
+                cache_prefix=f"Network snapshot:\n```json\n{payload_json}\n```",
+                tools=[DRAFT_TOOL],
+                max_tokens=settings.ai_max_output_tokens,
+                temperature=0.1,
+            )
         )
     except AIProviderError as exc:
         error = str(exc)
+        error_exc = exc
         completion = None
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -267,8 +273,8 @@ async def draft_action(
 
     if not completion or not completion.tool_call:
         await db.commit()
-        if error:
-            raise AIProviderError(error)
+        if error_exc:
+            raise error_exc
         raise AIProviderError("provider returned no tool call")
 
     intent = completion.tool_call.input.get("intent")
@@ -306,7 +312,16 @@ async def apply_draft(
     that was already validated at draft time. References (site_code,
     vlan_id) are resolved here against the live DB.
     """
-    draft = await db.get(AIActionDraft, draft_id)
+    # `with_for_update` takes a row lock (`SELECT ... FOR UPDATE`) held for
+    # the rest of this transaction. Without it, two concurrent apply
+    # requests for the same draft (e.g. an impatient double-click, or two
+    # admins) can both read `status=pending` before either commits, and
+    # both proceed to apply — a TOCTOU double-apply. With the lock, the
+    # second request blocks until the first's transaction ends, then
+    # re-reads a status that's no longer `pending` and hits the branch
+    # below cleanly instead of creating the entity (or firing the mutation)
+    # twice.
+    draft = await db.get(AIActionDraft, draft_id, with_for_update=True)
     if not draft:
         raise LookupError("draft not found")
     if draft.status != AIActionDraftStatus.pending:
@@ -478,6 +493,14 @@ async def _apply_create_subnet(db: AsyncSession, payload: dict[str, Any]) -> str
 
     vrf_id = payload.get("vrf_id")
     parent_subnet_id = payload.get("parent_subnet_id")
+
+    # The LLM's `vrf_id` is an unverified reference — a stale snapshot or a
+    # hallucinated id would otherwise only surface as a raw FK-violation
+    # IntegrityError from the INSERT below (an ugly, DBA-flavoured error).
+    # Check existence up front so this fails the same clean way as the
+    # site_code / vlan_id checks above.
+    if vrf_id is not None and await db.get(Vrf, vrf_id) is None:
+        raise ValueError(f"VRF id {vrf_id} not found")
 
     # If the payload specifies a parent, mirror /api/subnets' containment
     # check: the parent must exist, live in the same VRF, and strictly

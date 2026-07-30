@@ -27,6 +27,17 @@ class AIProviderError(RuntimeError):
     """
 
 
+class AIProviderRateLimitError(AIProviderError):
+    """The provider rejected the call because of rate limiting / overload
+    (HTTP 429, or Anthropic's 529 "overloaded_error").
+
+    Distinguished from the generic `AIProviderError` so routers can answer
+    with a 429 (retryable, client should back off) instead of a 502
+    (unexpected failure), and so a caller can decide to retry once with a
+    short backoff instead of failing the whole request outright.
+    """
+
+
 class AIUnsupportedFeatureError(AIProviderError):
     """Raised by stub providers (or providers missing a capability) so the
     caller can either fall back to another provider or surface a clear

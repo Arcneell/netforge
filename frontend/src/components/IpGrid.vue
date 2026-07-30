@@ -257,7 +257,15 @@ watch(
       </span>
     </div>
 
-    <div role="grid" :aria-label="t('subnet.viewGrid')" :aria-rowcount="chunks.length">
+    <!-- Not `role="grid"`: that role requires a full row/gridcell hierarchy
+         plus roving-tabindex keyboard navigation (arrow keys between cells),
+         which this component doesn't implement — each cell is already a
+         real, individually-focusable <button> in normal tab order, so a
+         grid role here would advertise arrow-key navigation that doesn't
+         exist and confuse a screen reader more than a plain group would.
+         `role="group"` + an accessible name is the honest description of
+         "a labelled collection of buttons". -->
+    <div role="group" :aria-label="t('subnet.viewGrid')">
       <div
         v-for="(chunk, idx) in chunks"
         :key="chunk.id"

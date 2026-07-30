@@ -7,7 +7,9 @@ The schema uses PostgreSQL 16. The `INET`, `CIDR` and `MACADDR` types are native
 ```
 sites (1) ──< (N) rooms (1) ──< (N) switches (1) ──< (N) ports
                                      │                      │
-                                     │                      └─< links (switch-to-switch)
+                                     │                      ├─< links (switch-to-switch) ──1:1── cables
+                                     │
+vrfs (1) ──< (N) subnets (self-referencing parent_subnet_id)
                                      │
 vlans (N) ──< vlan_subnet >── (N) subnets (1) ──< (N) ips
                                      │                      │
@@ -15,6 +17,7 @@ vlans (N) ──< vlan_subnet >── (N) subnets (1) ──< (N) ips
                                      │
                                      └──> vlan per port (access/trunk) via `port_vlan` table
 
+users (1) ──< sessions, api_tokens        webhooks ──< webhook_deliveries
 users, audit_log (cross-cutting)
 ```
 
@@ -64,6 +67,8 @@ IPv4 subnets.
 | gateway | inet | | Gateway |
 | vlan_id | int | FK → vlans(id) ON DELETE SET NULL | The subnet's primary VLAN |
 | site_id | int | FK → sites(id) ON DELETE RESTRICT | |
+| vrf_id | int | FK → vrfs(id) ON DELETE RESTRICT | `NULL` = global scope, see `vrfs` below |
+| parent_subnet_id | int | FK → subnets(id) ON DELETE SET NULL | Optional hierarchical IPAM parent |
 | description | text | | |
 | dhcp_enabled | bool | DEFAULT false | Informational (DHCP managed by Windows) |
 | dhcp_range_start | inet | | |
@@ -71,10 +76,12 @@ IPv4 subnets.
 | created_at | timestamptz | DEFAULT now() | |
 | updated_at | timestamptz | DEFAULT now() | |
 
-**Key constraint** — no overlap:
+**Key constraint** — no overlap, partitioned by VRF scope (two GiST exclusions — global scope and per-`vrf_id` — plus a trigger that checks a child subnet against its siblings under the same `parent_subnet_id`, since `&&` alone can't distinguish "overlap" from "legitimate containment"):
 ```sql
-ALTER TABLE subnets ADD CONSTRAINT subnets_no_overlap
-  EXCLUDE USING gist (cidr inet_ops WITH &&);
+ALTER TABLE subnets ADD CONSTRAINT subnets_no_overlap_global
+  EXCLUDE USING gist (cidr inet_ops WITH &&) WHERE (vrf_id IS NULL);
+ALTER TABLE subnets ADD CONSTRAINT subnets_no_overlap_vrf
+  EXCLUDE USING gist (vrf_id WITH =, cidr inet_ops WITH &&) WHERE (vrf_id IS NOT NULL);
 ```
 
 ### `ips`
@@ -182,18 +189,91 @@ Links between two switch ports (uplinks, cascades).
 
 **Symmetry**: we store `(a, b)` with `a < b` to avoid reversed duplicates (enforced via trigger or service).
 
-### `users`
-Netforge users, provisioned on first Entra ID login (JIT).
+### `vrfs`
+Routing-table isolation units — two subnets in different VRFs may share an overlapping CIDR. `NULL` `vrf_id` on a subnet means the global scope. See [04-api.md](04-api.md#vrfs).
 
 | Column | Type | Constraint | Description |
 |---------|------|-----------|-------------|
 | id | serial | PK | |
-| entra_oid | uuid | UNIQUE NOT NULL | `oid` claim from the Entra token |
+| name | varchar(64) | UNIQUE NOT NULL | e.g. `tenant-a`, `prod` |
+| rd | varchar(32) | UNIQUE | Route distinguisher (BGP/MPLS sense), optional |
+| description | text | | |
+
+`subnets.vrf_id` → FK `vrfs(id) ON DELETE RESTRICT` (nullable — `NULL` = global scope). The no-overlap GiST exclusion on `subnets.cidr` is partitioned by `vrf_id` so two VRFs can reuse the same address space.
+
+### `cables`
+Physical cable inventory — metadata bag for the cable that realises a `link`, kept separate from `links` because a cable outlives any one link (re-patching swaps which link it realises) and can exist before it's plugged in anywhere.
+
+| Column | Type | Constraint | Description |
+|---------|------|-----------|-------------|
+| id | serial | PK | |
+| label | varchar(120) | | Printed label, e.g. `PA-CR12-A03` |
+| link_id | int | FK → links(id) ON DELETE SET NULL, UNIQUE | `NULL` = in stock, not patched |
+| length_m | int | | |
+| color | varchar(40) | | |
+| vendor | varchar(100) | | |
+| part_number | varchar(100) | | |
+| serial | varchar(120) | | |
+| installed_on | date | | |
+| last_tested_on | date | | |
+| notes | text | | |
+
+### `users`
+Netforge users, provisioned on first login (JIT) through whichever `AUTH_PROVIDER` is configured (GitHub OAuth, generic OIDC — Entra ID / Keycloak / Authentik / …, or `dev`). See [06-auth.md](06-auth.md).
+
+| Column | Type | Constraint | Description |
+|---------|------|-----------|-------------|
+| id | serial | PK | |
+| provider | varchar(32) | NOT NULL, UNIQUE with `subject` | `"github"`, `"oidc"`, ... — see `app/auth/factory.py` |
+| subject | varchar(255) | NOT NULL, UNIQUE with `provider` | Opaque id from the provider (GitHub numeric id, OIDC `sub` claim) |
 | email | varchar(255) | NOT NULL | |
 | display_name | varchar(255) | | |
 | role | enum | NOT NULL DEFAULT 'viewer' | `viewer`, `admin` |
 | last_login_at | timestamptz | | |
 | created_at | timestamptz | DEFAULT now() | |
+
+### `sessions`
+DB-backed session store (no JWT exposed to the client — see [06-auth.md](06-auth.md)).
+
+| Column | Type | Constraint | Description |
+|---------|------|-----------|-------------|
+| id | varchar(64) | PK | SHA-256 digest of the opaque cookie token |
+| user_id | int | FK → users(id) ON DELETE CASCADE | |
+| created_at | timestamptz | DEFAULT now() | |
+| expires_at | timestamptz | NOT NULL | Sliding renewal on active use |
+| ip_address | inet | | |
+| user_agent | text | | |
+
+### `api_tokens`
+Personal access tokens (`Authorization: Bearer nfp_...`) for scripts/CI — see [06-auth.md](06-auth.md#personal-access-tokens-api). Only the SHA-256 digest is stored; the plaintext is shown once at creation.
+
+| Column | Type | Constraint | Description |
+|---------|------|-----------|-------------|
+| id | serial | PK | |
+| user_id | int | FK → users(id) ON DELETE CASCADE | Token inherits the owner's role |
+| name | varchar(100) | NOT NULL | Operator-chosen label |
+| token_hash | varchar(64) | UNIQUE NOT NULL | SHA-256 digest of the plaintext |
+| prefix | varchar(16) | NOT NULL | First ~8 chars in clear, for recognition in the list |
+| created_at | timestamptz | DEFAULT now() | |
+| expires_at | timestamptz | | `NULL` = never expires |
+| last_used_at | timestamptz | | |
+| revoked_at | timestamptz | | Soft-delete; an active token has this `NULL` |
+
+### `webhooks` / `webhook_deliveries`
+Operator-defined HTTP subscribers fired on every audited mutation. See [04-api.md](04-api.md#webhooks-admin-only).
+
+| Column (`webhooks`) | Type | Constraint | Description |
+|---------|------|-----------|-------------|
+| id | serial | PK | |
+| name | varchar(100) | UNIQUE NOT NULL | |
+| url | varchar(500) | NOT NULL | |
+| secret | varchar(64) | NOT NULL | HMAC-SHA256 signing key, shown once |
+| events | jsonb | NOT NULL | Pattern list, e.g. `["port.*", "site.create"]` |
+| enabled | bool | DEFAULT true | |
+| total_deliveries / total_failures | int | DEFAULT 0 | Aggregate counters |
+| last_delivery_at / last_status_code / last_error | | | |
+
+`webhook_deliveries(webhook_id FK CASCADE, event, payload jsonb, status_code, success, error, latency_ms, created_at)` — one row per attempt, trimmed after 30 days.
 
 ### `audit_log`
 Full trace of writes.

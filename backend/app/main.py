@@ -54,19 +54,33 @@ logger = logging.getLogger("netforge")
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Start the AI scheduler at process boot, cancel it on shutdown.
+    """Start the AI scheduler and the webhook outbox sweep at process boot,
+    cancel both on shutdown.
 
-    The scheduler is opt-in: rows in `ai_schedules` ship with `enabled=false`,
-    so this is a no-op for fresh installs. Test environments override the
-    lifespan by passing their own `lifespan=` argument when building the app.
+    The AI scheduler is opt-in: rows in `ai_schedules` ship with
+    `enabled=false`, so this is a no-op for fresh installs. The outbox sweep
+    is on by default (`webhook_outbox_sweep_enabled=True`) — it's the
+    catch-up net for the fast dispatch path in `services/webhooks.py`, not
+    an opt-in feature. Test environments override the lifespan by passing
+    their own `lifespan=` argument when building the app.
+
+    Shutdown also releases the Redis connection pool. Nothing *starts* it —
+    `app/cache.py` builds the client lazily on first use and is a no-op when
+    `REDIS_URL` is unset — so this is purely so a clean stop doesn't leave
+    sockets for the server to time out.
     """
+    from app.cache import close_client
     from app.services.ai.scheduler import start_scheduler, stop_scheduler
+    from app.services.webhooks import start_outbox_sweep, stop_outbox_sweep
 
     start_scheduler()
+    start_outbox_sweep()
     try:
         yield
     finally:
+        await stop_outbox_sweep()
         await stop_scheduler()
+        await close_client()
 
 
 class _RequestLogMiddleware:
@@ -192,6 +206,26 @@ def create_app() -> FastAPI:
     )
 
     if settings.cors_origins_list:
+        if "*" in settings.cors_origins_list:
+            # `allow_credentials=True` below is hardcoded — every route in this
+            # API relies on the session cookie / Bearer token, not on anonymous
+            # CORS. Pairing a wildcard origin with credentialed CORS means any
+            # site on the internet can drive an authenticated request against
+            # this backend using the victim's browser session: most browsers
+            # refuse to honour `Access-Control-Allow-Origin: *` alongside
+            # credentials, but that protection lives in the client, not the
+            # server — a script (curl, a non-browser HTTP client, an older or
+            # misconfigured user agent) is not bound by it. Same "refuse to
+            # boot rather than ship a known-bad config" posture as the
+            # PUBLIC_URL guard in app/auth/dev.py.
+            raise RuntimeError(
+                'CORS_ORIGINS contains "*", which is forbidden together with '
+                "this backend's allow_credentials=True. Combining a wildcard "
+                "origin with credentialed CORS lets any site drive authenticated "
+                "requests using a logged-in user's session/token. List the exact "
+                "origin(s) that serve the SPA instead, comma-separated (e.g. "
+                "CORS_ORIGINS=https://netforge.example.local)."
+            )
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origins_list,
@@ -200,10 +234,14 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
 
-    # Rate-limit write methods. Reads are never throttled — dashboards and the
-    # topology view fire many GETs per page load. The counter lives in
-    # Postgres so every worker/replica shares one budget; `engine=None`
+    # Rate-limit write methods, plus a short list of expensive export GETs
+    # (see `_EXPENSIVE_GET_PREFIXES` in the middleware). Ordinary reads —
+    # dashboards, the topology view — fire many GETs per page load and stay
+    # unthrottled. The counter lives outside the process so every
+    # worker/replica shares one budget: Postgres by default, Redis when
+    # RATE_LIMIT_STORE=redis. Passing neither backend
     # (RATE_LIMIT_STORE=memory) falls back to the legacy per-process window.
+    from app.cache import get_client as get_redis_client
     from app.db import engine as db_engine
 
     app.add_middleware(
@@ -211,6 +249,10 @@ def create_app() -> FastAPI:
         max_per_window=settings.rate_limit_writes_per_window,
         window_seconds=settings.rate_limit_window_seconds,
         engine=db_engine if settings.rate_limit_store == "database" else None,
+        redis_client=(
+            get_redis_client() if settings.rate_limit_store == "redis" else None
+        ),
+        cache_key_prefix=settings.cache_key_prefix,
     )
 
     app.add_middleware(_RequestLogMiddleware)

@@ -38,7 +38,7 @@ Netforge centralizes all of this in a single web interface, with a graph view fo
 - **Topology view** rendered with Cytoscape.js (drag, zoom, click on a node → details).
 - **CSV import** per entity type (quick bootstrap from existing Excel files).
 - **CSV export** for every table (backup / sharing outside the tool).
-- **Entra ID auth** multi-user, 2 roles: `viewer` (read) and `admin` (write).
+- **Pluggable SSO auth** (generic OIDC — Entra ID, Keycloak, Authentik, Google Workspace, … — or GitHub OAuth; see [06-auth.md](06-auth.md)) multi-user, 2 roles: `viewer` (read) and `admin` (write). Personal access tokens (`Authorization: Bearer`) cover scripted/CI access.
 - **Audit log**: every change is tracked (who, when, before → after).
 - **Global search**: a search bar that looks across IP, hostname, MAC, switch name, port label.
 
@@ -48,7 +48,7 @@ Netforge centralizes all of this in a single web interface, with a graph view fo
 - Provisioning (pushing config to switches) — never, too risky.
 - IPv6 — v1 targets fully IPv4 networks; IPv6 support will come later.
 - Multi-tenant — a single network.
-- Public / external API — the API exists but is not exposed.
+- Public / anonymous API — every route requires a session cookie or a personal access token (Bearer); there is no unauthenticated access. The REST API itself is part of v1 (used by the SPA and scriptable via PATs), it just isn't meant for third-party/public consumption.
 
 ## v2 scope (after MVP validation)
 

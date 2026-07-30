@@ -48,7 +48,7 @@ const groups: NavGroup[] = [
       { to: '/vlans', icon: Tags, labelKey: 'nav.vlans' },
       { to: '/switches', icon: RouterIcon, labelKey: 'nav.switches' },
       { to: '/devices', icon: Server, labelKey: 'nav.devices' },
-      { to: '/topology', icon: Share2, labelKey: 'nav.topology', badgeKey: 'common.wip' },
+      { to: '/topology', icon: Share2, labelKey: 'nav.topology' },
     ],
   },
   {

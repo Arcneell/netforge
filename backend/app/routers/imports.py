@@ -20,21 +20,6 @@ _MAX_BYTES = 10 * 1024 * 1024  # 10 MiB hard cap, per single CSV
 _READ_CHUNK = 64 * 1024  # 64 KiB chunks for the streaming read
 
 
-def _enforce_size(content: bytes) -> None:
-    """Belt-and-suspenders length check for callers that already have
-    bytes in memory (legacy code paths, tests). The route entry points
-    use `_read_capped` so the bytes never exceed `_MAX_BYTES` to begin
-    with — but if a caller hands us a literal `bytes` larger than the
-    cap, refuse here too.
-    """
-    if len(content) > _MAX_BYTES:
-        business_rule(
-            "CSV_TOO_LARGE",
-            f"Upload exceeds the {_MAX_BYTES} byte limit.",
-            details={"size": len(content), "max": _MAX_BYTES},
-        )
-
-
 async def _read_capped(file: UploadFile, *, max_bytes: int = _MAX_BYTES) -> bytes:
     """Stream the upload into memory, enforcing `max_bytes` as we go.
 

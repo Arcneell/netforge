@@ -15,8 +15,23 @@ import Skeleton from '@/components/ui/Skeleton.vue'
  * `actions` column is rendered as the footer button row, and every other
  * column becomes a label/value pair inside the card.
  */
-export interface DataTableColumn {
-  key: string
+// `T = Record<string, unknown>` default lets call sites keep writing
+// `DataTableColumn[]` (as every list view does today) without pinning the
+// row type at the column-declaration site.
+export interface DataTableColumn<T = Record<string, unknown>> {
+  // Real columns key into the row (`keyof T`); "actions" and any other
+  // synthetic, non-data column need `string` too since they don't exist on
+  // `T` at all. The union still catches typos in the common case (an IDE
+  // will offer `keyof T` completions) while keeping "actions" legal.
+  //
+  // NB: deliberately `keyof T`, not `Extract<keyof T, string>` — wrapping
+  // it in a conditional/mapped-type helper here blocks Vue's generic type
+  // inference for `T` from this prop across every list view (every `row`
+  // in every `cell-*` slot degrades to the bare `{ id: string | number }`
+  // constraint instead of the real row type). `String(col.key)` at the two
+  // template call sites that build a slot *name* handles the leftover
+  // `number | symbol` case instead.
+  key: keyof T | string
   label: string
   /** Tailwind classes applied to <th> and each <td>. */
   cellClass?: string
@@ -30,7 +45,7 @@ export interface DataTableColumn {
 
 const props = withDefaults(
   defineProps<{
-    columns: DataTableColumn[]
+    columns: DataTableColumn<T>[]
     rows: T[]
     loading?: boolean
     /** Title shown in the empty-state when there are zero rows. */
@@ -40,6 +55,10 @@ const props = withDefaults(
     clickable?: boolean
     /** Skeleton rows rendered during the first load (no rows yet). */
     skeletonRows?: number
+    /** Extra classes for a specific row, e.g. a temporary highlight ring
+     *  for the row a deep link (like GlobalSearch) landed on. Returning ''
+     *  for every other row keeps this a no-op by default. */
+    rowClass?: (row: T) => string
   }>(),
   {
     loading: false,
@@ -47,6 +66,7 @@ const props = withDefaults(
     emptyDescription: undefined,
     clickable: false,
     skeletonRows: 6,
+    rowClass: undefined,
   },
 )
 
@@ -56,7 +76,7 @@ defineEmits<{
 
 const { t } = useI18n()
 
-function alignClass(a: DataTableColumn['align']): string {
+function alignClass(a: DataTableColumn<T>['align']): string {
   if (a === 'right') return 'text-right'
   if (a === 'center') return 'text-center'
   return 'text-left'
@@ -64,17 +84,30 @@ function alignClass(a: DataTableColumn['align']): string {
 
 // Card layout: split columns into title / actions / details. The "primary"
 // column is the first non-actions column (typically `name`, `cidr`, etc.).
-const primaryCol = computed<DataTableColumn | null>(
+const primaryCol = computed<DataTableColumn<T> | null>(
   () => props.columns.find((c) => c.key !== 'actions') ?? null,
 )
-const actionsCol = computed<DataTableColumn | null>(
+const actionsCol = computed<DataTableColumn<T> | null>(
   () => props.columns.find((c) => c.key === 'actions') ?? null,
 )
-const detailCols = computed<DataTableColumn[]>(() =>
+const detailCols = computed<DataTableColumn<T>[]>(() =>
   props.columns.filter(
     (c) => c.key !== 'actions' && c.key !== primaryCol.value?.key && !c.hideOnMobile,
   ),
 )
+
+/**
+ * Cell accessor. `col.key` is typed `keyof T | string` so synthetic columns
+ * like "actions" (present on every list page, absent from every row type)
+ * still type-check — but that union means TS can't index `row` with it
+ * directly without a cast. Centralising the cast here replaces the seven
+ * `(row as any)[col.key]` call sites this component used to have, each of
+ * which silenced type-checking for the *whole* expression instead of just
+ * the index access that actually needs it.
+ */
+function cellValue(row: T, key: DataTableColumn<T>['key']): unknown {
+  return (row as unknown as Record<string, unknown>)[key as string]
+}
 </script>
 
 <template>
@@ -144,11 +177,13 @@ const detailCols = computed<DataTableColumn[]>(() =>
             v-for="row in rows"
             v-else
             :key="row.id"
+            :data-row-id="row.id"
             :class="[
               'border-b border-border last:border-0 transition-colors duration-150 ease-soft',
               clickable
                 ? 'group/row hover:bg-surface-hover cursor-pointer focus-within:bg-surface-hover'
                 : '',
+              rowClass?.(row) ?? '',
             ]"
             @click="clickable && $emit('row-click', row)"
           >
@@ -162,8 +197,8 @@ const detailCols = computed<DataTableColumn[]>(() =>
                 col.hideOnSm ? 'hidden md:table-cell' : '',
               ]"
             >
-              <slot :name="`cell-${col.key}`" :row="row" :value="(row as any)[col.key]">
-                {{ (row as any)[col.key] ?? '—' }}
+              <slot :name="`cell-${String(col.key)}`" :row="row" :value="cellValue(row, col.key)">
+                {{ cellValue(row, col.key) ?? '—' }}
               </slot>
             </td>
           </tr>
@@ -208,9 +243,11 @@ const detailCols = computed<DataTableColumn[]>(() =>
         <li
           v-for="row in rows"
           :key="row.id"
+          :data-row-id="row.id"
           :class="[
             'px-4 py-4 flex flex-col gap-2.5',
             clickable ? 'active:bg-surface-hover cursor-pointer' : '',
+            rowClass?.(row) ?? '',
           ]"
           @click="clickable && $emit('row-click', row)"
         >
@@ -218,18 +255,18 @@ const detailCols = computed<DataTableColumn[]>(() =>
           <div class="flex items-start justify-between gap-3">
             <div v-if="primaryCol" class="min-w-0 flex-1 text-[15px] font-semibold text-fg">
               <slot
-                :name="`cell-${primaryCol.key}`"
+                :name="`cell-${String(primaryCol.key)}`"
                 :row="row"
-                :value="(row as any)[primaryCol.key]"
+                :value="cellValue(row, primaryCol.key)"
               >
-                {{ (row as any)[primaryCol.key] ?? '—' }}
+                {{ cellValue(row, primaryCol.key) ?? '—' }}
               </slot>
             </div>
             <div v-if="actionsCol" class="flex-shrink-0" @click.stop>
               <slot
-                :name="`cell-${actionsCol.key}`"
+                :name="`cell-${String(actionsCol.key)}`"
                 :row="row"
-                :value="(row as any)[actionsCol.key]"
+                :value="cellValue(row, actionsCol.key)"
               />
             </div>
             <ChevronRight
@@ -247,8 +284,8 @@ const detailCols = computed<DataTableColumn[]>(() =>
             <template v-for="col in detailCols" :key="col.key">
               <dt class="text-fg-muted whitespace-nowrap">{{ col.label }}</dt>
               <dd class="text-fg min-w-0 break-words text-right">
-                <slot :name="`cell-${col.key}`" :row="row" :value="(row as any)[col.key]">
-                  {{ (row as any)[col.key] ?? '—' }}
+                <slot :name="`cell-${String(col.key)}`" :row="row" :value="cellValue(row, col.key)">
+                  {{ cellValue(row, col.key) ?? '—' }}
                 </slot>
               </dd>
             </template>

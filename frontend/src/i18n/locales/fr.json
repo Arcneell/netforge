@@ -18,6 +18,8 @@
     "menu": "Menu",
     "close": "Fermer",
     "confirm": "Confirmer",
+    "reveal": "Afficher",
+    "hide": "Masquer",
     "yes": "Oui",
     "no": "Non",
     "actions": "Actions",
@@ -638,7 +640,7 @@
     "sitesTab": "Sites",
     "roomsTab": "Salles",
     "tokensTab": "Jetons API",
-    "aiTab": "Intelligence artificielle",
+    "aiTab": "IA",
     "webhooksTab": "Webhooks",
     "vrfsTab": "VRF",
     "tabsLabel": "Sections des paramètres",
@@ -734,7 +736,8 @@
     "subtitle": "Clés personnelles pour appeler l'API depuis un script.",
     "help": {
       "section": "Les jetons API permettent à un script externe ou un job CI d'appeler NetForge en votre nom. Ils héritent de vos permissions — traitez-les comme un mot de passe, ne les partagez pas et révoquez ceux que vous n'utilisez plus.",
-      "expiry": "Choisissez une date où le jeton doit cesser de fonctionner. Laissez vide pour un jeton sans expiration (révocable manuellement à tout moment)."
+      "expiry": "Choisissez une date où le jeton doit cesser de fonctionner. Laissez vide pour un jeton sans expiration (révocable manuellement à tout moment).",
+      "scope": "Un jeton en lecture seule ne peut jamais créer, modifier ou supprimer quoi que ce soit — même si votre compte est admin. À choisir pour les jobs CI et scripts qui ne font que lire des données."
     },
     "new": "Nouveau jeton",
     "generate": "Générer",
@@ -759,7 +762,14 @@
       "created": "Créé le",
       "lastUsed": "Dernière utilisation",
       "status": "Statut",
-      "expiresAt": "Expiration"
+      "expiresAt": "Expiration",
+      "scope": "Portée"
+    },
+    "scope": {
+      "full": "Accès complet",
+      "readOnly": "Lecture seule",
+      "fullDescription": "Hérite du rôle complet de votre compte — le même accès que vous, écriture comprise.",
+      "readOnlyDescription": "Limité aux requêtes de lecture (GET), même si votre compte est admin. Plus sûr pour les scripts et jobs CI qui ne font que lire des données."
     },
     "status": {
       "active": "Actif",
@@ -772,13 +782,7 @@
     }
   },
   "topology": {
-    "subtitle": "Carte visuelle de vos commutateurs et de leur câblage.",
-    "wip": {
-      "title": "La carte est en cours de refonte",
-      "body": "L'ancienne vue graphique a été retirée le temps d'en concevoir une plus lisible. Vos liens et vos ports restent intacts et consultables depuis les pages ci-dessous.",
-      "viaSwitches": "Ouvrir un commutateur pour voir ses ports et ce qui y est branché.",
-      "viaDevices": "Retrouver un équipement et le port qui le dessert."
-    },
+    "subtitle": "Comment vos sites, commutateurs et équipements sont réellement câblés.",
     "layout": "Disposition",
     "layouts": {
       "dagre": "Hiérarchique",
@@ -787,17 +791,72 @@
       "circle": "Cercle",
       "grid": "Grille"
     },
+    "view": {
+      "label": "Mode d'affichage",
+      "graph": "Graphe",
+      "list": "Liste"
+    },
     "fit": "Ajuster à l'écran",
     "relayout": "Recalculer la disposition",
-    "exportPng": "Exporter PNG",
-    "selectPrompt": "Cliquez sur un commutateur ou un lien dans le graphe pour voir ses détails ici.",
-    "openSwitch": "Ouvrir le commutateur",
-    "link": "Lien",
-    "empty": {
-      "title": "Aucune topologie à afficher",
-      "description": "Créez des commutateurs et des liens inter-commutateurs pour les voir apparaître ici."
+    "exportPng": "Exporter en PNG",
+    "suggestLinks": "Suggérer des liens",
+    "truncatedNotice": "Inventaire volumineux — le graphe affiche un sous-ensemble limité.",
+    "stats": {
+      "switches": "Commutateurs",
+      "devices": "Équipements",
+      "links": "Liens",
+      "sites": "Sites"
     },
-    "help": "Chaque nœud est un commutateur, chaque arête est un lien inter-commutateurs. Cliquez sur un élément pour voir ses détails à droite. Le sélecteur de disposition aide quand le graphe devient dense."
+    "warnings": {
+      "isolated": "1 commutateur sans rien de raccordé | {count} commutateurs sans rien de raccordé",
+      "unplaced": "1 nœud sans salle | {count} nœuds sans salle"
+    },
+    "kinds": {
+      "site": "Site",
+      "room": "Salle",
+      "switch": "Commutateur",
+      "device": "Équipement"
+    },
+    "edgeKinds": {
+      "link": "Câble",
+      "attachment": "Port équipement"
+    },
+    "filters": {
+      "allSites": "Tous les sites",
+      "allRooms": "Toutes les salles",
+      "allVlans": "Tous les VLAN",
+      "showDevices": "Afficher les équipements"
+    },
+    "legend": {
+      "title": "Légende",
+      "isolated": "Rien de raccordé"
+    },
+    "table": {
+      "nodesHeading": "Commutateurs et équipements",
+      "edgesHeading": "Connexions",
+      "name": "Nom",
+      "kind": "Type",
+      "location": "Emplacement",
+      "ports": "Ports utilisés",
+      "connections": "Liens",
+      "endpoints": "Extrémités",
+      "media": "Média",
+      "speed": "Débit",
+      "unplaced": "Aucune salle"
+    },
+    "inspector": {
+      "region": "Détails de la sélection",
+      "title": "Aucune sélection",
+      "hint": "Choisissez un commutateur, un équipement ou un câble pour voir ses détails, ses voisins et où aller ensuite.",
+      "neighbours": "Raccordé à",
+      "noNeighbours": "Rien n'est encore câblé ni branché dessus.",
+      "open": "Ouvrir la fiche complète"
+    },
+    "empty": {
+      "title": "Rien à cartographier pour l'instant",
+      "body": "Le graphe dessine les commutateurs, les équipements qui y sont branchés et les câbles entre eux. Ajoutez un commutateur pour commencer.",
+      "cta": "Aller aux commutateurs"
+    }
   },
   "cable": {
     "label": "Câble",

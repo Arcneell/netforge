@@ -13,6 +13,7 @@ from app.services.ai.providers import get_provider
 from app.services.ai.types import (
     AICompletion,
     AIProviderError,
+    AIProviderRateLimitError,
     AIUnsupportedFeatureError,
     TokenUsage,
     ToolCall,
@@ -22,6 +23,7 @@ from app.services.ai.types import (
 __all__ = [
     "AICompletion",
     "AIProviderError",
+    "AIProviderRateLimitError",
     "AIUnsupportedFeatureError",
     "TokenUsage",
     "ToolCall",

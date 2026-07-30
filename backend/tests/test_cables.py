@@ -2,6 +2,8 @@
 
 The interesting bits we exercise here:
   - `list_cables(in_stock_only=True)` filters on `link_id IS NULL`.
+  - `list_cables` is paginated like every other list endpoint (Fix #8):
+    one COUNT(*) query, one page-bounded SELECT.
   - `get_cable_for_link` returns None when no row matches.
   - `delete_cable` / `update_cable` propagate the 404 on a missing id.
 """
@@ -15,16 +17,23 @@ from fastapi import HTTPException
 
 from app.models.cable import Cable
 from app.schemas.cable import CableCreate, CableUpdate
+from app.schemas.common import PageParams
 from app.services import cables as service
 
 
-def _mock_db_for_list(rows: list[Cable]) -> AsyncMock:
+def _mock_db_for_list(rows: list[Cable], total: int | None = None) -> AsyncMock:
+    """`list_cables` issues two SELECTs in order: COUNT(*) then the
+    page-bounded row fetch — mirror that with a `side_effect` pair."""
     scalars = MagicMock()
     scalars.all = MagicMock(return_value=rows)
-    result = MagicMock()
-    result.scalars = MagicMock(return_value=scalars)
+    row_result = MagicMock()
+    row_result.scalars = MagicMock(return_value=scalars)
+
+    count_result = MagicMock()
+    count_result.scalar = MagicMock(return_value=total if total is not None else len(rows))
+
     db = AsyncMock()
-    db.execute = AsyncMock(return_value=result)
+    db.execute = AsyncMock(side_effect=[count_result, row_result])
     return db
 
 
@@ -32,18 +41,19 @@ def _mock_db_for_list(rows: list[Cable]) -> AsyncMock:
 async def test_list_cables_returns_all_rows() -> None:
     rows = [Cable(id=1, label="A"), Cable(id=2, label="B")]
     db = _mock_db_for_list(rows)
-    out = await service.list_cables(db)
-    assert [c.id for c in out] == [1, 2]
+    items, total = await service.list_cables(db, PageParams())
+    assert [c.id for c in items] == [1, 2]
+    assert total == 2
 
 
 @pytest.mark.asyncio
 async def test_list_cables_in_stock_only_adds_where_clause() -> None:
-    db = _mock_db_for_list([])
-    await service.list_cables(db, in_stock_only=True)
+    db = _mock_db_for_list([], total=0)
+    await service.list_cables(db, PageParams(), in_stock_only=True)
     # The query passed to execute should mention WHERE link_id IS NULL —
-    # we don't introspect the SQL here, but smoke-check that execute was
-    # called once with a select statement.
-    assert db.execute.await_count == 1
+    # we don't introspect the SQL here, but smoke-check that both the
+    # COUNT and the row SELECT ran.
+    assert db.execute.await_count == 2
 
 
 @pytest.mark.asyncio

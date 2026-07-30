@@ -7,21 +7,15 @@ the same surface lives in `streaming.py`.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
 from app.models.user import User, UserRole
-from app.routers.ai.common import (
-    _GENERIC_502_DETAIL,
-    _require_ai_enabled,
-    enforce_rate_limit,
-    logger,
-)
+from app.routers.ai.common import _require_ai_enabled, enforce_rate_limit, raise_ai_error
 from app.routers.ai.conversations import swap_in_persisted_history
 from app.schemas.ai import QueryAnswerRead, QueryRequest
-from app.services.ai import AIProviderError, AIUnsupportedFeatureError
 from app.services.ai.conversations import append_turn
 from app.services.ai.locale import language_instruction as _lang_for
 from app.services.ai.nl_query import run_query
@@ -67,16 +61,8 @@ async def ask_ai(
             history=history,
             lite_context=payload.lite_context,
         )
-    except AIUnsupportedFeatureError as exc:
-        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
-    except AIProviderError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("nl-query crashed")
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            detail=_GENERIC_502_DETAIL,
-        ) from exc
+        raise_ai_error(exc, context="nl-query")
 
     if payload.conversation_id is not None:
         await append_turn(

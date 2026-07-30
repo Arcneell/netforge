@@ -38,6 +38,26 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 
+# --- Outbox --------------------------------------------------------------
+#
+# `WebhookOutbox` closes the durability gap described in
+# `services/webhooks.py`'s module docstring: the event queue that lives
+# between "mutation committed" and "dispatch fired" used to be pure Python
+# (a ContextVar), so a process crash in that window lost the event for
+# good. Every committed mutation now also gets a row here, written on the
+# SAME `Connection`/transaction as the mutation itself (see
+# `services/audit.py::_write_audit_row`, which calls
+# `services/webhooks.py::write_outbox_row` right next to the `audit_log`
+# insert it already does) — so the row and the mutation either both commit
+# or both roll back together, exactly like the audit log.
+#
+# The fast path (dispatch immediately after commit, in-process) marks
+# `dispatched_at` on success and is the common case. `attempts` /
+# `last_error` only start moving once the catch-up sweep
+# (`services/webhooks.py::_sweep_outbox_once`) has to step in — a crash
+# between commit and the fast dispatch, or the fast dispatch itself
+# raising.
+
 
 class Webhook(Base):
     __tablename__ = "webhooks"
@@ -105,3 +125,42 @@ class WebhookDelivery(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class WebhookOutbox(Base):
+    """One row per committed mutation event, written in the same
+    transaction as the mutation — the durable handoff between "committed"
+    and "dispatched". See the module-level comment near the top of this
+    file for the full rationale.
+
+    `event_type` is the same `{entity}.{action}` string as
+    `WebhookEvent.event_name` / `WebhookDelivery.event`; `entity` /
+    `entity_id` are denormalised out of it purely so an operator can filter
+    the table without parsing the string. `payload` is the exact dict
+    `WebhookEvent.to_payload()` produced (already redacted) — replaying it
+    verbatim keeps a retried delivery byte-identical to what the first
+    attempt would have sent.
+    """
+
+    __tablename__ = "webhook_outbox"
+    __table_args__ = (
+        # Supports the sweep's "undispatched, oldest first" scan without a
+        # seq scan once the table has any real volume.
+        Index("webhook_outbox_undispatched_idx", "dispatched_at", "created_at"),
+        # Supports the purge's "dispatched, older than retention" range delete.
+        Index("webhook_outbox_dispatched_at_idx", "dispatched_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    entity: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[int | None] = mapped_column(Integer)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)

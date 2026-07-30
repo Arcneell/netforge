@@ -261,7 +261,7 @@ const bubbleTransform = computed(() => {
             'fixed z-50 w-64 max-w-[16rem] p-3 rounded-lg shadow-lg',
             // Dark chip on light, a bordered surface on dark — a near-black
             // bubble on a near-black page would disappear.
-            'bg-zinc-900 text-zinc-100 dark:bg-surface dark:text-fg dark:border dark:border-border',
+            'bg-plate text-plate-fg dark:bg-surface dark:text-fg dark:border dark:border-border',
             'text-sm leading-relaxed font-normal whitespace-normal text-left',
             'pointer-events-none',
           ]"

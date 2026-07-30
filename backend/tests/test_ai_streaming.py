@@ -253,6 +253,40 @@ async def test_streaming_logs_run_with_usage(monkeypatch: pytest.MonkeyPatch) ->
     db.commit.assert_awaited()
 
 
+@pytest.mark.asyncio
+async def test_streaming_persists_run_log_on_early_generator_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LOW audit fix: when the client disconnects mid-stream, the route's
+    async generator gets torn down via `GeneratorExit` at whatever `yield`
+    is currently suspended — a `BaseException` that a plain
+    `except AIProviderError` (or even `except Exception`) does not catch,
+    and that skips any code placed after a bare try/except instead of
+    inside a `finally`. Before the fix, this meant a disconnected Ask-AI
+    stream silently dropped its `AIRunLog` (and therefore its usage/cost
+    accounting) even though the provider had already been billed for the
+    tokens it streamed before the disconnect."""
+    monkeypatch.setattr(
+        nl_query, "get_provider", lambda: _fake_provider(["Hello", " world"])
+    )
+    monkeypatch.setattr(
+        nl_query,
+        "build_topology_context_cached",
+        AsyncMock(return_value=({"sites": []}, False)),
+    )
+    db = _mock_db_for_query()
+
+    gen = nl_query.run_query_streaming(
+        db, user_id=1, question="ping?", history=[], language_instruction=None
+    )
+    first_event = await gen.__anext__()
+    assert first_event[0] == "delta"
+    await gen.aclose()  # simulates the client hanging up mid-stream
+
+    assert db.add.call_count == 1
+    db.commit.assert_awaited()
+
+
 # --- Route layer: SSE framing over the real ASGI app -----------------------
 
 
@@ -355,8 +389,15 @@ async def test_sse_endpoint_emits_error_frame(
     sse_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """If the generator blows up mid-stream the route catches it and frames a
-    terminal `error` event instead of letting the connection hang or 500."""
+    terminal `error` event instead of letting the connection hang or 500.
+
+    The client-facing message is the generic, sanitised one — same as the
+    non-streaming endpoint's `_GENERIC_502_DETAIL` — never the raw exception
+    text, which can carry internals (connection strings, file paths,
+    provider payloads)."""
     import json
+
+    from app.routers.ai.common import _GENERIC_502_DETAIL
 
     async def _boom_stream(*_args, **_kwargs):
         yield ("delta", {"text": "partial"})
@@ -371,4 +412,37 @@ async def test_sse_endpoint_emits_error_frame(
     names = [name for name, _ in frames]
     assert names == ["delta", "error"]
     assert "done" not in names
-    assert "kaboom" in json.loads(frames[1][1])["message"]
+    message = json.loads(frames[1][1])["message"]
+    assert message == _GENERIC_502_DETAIL
+    assert "kaboom" not in message
+
+
+@pytest.mark.asyncio
+async def test_sse_endpoint_sanitizes_error_event_from_generator(
+    sse_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`run_query_streaming` itself yields an `("error", {"message": ...})`
+    event (rather than raising) when the provider fails mid-stream — see
+    `nl_query.run_query_streaming`'s own `except AIProviderError` branch.
+    That message can carry raw provider/SDK text; the route must still
+    sanitize it before it reaches the client, exactly like the exception
+    path above."""
+    import json
+
+    from app.routers.ai.common import _GENERIC_502_DETAIL
+
+    async def _fake_stream(*_args, **_kwargs):
+        yield ("delta", {"text": "partial"})
+        yield ("error", {"message": "anthropic API call failed: connection reset"})
+
+    monkeypatch.setattr("app.routers.ai.streaming.run_query_streaming", _fake_stream)
+
+    resp = await sse_client.post("/api/ai/query/stream", json={"question": "ping?"})
+
+    assert resp.status_code == 200
+    frames = _parse_sse(resp.text)
+    names = [name for name, _ in frames]
+    assert names == ["delta", "error"]
+    message = json.loads(frames[1][1])["message"]
+    assert message == _GENERIC_502_DETAIL
+    assert "connection reset" not in message

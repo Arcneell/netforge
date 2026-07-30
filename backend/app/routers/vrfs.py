@@ -8,16 +8,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user, require_role
 from app.db import get_session as get_db
 from app.models.user import UserRole
+from app.schemas.common import Page, PageParams
 from app.schemas.vrf import VrfCreate, VrfRead, VrfUpdate
 from app.services import vrfs as service
 
 router = APIRouter(prefix="/vrfs", tags=["vrfs"])
 
 
-@router.get("", response_model=list[VrfRead], dependencies=[Depends(get_current_user)])
-async def list_vrfs(db: AsyncSession = Depends(get_db)) -> list[VrfRead]:
-    rows = await service.list_vrfs(db)
-    return [VrfRead.model_validate(r) for r in rows]
+@router.get("", response_model=Page[VrfRead], dependencies=[Depends(get_current_user)])
+async def list_vrfs(
+    page: PageParams = Depends(), db: AsyncSession = Depends(get_db)
+) -> Page[VrfRead]:
+    items, total = await service.list_vrfs(db, page)
+    return Page[VrfRead](
+        items=[VrfRead.model_validate(r) for r in items],
+        total=total,
+        page=page.page,
+        page_size=page.page_size,
+    )
 
 
 @router.get(

@@ -9,6 +9,7 @@ router doesn't have to special-case the first turn.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -189,12 +190,19 @@ async def append_turn(
     if conv is not None:
         if role == "user" and not conv.title:
             conv.title = _derive_title_from_prompt(text)
-        # Updated_at is on the model's `onupdate=func.now()`, so any
-        # column assignment triggers it. Touch `title` to None and back
-        # if there's nothing else to set — but the title path above
-        # already does that. For pure assistant appends, force-bump:
-        if role == "assistant":
-            conv.title = conv.title  # no-op assignment to fire onupdate
+        # Force-bump `updated_at` explicitly on EVERY turn, user or
+        # assistant. Relying on the model's `onupdate=func.now()` alone
+        # only works when some other column is also dirtied in the same
+        # flush — true for the very first user turn (title gets set) and
+        # for assistant turns (the old code re-assigned `title` to itself
+        # as a no-op to trigger it), but NOT for a user turn on a
+        # conversation that already has a title, since nothing on `conv`
+        # itself changes. If the LLM call that follows fails, the
+        # conversation's `updated_at` would then stay stale even though
+        # the operator just asked a new question — breaking the
+        # most-recent-first sort in the sidebar until an answer eventually
+        # lands (or never, if every retry keeps failing).
+        conv.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(turn)
     return turn

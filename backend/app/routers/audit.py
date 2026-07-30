@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -33,6 +33,14 @@ async def list_audit(
     to: datetime | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> Page[AuditLogRead]:
+    # Naive datetimes coming in via query string are treated as UTC so they
+    # can be compared against the timezone-aware `created_at` column
+    # without TypeErrors (same mechanic as `routers/snapshots.py::compare`).
+    if from_ is not None and from_.tzinfo is None:
+        from_ = from_.replace(tzinfo=UTC)
+    if to is not None and to.tzinfo is None:
+        to = to.replace(tzinfo=UTC)
+
     base = select(AuditLog)
     count_q = select(func.count()).select_from(AuditLog)
 

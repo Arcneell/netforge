@@ -82,6 +82,10 @@ class Port(Base, TimestampMixin):
     tagged_vlans: Mapped[list[PortVlan]] = relationship(
         back_populates="port",
         cascade="all, delete-orphan",
+        # `port_vlan.port_id` is already ON DELETE CASCADE — let Postgres
+        # handle the child deletes in one statement instead of the ORM
+        # emitting one DELETE per tagged VLAN row.
+        passive_deletes=True,
     )
 
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, type Component } from 'vue'
+import { computed, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import {
   Building2,
   DoorOpen,
@@ -26,14 +27,42 @@ import { fetchAllPages, roomsApi, sitesApi } from '@/api'
 import type { Room, Site } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { useApiErrorMessage } from '@/composables/useApiErrorMessage'
+import { useRowHighlight } from '@/composables/useRowHighlight'
 
 const { t } = useI18n()
 const { success } = useToast()
 const { notify } = useApiErrorMessage()
+const route = useRoute()
+// Scrolls to + rings the row named by `?highlight=<id>` — GlobalSearch has
+// no dedicated site/room detail route, so a search result lands here with
+// `?tab=sites&highlight=<id>` (or `rooms`) instead of just the bare list.
+const { applyHighlight, rowClass } = useRowHighlight()
 
 type SettingsTab = 'sites' | 'rooms' | 'tokens' | 'ai' | 'webhooks' | 'vrfs'
 
-const tab = ref<SettingsTab>('sites')
+const VALID_TABS: SettingsTab[] = ['sites', 'rooms', 'tokens', 'ai', 'webhooks', 'vrfs']
+
+function initialTab(): SettingsTab {
+  const q = route.query.tab
+  return typeof q === 'string' && (VALID_TABS as string[]).includes(q)
+    ? (q as SettingsTab)
+    : 'sites'
+}
+
+const tab = ref<SettingsTab>(initialTab())
+
+// A search result clicked while ALREADY on the settings page only changes
+// the query string — the component doesn't remount, so `initialTab()` never
+// reruns. Follow `?tab=` changes so the right tab opens in that case too
+// (the highlight itself is re-applied by useRowHighlight's own watcher).
+watch(
+  () => route.query.tab,
+  (value) => {
+    if (typeof value === 'string' && (VALID_TABS as string[]).includes(value)) {
+      tab.value = value as SettingsTab
+    }
+  },
+)
 
 // Six sections is past the point where a pill group reads as a control rather
 // than navigation — an underlined tab bar (the same `.nf-tab` the workspaces
@@ -115,7 +144,9 @@ async function confirmDeleteRoom() {
 onMounted(async () => {
   // Load sites first so the Rooms tab can resolve site codes when it opens.
   await loadSites()
-  loadRooms()
+  await loadRooms()
+  // Whichever tab `?tab=` selected is now populated — safe to scroll/ring.
+  await applyHighlight()
 })
 
 // Inlined @click="a; b" expressions trip the Vue template parser on Windows
@@ -206,6 +237,7 @@ const roomColumns = computed<DataTableColumn[]>(() => [
         :loading="sitesLoading"
         :empty-title="t('site.emptyTitle')"
         :empty-description="t('site.empty')"
+        :row-class="rowClass"
       >
         <template #empty-action>
           <Button variant="primary" @click="openNewSite">
@@ -268,6 +300,7 @@ const roomColumns = computed<DataTableColumn[]>(() => [
         :loading="roomsLoading"
         :empty-title="t('room.emptyTitle')"
         :empty-description="t('room.emptyHint')"
+        :row-class="rowClass"
       >
         <template #empty-action>
           <Button variant="primary" @click="openNewRoom">

@@ -11,6 +11,7 @@
 #   - SPA (Vite, HMR enabled):  http://localhost:5173
 #   - Backend OpenAPI:           http://localhost:8000/api/docs
 #   - Postgres:                  localhost:5432 (psql from host)
+#   - Redis:                     localhost:6379 (redis-cli from host)
 #
 # Differences vs production:
 #   - frontend runs Vite dev server (not nginx + built bundle)
@@ -40,11 +41,32 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    # Cache + shared rate-limit counters — see the longer note in
+    # docker-compose.yml. No persistence and no password locally: a dev cache
+    # that starts cold is a feature (it makes "did my change actually land?"
+    # unambiguous), and the port is loopback-only below.
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      # Loopback only, and published purely so `redis-cli monitor` / `KEYS *`
+      # from the host is available while working on the cache. Nothing in the
+      # stack reaches Redis this way — the backend uses the service name.
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   backend:
     build: ./backend
     restart: unless-stopped
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netforge}:${POSTGRES_PASSWORD:-dev}@postgres:5432/${POSTGRES_DB:-netforge}
@@ -62,15 +84,39 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_SCOPE: ${OIDC_SCOPE:-openid email profile}
+      OIDC_REQUIRE_EMAIL_VERIFIED: ${OIDC_REQUIRE_EMAIL_VERIFIED:-true}
       # ---- Sessions / rate limiting ----
       # Same defaults as the backend's own, but forwarded so a local .env can
       # actually shorten sessions or tighten limits while testing.
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-netforge_session}
       SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-28800}
+      # ---- Redis / caching ----
+      # On by default locally so the cache paths get exercised in development
+      # rather than only in production. Set REDIS_URL="" in .env to work
+      # against the no-cache path.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_TIMEOUT_SECONDS: ${REDIS_TIMEOUT_SECONDS:-0.5}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-netforge}
+      CACHE_SESSIONS_ENABLED: ${CACHE_SESSIONS_ENABLED:-true}
+      # Shorter than production's 30s: while developing, a role or session
+      # change should show up on the next click, not two page loads later.
+      CACHE_SESSION_TTL_SECONDS: ${CACHE_SESSION_TTL_SECONDS:-5}
+      CACHE_READS_ENABLED: ${CACHE_READS_ENABLED:-true}
+      CACHE_READ_TTL_SECONDS: ${CACHE_READ_TTL_SECONDS:-300}
       RATE_LIMIT_WRITES_PER_WINDOW: ${RATE_LIMIT_WRITES_PER_WINDOW:-60}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
       # "database" shares the counters across workers/replicas via the
-      # rate_limit_counters table; "memory" is the legacy per-process window.
+      # rate_limit_counters table; "redis" does the same with INCR + EXPIRE and
+      # requires REDIS_URL; "memory" is the legacy per-process window.
       RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-database}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32,::1/128,172.16.0.0/12}
+      WEBHOOK_ALLOW_PRIVATE_TARGETS: ${WEBHOOK_ALLOW_PRIVATE_TARGETS:-false}
+      AI_WEBHOOK_SIGNING_SECRET: ${AI_WEBHOOK_SIGNING_SECRET:-}
+      # ---- CSV import ----
+      CSV_IMPORT_MAX_ROWS: ${CSV_IMPORT_MAX_ROWS:-50000}
+      # ---- Audit log retention ----
+      # 0 = unlimited retention (default). See .env.example.
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-0}
       # PUBLIC_URL drives OAuth/OIDC redirect URIs. When the SPA proxies /api/*,
       # the browser-visible host is the Vite dev server (5173), so callbacks
       # must come back through there to land on the SPA after auth.
@@ -112,7 +158,15 @@ services:
     restart: unless-stopped
     working_dir: /app
     depends_on:
-      - backend
+      # NOTE: `condition: service_healthy` (used elsewhere in this file)
+      # isn't available here — the `backend` service in this dev compose has
+      # no `healthcheck:` block (unlike docker-compose.yml's prod backend).
+      # `service_started` still orders container start before the Vite dev
+      # server's `npm install` finishes, which is the only guarantee this
+      # dependency needs — the SPA proxies /api/* to whatever's listening
+      # once the browser actually hits it.
+      backend:
+        condition: service_started
     environment:
       # Inside the docker network, the backend is reachable by service name.
       # `vite.config.ts` reads VITE_BACKEND_URL to wire the /api proxy.
@@ -139,3 +193,4 @@ services:
 volumes:
   pgdata_dev:
   frontend_node_modules:
+  # No redis volume on purpose — the dev Redis runs with persistence off.

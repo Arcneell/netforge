@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.vrf import Vrf
+from app.schemas.common import PageParams
 from app.schemas.vrf import VrfCreate, VrfUpdate
 from app.services.errors import catch_integrity_errors, not_found
 
 
-async def list_vrfs(db: AsyncSession) -> list[Vrf]:
-    result = await db.execute(select(Vrf).order_by(Vrf.name))
-    return list(result.scalars().all())
+async def list_vrfs(db: AsyncSession, page: PageParams) -> tuple[list[Vrf], int]:
+    total = (await db.execute(select(func.count()).select_from(Vrf))).scalar() or 0
+    result = await db.execute(
+        select(Vrf).order_by(Vrf.name).offset(page.offset).limit(page.limit)
+    )
+    return list(result.scalars().all()), int(total)
 
 
 async def get_vrf(db: AsyncSession, vrf_id: int) -> Vrf:

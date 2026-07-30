@@ -30,7 +30,9 @@ test('admin can create a switch and see its ports auto-generated', async ({ page
   await page.getByRole('textbox', { name: /^name$|^nom$/i }).fill(name)
   // port_count is the field whose immutability the form warns about — fill
   // with a small N so the rack view renders quickly.
-  await page.getByRole('spinbutton', { name: /port count|nombre de ports/i }).fill(String(portCount))
+  await page
+    .getByRole('spinbutton', { name: /port count|nombre de ports/i })
+    .fill(String(portCount))
   await page.getByRole('button', { name: /^save$|^enregistrer$/i }).click()
 
   // On success we land back on the switches list; the new row appears.

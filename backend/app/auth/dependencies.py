@@ -6,16 +6,18 @@ from authlib.integrations.starlette_client import OAuth
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import session_cache
 from app.auth.base import AuthProvider
 from app.auth.factory import make_provider
 from app.auth.sessions import (
     get_active_session,
     get_session_id_from_cookie,
+    hash_session_id,
     touch_session,
 )
 from app.config import Settings, get_settings
 from app.db import get_session as get_db_session
-from app.models.user import User, UserRole
+from app.models.user import ApiTokenScope, User, UserRole
 
 # Module-level singletons: the authlib OAuth registry and the configured
 # provider are built once at first use.
@@ -65,6 +67,13 @@ async def get_current_user(
 
     Order: Bearer header first (so a script doesn't accidentally land in the
     UI's session if it sets both), then the session cookie. 401 otherwise.
+
+    The cookie path consults `session_cache` before Postgres when Redis is
+    configured — that cache is what keeps a six-GET page load from paying
+    twelve queries to re-derive the same principal. See its module docstring
+    for the revocation trade-off; with `REDIS_URL` unset every lookup below
+    goes to the database exactly as it always has. The Bearer path is
+    deliberately never cached.
     """
     user: User | None = None
 
@@ -72,24 +81,35 @@ async def get_current_user(
     if bearer:
         from app.services import api_tokens as token_service
 
-        user = await token_service.verify_token(db, bearer)
-        if user is None:
+        result = await token_service.verify_token(db, bearer)
+        if result is None:
             raise _auth_required()
+        user, scope = result
+        if scope is ApiTokenScope.read_only:
+            user = _capped_to_viewer(user)
     else:
         session_id = get_session_id_from_cookie(request, settings)
         if not session_id:
             raise _auth_required()
 
-        session = await get_active_session(db, session_id)
-        if session is None:
-            raise _auth_required()
-
-        user = await db.get(User, session.user_id)
+        session_id_hash = hash_session_id(session_id)
+        user = await session_cache.get_principal(session_id_hash, settings)
         if user is None:
-            # Session points at a deleted user — treat as logged out.
-            raise _auth_required()
+            session = await get_active_session(db, session_id)
+            if session is None:
+                raise _auth_required()
 
-        await touch_session(db, session, settings)
+            user = await db.get(User, session.user_id)
+            if user is None:
+                # Session points at a deleted user — treat as logged out.
+                raise _auth_required()
+
+            await touch_session(db, session, settings)
+            # After `touch_session`, so a renewed `expires_at` is what gets
+            # cached rather than the value it just replaced.
+            await session_cache.store_principal(
+                session_id_hash, user, session.expires_at, settings
+            )
 
     # Make the user id visible to the audit-log SQLAlchemy listeners.
     from app.services.audit import current_user_id_var
@@ -97,6 +117,28 @@ async def get_current_user(
     current_user_id_var.set(user.id)
 
     return user
+
+
+def _capped_to_viewer(user: User) -> User:
+    """Return a transient copy of `user` with its role forced to viewer.
+
+    Used for requests authenticated by a `read_only` API token: the effective
+    role must drop to viewer for THIS request only, so every existing
+    `require_role(...)` check downstream rejects writes without any change
+    on its part. The copy is a brand-new, never-added-to-a-session `User`
+    instance — it is never attached to `db`, so nothing about it can ever be
+    flushed. The real row (and the real user's real role) is untouched.
+    """
+    return User(
+        id=user.id,
+        provider=user.provider,
+        subject=user.subject,
+        email=user.email,
+        display_name=user.display_name,
+        role=UserRole.viewer,
+        last_login_at=user.last_login_at,
+        created_at=user.created_at,
+    )
 
 
 def require_role(*roles: UserRole):
