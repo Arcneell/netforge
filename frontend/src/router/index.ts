@@ -147,9 +147,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'topology',
         name: 'topology',
-        // The graph view is paused pending a redesign. `TopologyView.vue`
-        // stays on disk and comes back once the new one is ready.
-        component: () => import('@/views/TopologyWipView.vue'),
+        component: () => import('@/views/TopologyView.vue'),
         meta: { titleKey: 'nav.topology' },
       },
       // The AI surfaces and the data-management surfaces used to be six
