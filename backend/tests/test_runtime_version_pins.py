@@ -155,12 +155,41 @@ def _assert_single_major(runtime: str, found: dict[str, list[str]]) -> None:
     )
 
 
-def test_ignored_runtimes_are_still_multi_pin() -> None:
-    """A stale `ignore` in dependabot.yml is worse than none: it silently blocks
-    a bump that would now be complete on its own.
+# Everything ignored in dependabot.yml, classified by *why*. A stale `ignore` is
+# worse than none — it silently blocks a bump that would now be fine — so each
+# entry has to declare which kind of stale it can become.
+#
+# MULTI_PIN: ignored because the version is also pinned somewhere Dependabot
+# cannot reach, making any PR it opens partial. The pattern is that unreachable
+# pin. Goes stale when the pin disappears, which the test below detects.
+MULTI_PIN_IGNORES = {
+    "node": r'node-version:\s*"\d',
+    "python": r'python-version:\s*"\d',
+    "postgres": r"image:\s*postgres:\d",
+    "redis": r"image:\s*redis:\d",
+    # `@types/node` has no pin of its own in ci.yml — it is ignored because it
+    # must track the Node *runtime*, whose `node-version` entries here
+    # Dependabot cannot see. Same unreachable pin, one step removed.
+    "@types/node": r'node-version:\s*"\d',
+}
 
-    Each runtime whose majors we ignore must genuinely still be pinned in a file
-    Dependabot cannot reach. When that stops being true, drop the ignore.
+# UPSTREAM_BLOCKED: ignored because no version of it can be installed with the
+# rest of the tree, for reasons outside this repo. Goes stale when upstream
+# publishes a compatible release — which cannot be checked without hitting the
+# network, so it is not asserted here. The `ignore` comment in dependabot.yml
+# names the exact condition to watch for instead.
+UPSTREAM_BLOCKED_IGNORES = {
+    # openapi-typescript and typescript-eslint both cap typescript below 6.1 on
+    # their latest releases. See the comment on the ignore entry.
+    "typescript",
+}
+
+
+def test_every_ignore_is_classified() -> None:
+    """A new `ignore` must say which kind of stale it can become.
+
+    This exists so the next person to add one has to think about how it gets
+    removed. An ignore with no removal condition is a permanent silent block.
     """
     import yaml
 
@@ -171,28 +200,44 @@ def test_ignored_runtimes_are_still_multi_pin() -> None:
         for entry in (update.get("ignore") or [])
     }
 
-    ci = _read(".github/workflows/ci.yml")
-    # What makes each runtime un-bumpable by Dependabot: a pin inside ci.yml,
-    # which no ecosystem in dependabot.yml covers.
-    unreachable_pins = {
-        "node": r'node-version:\s*"\d',
-        "python": r'python-version:\s*"\d',
-        "postgres": r"image:\s*postgres:\d",
-        "redis": r"image:\s*redis:\d",
-        # `@types/node` has no pin of its own in ci.yml — it is ignored because
-        # it must track the Node *runtime*, whose `node-version` entries here
-        # Dependabot cannot see. Same unreachable pin, one step removed.
-        "@types/node": r'node-version:\s*"\d',
-    }
+    known = set(MULTI_PIN_IGNORES) | UPSTREAM_BLOCKED_IGNORES
+    unclassified = sorted(ignored - known)
+    assert not unclassified, (
+        f"dependabot.yml ignores {unclassified} but this test does not know why. "
+        "Add each to MULTI_PIN_IGNORES (with the pin Dependabot cannot see) or to "
+        "UPSTREAM_BLOCKED_IGNORES (with the blocking peer named in the config "
+        "comment), or drop the ignore."
+    )
 
+    stale = sorted(known - ignored)
+    assert not stale, (
+        f"{stale} are classified here but no longer ignored in dependabot.yml. "
+        "Drop them from this test so it stops describing a rule that is gone."
+    )
+
+
+def test_ignored_runtimes_are_still_multi_pin() -> None:
+    """Each multi-pin ignore must still have its unreachable pin.
+
+    When ci.yml stops pinning a runtime, Dependabot could open a complete bump
+    and the ignore should go.
+    """
+    import yaml
+
+    config = yaml.safe_load(_read(".github/dependabot.yml"))
+    ignored = {
+        entry["dependency-name"]
+        for update in config["updates"]
+        for entry in (update.get("ignore") or [])
+    } & set(MULTI_PIN_IGNORES)
+
+    ci = _read(".github/workflows/ci.yml")
+    unreachable_pins = MULTI_PIN_IGNORES
+
+    # Classification itself is asserted by `test_every_ignore_is_classified`;
+    # this one only checks that each classified pin still exists.
     for name in sorted(ignored):
-        pattern = unreachable_pins.get(name)
-        assert pattern is not None, (
-            f"dependabot.yml ignores {name!r} majors but this test does not know why. "
-            "Add it to `unreachable_pins` with the pin Dependabot cannot see, or "
-            "drop the ignore."
-        )
-        assert re.search(pattern, ci), (
+        assert re.search(unreachable_pins[name], ci), (
             f"dependabot.yml still ignores {name!r} majors, but ci.yml no longer "
             "pins it — so Dependabot could now open a complete bump. Remove the "
             "ignore entry."
