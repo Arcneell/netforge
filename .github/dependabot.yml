@@ -25,6 +25,8 @@
 #              ci.yml x4, pyproject `requires-python`        ← does not
 #   postgres 16  docker-compose.yml, docker-compose.dev.yml  ← sees
 #              ci.yml x2 (integration + e2e services)        ← does not
+#   redis 8      docker-compose.yml, docker-compose.dev.yml  ← sees
+#              ci.yml x1 (integration service)               ← does not
 #
 # PR #155 was exactly this: it moved docker-compose.dev.yml to node:26 and left
 # the other four pins on 22, against the comment in that very file requiring
@@ -196,6 +198,16 @@ updates:
       - dependency-name: node
         update-types:
           - version-update:semver-major
-      # `redis` is deliberately absent: it is pinned here only, holds nothing but
-      # caches, and carries its own AOF/RDB across majors. A major bump there is
-      # complete on its own and safe to take on green CI.
+      # `redis` was left out of this list when it was written, on the claim that
+      # it "is pinned here only". That was wrong: ci.yml also runs a
+      # `redis:N-alpine` service container for the integration job, added in the
+      # same PR that introduced the cache. PR #173 then did exactly what the rest
+      # of this list exists to prevent — moved both compose files to 8-alpine and
+      # left CI proving the Lua rate-limit script against 7.
+      #
+      # A redis major is otherwise low-risk (it holds only caches and carries its
+      # own AOF/RDB forward), so the reason it is here is the coordination, not
+      # the risk.
+      - dependency-name: redis
+        update-types:
+          - version-update:semver-major
