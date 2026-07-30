@@ -87,4 +87,6 @@ Be respectful. Disagree with ideas, not people. No harassment, no personal attac
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the project's [MIT license](LICENSE).
+By contributing, you agree that your contributions are licensed under the project's licence — the [GNU Affero General Public License v3.0 or later](LICENSE).
+
+Practically, that means a fork you deploy as a network service has to offer its source to that service's users. Self-hosting NetForge for your own organisation triggers nothing.

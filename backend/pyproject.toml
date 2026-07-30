@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Netforge — IPAM & infra management API"
 requires-python = ">=3.12"
 readme = "README.md"
+license = "AGPL-3.0-or-later"
 
 dependencies = [
     "fastapi>=0.115",
