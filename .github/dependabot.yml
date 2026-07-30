@@ -141,6 +141,27 @@ updates:
           - minor
           - patch
     ignore:
+      # TypeScript majors are unreachable, and it is not our tree's fault. Two
+      # packages cap it, both on their own latest release:
+      #
+      #   openapi-typescript@7.13.0   peer typescript: ^5.x
+      #   typescript-eslint@latest    peer typescript: >=4.8.4 <6.1.0
+      #
+      # `npm install` downgrades that to a warning; `npm ci` — what CI runs —
+      # refuses the tree with ERESOLVE. Confirmed by installing typescript@7.0.2
+      # and running it, on #143 (TS 6), #175 and #187 (TS 7). TS 6 came and went
+      # in the meantime without the ecosystem moving.
+      #
+      # The `typescript-toolchain` group above deliberately stays: when this
+      # ignore is lifted, all three packages have to arrive in one PR. Lift it as
+      # soon as `openapi-typescript` ships a release whose peer accepts the
+      # target major — and expect to drop `baseUrl` from tsconfig.json in the
+      # same change, since TS 6 turned its deprecation into an error (TS5101)
+      # and 7 removes it. `paths` has resolved relative to the tsconfig since
+      # TS 4.1, so prefixing the entries with `./` is the whole fix.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
       # `@types/node` is a Node version pin wearing a different hat: it declares
       # the API surface the compiler believes exists. Bumping it to 26 while
       # ci.yml, frontend/Dockerfile and the dev compose image all run Node 22
